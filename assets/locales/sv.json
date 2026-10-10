@@ -876,7 +876,8 @@
     },
     "charts": {
       "uniquePackets": "Unika paket",
-      "busy": "Beläggning"
+      "busy": "Beläggning",
+      "showMore": "Visa fler"
     },
     "packetList": {
       "pathSearchInvalid": "Ange fullständiga hopphashar med samma längd, separerade med blanksteg, kommatecken eller → (t.ex. 7f a4).",

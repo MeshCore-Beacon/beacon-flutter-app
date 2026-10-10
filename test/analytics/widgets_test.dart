@@ -62,7 +62,7 @@ void main() {
   );
 
   testWidgets(
-    'path classification exposes exact counts and hourly categories',
+    'path classification shows format coverage without raw tables',
     (tester) async {
       final hour = DateTime.now().millisecondsSinceEpoch ~/ 3600000 * 3600000;
       final api = ApiClient(
@@ -116,10 +116,10 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('PATH FORMAT COUNTS'), findsOneWidget);
+      expect(find.text('PATH FORMAT COVERAGE'), findsOneWidget);
+      expect(find.text('PATH FORMAT COUNTS'), findsNothing);
+      expect(find.text('Hourly path counts'), findsNothing);
       expect(find.text('Unclassified'), findsWidgets);
-      expect(find.text('7'), findsWidgets);
-      expect(find.text('10.0%'), findsWidgets);
       expect(find.text('Empty'), findsWidgets);
       expect(find.text('Trace'), findsWidgets);
     },

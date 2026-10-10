@@ -912,7 +912,8 @@
     },
     "charts": {
       "uniquePackets": "Paquets uniques",
-      "busy": "Occupation"
+      "busy": "Occupation",
+      "showMore": "Afficher plus"
     },
     "packetList": {
       "pathSearchInvalid": "Saisissez des hashs de saut complets de même longueur, séparés par des espaces, des virgules ou → (p. ex. 7f a4).",

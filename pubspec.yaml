@@ -3,7 +3,7 @@ description: "Native iOS and Android client for Beacon, the real-time MeshCore p
 # An app, not a package: never publish to pub.dev.
 publish_to: 'none'
 
-version: 0.1.0+1
+version: 1.0.0+1
 
 environment:
   sdk: ^3.13.4
