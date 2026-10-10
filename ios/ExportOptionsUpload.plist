@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>method</key>
+    <string>app-store-connect</string>
+    <key>teamID</key>
+    <string>DQC6TNKG5P</string>
+    <!-- Manual signing: Xcode's cloud signing is refused for the App Store Connect
+         API key ("Cloud signing permission error"). The profile below is created
+         once in the developer portal and installed under
+         ~/Library/MobileDevice/Provisioning Profiles/. -->
+    <key>signingStyle</key>
+    <string>manual</string>
+    <key>signingCertificate</key>
+    <string>Apple Distribution</string>
+    <key>provisioningProfiles</key>
+    <dict>
+        <key>meshcorebeacon.app</key>
+        <string>Beacon AppStore</string>
+    </dict>
+    <key>stripSwiftSymbols</key>
+    <true/>
+    <key>uploadSymbols</key>
+    <true/>
+    <key>destination</key>
+    <string>upload</string>
+    <!-- Keep the epoch build number from Build.sh; without this Xcode may rewrite it during upload -->
+    <key>manageAppVersionAndBuildNumber</key>
+    <false/>
+</dict>
+</plist>

@@ -1,0 +1,43 @@
+name: Android build
+
+# Separate from CI so pure Dart changes skip the ~7 minute native compile.
+on:
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - 'android/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - '.github/workflows/android.yml'
+  # Every push to dev builds, as a safety net and to keep the caches warm
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-android:
+    name: Build Android (debug)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: 'temurin'
+          java-version: '21'  # maplibre_gl compiles with --release 21
+          cache: gradle
+
+      # Keep in step with REQUIRED_FLUTTER_VERSION in Build.sh
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: 'stable'
+          flutter-version: '3.47.5'
+          cache: true
+
+      - run: flutter pub get
+      - run: flutter build apk --debug

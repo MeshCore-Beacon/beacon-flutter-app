@@ -1,0 +1,10 @@
+BEACON Mobile is the iOS and Android client for Beacon, the real-time MeshCore packet analyzer. On first launch, add the URL of a Beacon server and live data starts flowing.
+
+What to try:
+• The live packet feed, filters and search
+• Opening a packet: decoded details, observers and "Map all paths"
+• The live map, node and observer pages
+• Analytics tabs
+• Leaving the app and coming back (the feed should catch up)
+
+Send feedback right from TestFlight: take a screenshot in BEACON or use the TestFlight app. Bugs and ideas are also welcome at github.com/MeshCore-Beacon/beacon-flutter-app/issues.

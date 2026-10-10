@@ -1,0 +1,21 @@
+BEACON Mobile connects to a Beacon server that collects MeshCore packets over MQTT, and gives you a bird's-eye view of the mesh.
+
+LIVE MAP
+See every repeater, companion, room server, sensor and observer in your region on the map. Turn on live packet flow to watch traffic move across the mesh as it happens, tap any node for its details, and share a link to what you're looking at.
+
+LIVE PACKET FEED
+Watch packets arrive as observers hear them. Tap any packet to see its decoded contents, every hop it took, and how strongly each observer received it.
+
+PATHS AND ROUTES
+Draw a packet's paths on the map, or search for the routes between two nodes, fewest hops first.
+
+NODES, CHANNELS AND OBSERVERS
+Look up any repeater, companion or room server: its radio settings, its neighbours and when it was last heard. Browse public channels and see which observers hear the most traffic.
+
+ANALYTICS
+Traffic, signal quality, busiest nodes, clock drift and how the mesh is connected, over the last 24 hours or 7 days.
+
+YOUR SERVER, YOUR REGION
+Add any Beacon server, including your own self-hosted one, and pick the region you care about. No radio needed.
+
+Free and open source. No account, no ads, no tracking. English, French and Swedish, with dark and light themes.

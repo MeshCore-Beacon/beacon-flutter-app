@@ -1,0 +1,1 @@
+Watch your MeshCore mesh live: every packet, the paths it took, and who heard it. Maps, node directories and network analytics in your pocket.

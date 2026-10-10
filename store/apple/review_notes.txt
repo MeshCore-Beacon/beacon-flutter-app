@@ -1,0 +1,9 @@
+No login or demo account is needed. On first launch tap Add server and enter {REVIEW_SERVER_URL}; the app then shows live data immediately.
+
+BEACON is a read-only viewer for MeshCore, an open-source LoRa radio mesh network. A Beacon server collects packets that volunteer "observer" radios hear and publish; the app shows that public radio traffic as a live packet feed, maps of nodes and packet paths, directories and analytics. The app does not transmit on any radio and needs no hardware.
+
+Suggested path: open the packet feed, tap any packet to see its decoded details and observers, tap "Map all paths", then visit the Map, Nodes, Observers and Analytics tabs.
+
+NSAllowsArbitraryLoads / local network: users can add a self-hosted Beacon server (Settings > Servers), which is often reached over plain HTTP on a home LAN. The review server uses HTTPS.
+
+The app has no accounts, ads, analytics or tracking. It is open source (AGPL-3.0-or-later): https://github.com/MeshCore-Beacon/beacon-flutter-app

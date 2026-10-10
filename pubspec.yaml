@@ -1,0 +1,47 @@
+name: beacon
+description: "Native iOS and Android client for Beacon, the real-time MeshCore packet analyzer."
+# An app, not a package: never publish to pub.dev.
+publish_to: 'none'
+
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  http: ^1.6.0
+  shared_preferences: ^2.5.6
+  maplibre_gl: ^0.27.1
+  fl_chart: ^1.2.0
+  flutter_svg: ^2.3.0
+  url_launcher: ^6.3.3
+  package_info_plus: ^10.2.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+  integration_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/themes.json
+    - assets/logo-icon.svg
+    - assets/locales/
+    - assets/fonts/Inter-LICENSE.txt
+    - assets/fonts/JetBrainsMono-LICENSE.txt
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter.ttf
+    - family: JetBrainsMono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono.ttf

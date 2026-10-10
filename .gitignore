@@ -1,0 +1,102 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+Thumbs.db
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ / VS Code
+*.iml
+*.ipr
+*.iws
+.idea/
+.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+.widget_preview/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# Release artifacts
+*.apk
+*.aab
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Signing keys (never commit)
+android/key.properties
+*.jks
+*.keystore
+*.p8
+
+# Platform-generated config (machine-specific)
+android/local.properties
+ios/Flutter/Generated.xcconfig
+ios/Flutter/flutter_export_environment.sh
+ios/Flutter/ephemeral/
+ios/Pods/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Build metadata written by Build.sh (machine-specific)
+.last_build
+
+# Local TestFlight "What to Test" scratch text picked up by set_whats_new.sh
+WhatToTest.txt
+
+# Local AI assistant configuration and working documents
+/.claude/
+/CLAUDE.md
+/.agents/
+/.codex/
+/.ai/
+/.worktrees/
+/AGENTS.md
+/HANDOFF*.md
+/PLAN[-_]*.md
+/SPEC[-_]*.md
+/docs/superpowers/
+
+# Credentials (never commit)
+*.pem
+*.p12
+*.mobileprovision
+google-services.json
+GoogleService-Info.plist
+*service-account*.json
+play-publisher*.json
+
+# Node tooling
+node_modules/
+/package.json
+/package-lock.json

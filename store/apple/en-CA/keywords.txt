@@ -1,0 +1,1 @@
+MeshCore,mesh,LoRa,packet,analyzer,repeater,radio,observer,network,map,off-grid,RF,signal,ham
