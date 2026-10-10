@@ -876,7 +876,8 @@
     },
     "charts": {
       "uniquePackets": "Unique packets",
-      "busy": "Busy"
+      "busy": "Busy",
+      "showMore": "Show more"
     },
     "packetList": {
       "pathSearchInvalid": "Enter whole hop hashes of the same length, separated by spaces, commas or → (e.g. 7f a4).",

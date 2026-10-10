@@ -61,69 +61,68 @@ void main() {
     },
   );
 
-  testWidgets(
-    'path classification exposes exact counts and hourly categories',
-    (tester) async {
-      final hour = DateTime.now().millisecondsSinceEpoch ~/ 3600000 * 3600000;
-      final api = ApiClient(
-        Uri.parse('https://example.test'),
-        client: MockClient(
-          (r) async => http.Response(
-            jsonEncode({
-              'since': hour - 3600000,
-              'until': hour,
-              'receptions': 10,
-              'hashed': 7,
-              'empty': 1,
-              'trace': 1,
-              'unclassified': 1,
-              'hashWidths': [
-                {'bytes': 1, 'receptions': 5},
-                {'bytes': 2, 'receptions': 2},
-              ],
-              'pathLengths': [
-                {'entries': 1, 'receptions': 5},
-                {'entries': 2, 'receptions': 2},
-              ],
-              'hourly': [
-                {
-                  'hour': hour - 3600000,
-                  'receptions': 10,
-                  'oneByte': 5,
-                  'twoByte': 2,
-                  'threeByte': 0,
-                  'empty': 1,
-                  'trace': 1,
-                  'unclassified': 1,
-                  'maxEntries': 2,
-                },
-              ],
-            }),
-            200,
+  testWidgets('path classification shows format coverage without raw tables', (
+    tester,
+  ) async {
+    final hour = DateTime.now().millisecondsSinceEpoch ~/ 3600000 * 3600000;
+    final api = ApiClient(
+      Uri.parse('https://example.test'),
+      client: MockClient(
+        (r) async => http.Response(
+          jsonEncode({
+            'since': hour - 3600000,
+            'until': hour,
+            'receptions': 10,
+            'hashed': 7,
+            'empty': 1,
+            'trace': 1,
+            'unclassified': 1,
+            'hashWidths': [
+              {'bytes': 1, 'receptions': 5},
+              {'bytes': 2, 'receptions': 2},
+            ],
+            'pathLengths': [
+              {'entries': 1, 'receptions': 5},
+              {'entries': 2, 'receptions': 2},
+            ],
+            'hourly': [
+              {
+                'hour': hour - 3600000,
+                'receptions': 10,
+                'oneByte': 5,
+                'twoByte': 2,
+                'threeByte': 0,
+                'empty': 1,
+                'trace': 1,
+                'unclassified': 1,
+                'maxEntries': 2,
+              },
+            ],
+          }),
+          200,
+        ),
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AnalyticsScreen(
+            api: api,
+            region: const {},
+            initialTab: 'Paths',
+            onOpen: (_, _) {},
           ),
         ),
-      );
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: AnalyticsScreen(
-              api: api,
-              region: const {},
-              initialTab: 'Paths',
-              onOpen: (_, _) {},
-            ),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      expect(find.text('PATH FORMAT COUNTS'), findsOneWidget);
-      expect(find.text('Unclassified'), findsWidgets);
-      expect(find.text('7'), findsWidgets);
-      expect(find.text('10.0%'), findsWidgets);
-      expect(find.text('Empty'), findsWidgets);
-      expect(find.text('Trace'), findsWidgets);
-    },
-  );
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('PATH FORMAT COVERAGE'), findsOneWidget);
+    expect(find.text('PATH FORMAT COUNTS'), findsNothing);
+    expect(find.text('Hourly path counts'), findsNothing);
+    expect(find.text('Unclassified'), findsWidgets);
+    expect(find.text('Empty'), findsWidgets);
+    expect(find.text('Trace'), findsWidgets);
+  });
 
   testWidgets('observer dashboard orders activity then conditional telemetry', (
     tester,
