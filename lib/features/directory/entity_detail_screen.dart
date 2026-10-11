@@ -10,6 +10,7 @@ import '../../core/strings.dart';
 import '../../core/theme.dart';
 import '../analytics/observer_charts.dart';
 import 'directory_widgets.dart';
+import 'meshmapper_section.dart';
 import 'observation_row.dart';
 import 'observer_info.dart';
 import 'paging.dart';
@@ -516,6 +517,7 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
   List<Widget> nodeContent(Json d) {
     final colors = BeaconColors.of(context);
     final publicKey = textOf(d['publicKey']);
+    final meshMapper = object(d['meshmapper']);
     Widget capability(String title, dynamic value) => Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
@@ -559,6 +561,11 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
               nodeBadge(textOf(d['defaultScope']), colors.secondary),
             if (d['possiblyForeign'] == true)
               nodeBadge(tr('Possibly foreign'), colors.warning),
+            if (meshMapper['carpeater'] == true)
+              Tooltip(
+                message: trKey('meshMapper.carpeaterHint'),
+                child: nodeBadge(trKey('meshMapper.carpeater'), colors.warning),
+              ),
           ],
         ),
         const SizedBox(height: 8),
@@ -640,6 +647,8 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
           ],
         ),
       ]),
+      if (MeshMapperSection.hasContent(meshMapper))
+        MeshMapperSection(data: meshMapper),
       section('Capabilities', [
         capability('Multibyte paths', d['supportsMultibytePaths']),
         capability('Multibyte traces', d['supportsMultibyteTraces']),

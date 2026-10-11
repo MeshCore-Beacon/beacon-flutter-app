@@ -1139,6 +1139,43 @@
       "start": "Start",
       "end": "End",
       "endAfterStart": "End must be after start."
+    },
+    "meshMapper": {
+      "hardware": "Hardware",
+      "power": "Power",
+      "antenna": "Antenna",
+      "powerSource": "Power source",
+      "powerSources": {
+        "mains": "Mains",
+        "solar": "Solar",
+        "battery": "Battery",
+        "poe": "PoE"
+      },
+      "height": "Height",
+      "heightAgl": "{{value}} m AGL",
+      "heightAsl": "{{value}} m ASL",
+      "admins": "Admins",
+      "defaultScope": "Default scope",
+      "scopeState": {
+        "unknown": "Unknown",
+        "none": "None"
+      },
+      "scopeSource": {
+        "advert": "advert",
+        "reported": "reported"
+      },
+      "confirmedScopes": "Confirmed scopes",
+      "noConfirmedScopes": "None confirmed",
+      "observedPackets_one": "observed {{count}} packet",
+      "observedPackets_other": "observed {{count}} packets",
+      "observed": "observed",
+      "reported": "reported",
+      "uploaded": "uploaded",
+      "title": "MeshMapper",
+      "fromMeshMapper": "From MeshMapper",
+      "updated": "updated",
+      "carpeater": "CARpeater",
+      "carpeaterHint": "Mobile repeater in a vehicle: its position moves."
     }
   }
 }
