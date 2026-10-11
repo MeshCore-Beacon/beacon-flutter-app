@@ -42,7 +42,8 @@
 # Usage
 # ---------------------------------------------------------------------------
 #   ./play_store.py status
-#       Read-only: tracks, releases, listing languages. Never commits.
+#       Read-only: tracks, releases (with Google review state), listing
+#       languages. Never commits.
 #
 #   ./play_store.py upload --track internal [--notes-file notes.txt] [--apply]
 #       Uploads AAB_PATH from .last_build (or --aab PATH) and puts it on the
@@ -550,6 +551,23 @@ def describe_release(r, indent="    "):
     return "\n".join(lines)
 
 
+def review_states(api, track):
+    """versionCode -> review state for the track's non-obsolete releases
+    (tracks.releases.list, outside the edit; the edits API has no review state)."""
+    try:
+        releases = api.call("GET", f"/tracks/{urllib.parse.quote(track)}/releases",
+                            what=f"Reading review state (tracks.releases.list {track})").get("releases", [])
+    except PlayError as e:
+        print(f"    (review state unavailable: {e})")
+        return {}
+    states = {}
+    for r in releases:
+        state = r.get("releaseLifecycleState", "?").removeprefix("RELEASE_LIFECYCLE_STATE_")
+        for a in r.get("activeArtifacts", []):
+            states[str(a.get("versionCode"))] = state
+    return states
+
+
 def list_tracks(edit):
     return edit.call("GET", "/tracks", what="Listing tracks (edits.tracks.list)").get("tracks", [])
 
@@ -604,8 +622,12 @@ def cmd_status(args):
             releases = t.get("releases", [])
             if not releases:
                 print("    (no releases)")
+            states = review_states(api, t.get("track")) if releases else {}
             for r in releases:
                 print(describe_release(r))
+                review = sorted({states[c] for c in r.get("versionCodes", []) if c in states})
+                if review:
+                    print(f"      review: {', '.join(review)}")
 
         bundles = edit.call("GET", "/bundles", what="Listing bundles (edits.bundles.list)").get("bundles", [])
         codes = sorted((b.get("versionCode") for b in bundles if b.get("versionCode")), reverse=True)
