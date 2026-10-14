@@ -116,12 +116,17 @@ class StatsQuery extends StatefulWidget {
     this.params = const {},
     required this.builder,
     this.pollInterval,
+    this.fallback,
   });
   final ApiClient api;
   final String path;
   final Map<String, dynamic> params;
   final Widget Function(dynamic) builder;
   final Duration? pollInterval;
+
+  /// Shown instead of the spinner and error, for content that stays useful
+  /// without this query.
+  final WidgetBuilder? fallback;
   @override
   State<StatsQuery> createState() => _StatsQueryState();
 }
@@ -191,12 +196,14 @@ class _StatsQueryState extends State<StatsQuery> {
       if (s.connectionState != ConnectionState.done) {
         final cached = widget.api.peekCache(widget.path, widget.params);
         if (cached != null) return widget.builder(cached);
+        if (widget.fallback case final fallback?) return fallback(context);
         return const Padding(
           padding: EdgeInsets.all(30),
           child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
         );
       }
       if (s.hasError) {
+        if (widget.fallback case final fallback?) return fallback(context);
         return Padding(
           padding: const EdgeInsets.all(12),
           child: Column(

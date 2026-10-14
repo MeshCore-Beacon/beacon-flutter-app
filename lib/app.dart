@@ -167,39 +167,42 @@ Future<void> showServerSwitcher(
   final manage = await showModalBottomSheet<bool>(
     context: context,
     useSafeArea: true,
-    builder: (context) => ListView(
-      shrinkWrap: true,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: Text(
-            tr('Servers'),
-            style: Theme.of(context).textTheme.titleLarge,
+    builder: (context) => SafeArea(
+      top: false,
+      child: ListView(
+        shrinkWrap: true,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text(
+              tr('Servers'),
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
           ),
-        ),
-        for (final s in preferences.servers)
+          for (final s in preferences.servers)
+            ListTile(
+              selected: s.url == preferences.active?.url,
+              leading: const Icon(Icons.dns_outlined, size: 18),
+              title: Text(s.name),
+              subtitle: Text(s.base.host),
+              trailing: s.url == preferences.active?.url
+                  ? Icon(
+                      Icons.check,
+                      color: Theme.of(context).colorScheme.primary,
+                    )
+                  : null,
+              onTap: () async {
+                Navigator.pop(context);
+                await preferences.selectServer(s.url);
+              },
+            ),
           ListTile(
-            selected: s.url == preferences.active?.url,
-            leading: const Icon(Icons.dns_outlined, size: 18),
-            title: Text(s.name),
-            subtitle: Text(s.base.host),
-            trailing: s.url == preferences.active?.url
-                ? Icon(
-                    Icons.check,
-                    color: Theme.of(context).colorScheme.primary,
-                  )
-                : null,
-            onTap: () async {
-              Navigator.pop(context);
-              await preferences.selectServer(s.url);
-            },
+            leading: const Icon(Icons.settings_outlined, size: 20),
+            title: Text(tr('Manage servers')),
+            onTap: () => Navigator.pop(context, true),
           ),
-        ListTile(
-          leading: const Icon(Icons.settings_outlined, size: 20),
-          title: Text(tr('Manage servers')),
-          onTap: () => Navigator.pop(context, true),
-        ),
-      ],
+        ],
+      ),
     ),
   );
   if (manage == true && context.mounted) {
@@ -543,7 +546,10 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (_) => RegionSheet(api: api, initial: region),
+      builder: (_) => SafeArea(
+        top: false,
+        child: RegionSheet(api: api, initial: region),
+      ),
     );
     if (!mounted || selected == null) return;
     await liveEvents?.cancel();
@@ -559,39 +565,42 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
   void more() => showModalBottomSheet<void>(
     context: context,
     useSafeArea: true,
-    builder: (context) => Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (final name in [
-          'Observers',
-          'Routes',
-          'Traces',
-          'Analytics',
-        ].where(config.tabs.contains))
-          ListTile(
-            selected: tab == name,
-            leading: Icon(switch (name) {
-              'Observers' => Icons.sensors,
-              'Routes' => Icons.route_outlined,
-              'Traces' => Icons.timeline,
-              _ => Icons.bar_chart_outlined,
-            }),
-            trailing: const Icon(Icons.chevron_right, size: 18),
-            title: Text(
-              tr(name),
-              style: TextStyle(
-                color: tab == name
-                    ? Theme.of(context).colorScheme.primary
-                    : null,
+    builder: (context) => SafeArea(
+      top: false,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final name in [
+            'Observers',
+            'Routes',
+            'Traces',
+            'Analytics',
+          ].where(config.tabs.contains))
+            ListTile(
+              selected: tab == name,
+              leading: Icon(switch (name) {
+                'Observers' => Icons.sensors,
+                'Routes' => Icons.route_outlined,
+                'Traces' => Icons.timeline,
+                _ => Icons.bar_chart_outlined,
+              }),
+              trailing: const Icon(Icons.chevron_right, size: 18),
+              title: Text(
+                tr(name),
+                style: TextStyle(
+                  color: tab == name
+                      ? Theme.of(context).colorScheme.primary
+                      : null,
+                ),
               ),
+              onTap: () {
+                Navigator.pop(context);
+                setState(() => tab = name);
+              },
             ),
-            onTap: () {
-              Navigator.pop(context);
-              setState(() => tab = name);
-            },
-          ),
-        const SizedBox(height: 12),
-      ],
+          const SizedBox(height: 12),
+        ],
+      ),
     ),
   );
   @override
@@ -644,42 +653,63 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
                     colorFilter: ColorFilter.mode(primary, BlendMode.srcIn),
                   ),
                   const SizedBox(width: 6),
-                  Text(
-                    config.name,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1.8,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
                   Expanded(
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: InkWell(
-                        onTap: chooseRegion,
-                        borderRadius: BorderRadius.circular(4),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 5,
-                          ),
-                          decoration: BoxDecoration(
-                            border: Border.all(
-                              color: Theme.of(context).dividerColor,
-                            ),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
+                    child: Row(
+                      children: [
+                        const Flexible(
                           child: Text(
-                            '${tr('Region').toUpperCase()} $regionLabel ▾',
+                            'BEACON',
+                            maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontFamily: 'JetBrainsMono',
-                              fontSize: 10,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1.8,
                             ),
                           ),
                         ),
-                      ),
+                        const SizedBox(width: 8),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 110),
+                          child: Tooltip(
+                            message: tr('Region'),
+                            child: InkWell(
+                              onTap: chooseRegion,
+                              borderRadius: BorderRadius.circular(4),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  border: Border.all(
+                                    color: Theme.of(context).dividerColor,
+                                  ),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.place_outlined, size: 12),
+                                    const SizedBox(width: 3),
+                                    Flexible(
+                                      child: Text(
+                                        '$regionLabel ▾',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontFamily: 'JetBrainsMono',
+                                          fontSize: 10,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   ListenableBuilder(

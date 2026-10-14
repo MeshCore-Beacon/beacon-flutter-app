@@ -285,89 +285,92 @@ class _PacketScreenState extends State<PacketScreen> {
       isScrollControlled: true,
       useSafeArea: true,
       builder: (context) => StatefulBuilder(
-        builder: (context, update) => SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      tr('Filters'),
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    const Spacer(),
-                    TextButton(
-                      onPressed: () {
-                        update(() {
-                          types = {};
-                          routes = {};
-                          selectedScopes = {};
-                          selectedObservers = {};
-                          search.clear();
-                          mode = 'Hash';
-                        });
-                        searchDebounce?.cancel();
-                        hashPrefix = null;
-                        filtersChanged();
-                      },
-                      child: Text(tr('Clear all')),
-                    ),
-                  ],
-                ),
-                FilterDropdown<int>(
-                  label: 'Payload type',
-                  options: payloadNames,
-                  selected: types,
-                  onChanged: (value) {
-                    update(() => types = value);
-                    filtersChanged();
-                  },
-                ),
-                FilterDropdown<int>(
-                  label: 'Route type',
-                  options: const {
-                    0: 'TRANSPORT_FLOOD',
-                    1: 'FLOOD',
-                    2: 'DIRECT',
-                    3: 'TRANSPORT_DIRECT',
-                  },
-                  selected: routes,
-                  onChanged: (value) {
-                    update(() => routes = value);
-                    filtersChanged();
-                  },
-                ),
-                FilterDropdown<String>(
-                  label: 'Observers',
-                  options: Map.fromEntries(
-                    observerNames.entries.toList()
-                      ..sort((a, b) => a.value.compareTo(b.value)),
+        builder: (context, update) => SafeArea(
+          top: false,
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        tr('Filters'),
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: () {
+                          update(() {
+                            types = {};
+                            routes = {};
+                            selectedScopes = {};
+                            selectedObservers = {};
+                            search.clear();
+                            mode = 'Hash';
+                          });
+                          searchDebounce?.cancel();
+                          hashPrefix = null;
+                          filtersChanged();
+                        },
+                        child: Text(tr('Clear all')),
+                      ),
+                    ],
                   ),
-                  selected: selectedObservers,
-                  onChanged: (value) {
-                    update(() => selectedObservers = value);
-                    setState(() {});
-                  },
-                ),
-                if (scopes.isNotEmpty)
-                  FilterDropdown<String>(
-                    label: 'Scope',
-                    options: {for (final name in scopes) name: name},
-                    selected: selectedScopes,
+                  FilterDropdown<int>(
+                    label: 'Payload type',
+                    options: payloadNames,
+                    selected: types,
                     onChanged: (value) {
-                      update(() => selectedScopes = value);
+                      update(() => types = value);
                       filtersChanged();
                     },
                   ),
-                const SizedBox(height: 20),
-                FilledButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: Text(tr('Done')),
-                ),
-              ],
+                  FilterDropdown<int>(
+                    label: 'Route type',
+                    options: const {
+                      0: 'TRANSPORT_FLOOD',
+                      1: 'FLOOD',
+                      2: 'DIRECT',
+                      3: 'TRANSPORT_DIRECT',
+                    },
+                    selected: routes,
+                    onChanged: (value) {
+                      update(() => routes = value);
+                      filtersChanged();
+                    },
+                  ),
+                  FilterDropdown<String>(
+                    label: 'Observers',
+                    options: Map.fromEntries(
+                      observerNames.entries.toList()
+                        ..sort((a, b) => a.value.compareTo(b.value)),
+                    ),
+                    selected: selectedObservers,
+                    onChanged: (value) {
+                      update(() => selectedObservers = value);
+                      setState(() {});
+                    },
+                  ),
+                  if (scopes.isNotEmpty)
+                    FilterDropdown<String>(
+                      label: 'Scope',
+                      options: {for (final name in scopes) name: name},
+                      selected: selectedScopes,
+                      onChanged: (value) {
+                        update(() => selectedScopes = value);
+                        filtersChanged();
+                      },
+                    ),
+                  const SizedBox(height: 20),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: Text(tr('Done')),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

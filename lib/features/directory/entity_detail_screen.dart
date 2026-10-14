@@ -8,6 +8,7 @@ import '../../core/api.dart';
 import '../../core/json.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
+import '../analytics/charts.dart';
 import '../analytics/observer_charts.dart';
 import 'directory_widgets.dart';
 import 'meshmapper_section.dart';
@@ -745,7 +746,15 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
   }
 
   List<Widget> observerContent(Json d) => [
-    ObserverInfo(data: d),
+    StatsQuery(
+      api: widget.api,
+      path: '/observers/${Uri.encodeComponent(widget.id)}/activity',
+      params: observerActivityParams(range),
+      pollInterval: const Duration(minutes: 1),
+      builder: (activity) =>
+          ObserverInfo(data: d, summary: object(object(activity)['summary'])),
+      fallback: (_) => ObserverInfo(data: d),
+    ),
     link('Compare observers', 'analytics', 'compare:${widget.id}'),
     section('Activity & telemetry', [
       Text(tr('Window'), style: Theme.of(context).textTheme.bodySmall),
