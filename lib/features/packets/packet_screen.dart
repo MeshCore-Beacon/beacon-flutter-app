@@ -35,6 +35,8 @@ class _PacketScreenState extends State<PacketScreen> {
   StreamSubscription<Json>? sub;
   Timer? clock;
   Timer? refreshTimer;
+  Timer? searchDebounce;
+  String? hashPrefix;
   bool loading = false, hasMore = true;
   dynamic cursor;
   String? error;
@@ -135,6 +137,7 @@ class _PacketScreenState extends State<PacketScreen> {
     sub?.cancel();
     clock?.cancel();
     refreshTimer?.cancel();
+    searchDebounce?.cancel();
     scroll.dispose();
     search.dispose();
     super.dispose();
@@ -163,6 +166,7 @@ class _PacketScreenState extends State<PacketScreen> {
           if (types.isNotEmpty) 'payloadTypes': types.join(','),
           if (routes.isNotEmpty) 'routeTypes': routes.join(','),
           if (selectedScopes.isNotEmpty) 'scopes': selectedScopes.join(','),
+          if (hashPrefix != null) 'hashPrefix': hashPrefix,
           if (older) 'cursor': cursor,
         }),
       );
@@ -225,6 +229,30 @@ class _PacketScreenState extends State<PacketScreen> {
     load();
   }
 
+  // The server searches stored packets by hash prefix; shorter or non-hex
+  // text stays a client-side filter over loaded and live rows.
+  String? get serverHashPrefix {
+    final text = search.text.trim().toLowerCase();
+    return mode == 'Hash' && RegExp(r'^[0-9a-f]{4,16}$').hasMatch(text)
+        ? text
+        : null;
+  }
+
+  void searchChanged({bool immediate = false}) {
+    searchDebounce?.cancel();
+    void apply() {
+      if (!mounted || serverHashPrefix == hashPrefix) return;
+      hashPrefix = serverHashPrefix;
+      filtersChanged();
+    }
+
+    if (immediate) {
+      apply();
+    } else {
+      searchDebounce = Timer(const Duration(milliseconds: 300), apply);
+    }
+  }
+
   void resumeLive() {
     // Return synchronously so arrivals cannot queue during a scroll animation.
     if (scroll.hasClients) scroll.jumpTo(0);
@@ -281,6 +309,8 @@ class _PacketScreenState extends State<PacketScreen> {
                           search.clear();
                           mode = 'Hash';
                         });
+                        searchDebounce?.cancel();
+                        hashPrefix = null;
                         filtersChanged();
                       },
                       child: Text(tr('Clear all')),
@@ -376,7 +406,10 @@ class _PacketScreenState extends State<PacketScreen> {
                       ),
                     ),
                 ],
-                onChanged: (v) => setState(() => mode = v!),
+                onChanged: (v) {
+                  setState(() => mode = v!);
+                  searchChanged(immediate: true);
+                },
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -397,10 +430,14 @@ class _PacketScreenState extends State<PacketScreen> {
                             onPressed: () {
                               search.clear();
                               setState(() {});
+                              searchChanged(immediate: true);
                             },
                           ),
                   ),
-                  onChanged: (_) => setState(() {}),
+                  onChanged: (_) {
+                    setState(() {});
+                    searchChanged();
+                  },
                 ),
               ),
               IconButton(
