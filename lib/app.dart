@@ -632,19 +632,27 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
         : code.split(',').length > 2
         ? trKey('region.iataCount', count: code.split(',').length)
         : code;
+    // The header and tab bar paint behind the status bar and home indicator
+    // and pad their own content; only the section in between is inset.
+    final insets = MediaQuery.paddingOf(context);
     return Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: [
-            Container(
-              height: 51,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surface,
-                border: Border(
-                  bottom: BorderSide(color: Theme.of(context).dividerColor),
-                ),
+      body: Column(
+        children: [
+          Container(
+            padding: EdgeInsets.fromLTRB(
+              12 + insets.left,
+              insets.top,
+              12 + insets.right,
+              0,
+            ),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              border: Border(
+                bottom: BorderSide(color: Theme.of(context).dividerColor),
               ),
+            ),
+            child: SizedBox(
+              height: 51,
               child: Row(
                 children: [
                   SvgPicture.asset(
@@ -653,90 +661,28 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
                     colorFilter: ColorFilter.mode(primary, BlendMode.srcIn),
                   ),
                   const SizedBox(width: 6),
-                  Expanded(
-                    child: Row(
-                      children: [
-                        const Flexible(
-                          child: Text(
-                            'BEACON',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 1.8,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 110),
-                          child: Tooltip(
-                            message: tr('Region'),
-                            child: InkWell(
-                              onTap: chooseRegion,
-                              borderRadius: BorderRadius.circular(4),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 6,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  border: Border.all(
-                                    color: Theme.of(context).dividerColor,
-                                  ),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(Icons.place_outlined, size: 12),
-                                    const SizedBox(width: 3),
-                                    Flexible(
-                                      child: Text(
-                                        '$regionLabel ▾',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontFamily: 'JetBrainsMono',
-                                          fontSize: 10,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+                  const Text(
+                    'BEACON',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.8,
                     ),
                   ),
-                  ListenableBuilder(
-                    listenable: live,
-                    builder: (_, _) => Tooltip(
-                      message: live.status == 'live'
-                          ? tr('LIVE')
-                          : tr(
-                              live.status == 'connecting'
-                                  ? 'Connecting'
-                                  : 'OFFLINE',
-                            ),
-                      child: Container(
-                        width: 7,
-                        height: 7,
-                        margin: const EdgeInsets.symmetric(horizontal: 7),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: live.status == 'live'
-                              ? BeaconColors.of(context).success
-                              : live.status == 'connecting'
-                              ? BeaconColors.of(context).warning
-                              : BeaconColors.of(context).muted,
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: ListenableBuilder(
+                        listenable: live,
+                        builder: (_, _) => FeedScope(
+                          status: live.status,
+                          label: regionLabel,
+                          onTap: chooseRegion,
                         ),
                       ),
                     ),
                   ),
+                  const SizedBox(width: 2),
                   IconButton(
                     tooltip:
                         '${tr('Servers')}: ${widget.preferences.active!.name}',
@@ -762,94 +708,190 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
                 ],
               ),
             ),
-            Expanded(
-              child: KeyedSubtree(
-                key: ValueKey('$tab/$revision'),
-                child: section,
-              ),
-            ),
-            Container(
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surface,
-                border: Border(
-                  top: BorderSide(color: Theme.of(context).dividerColor),
+          ),
+          Expanded(
+            child: MediaQuery.removePadding(
+              context: context,
+              removeTop: true,
+              removeBottom: true,
+              removeLeft: true,
+              removeRight: true,
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: insets.left,
+                  right: insets.right,
+                ),
+                child: KeyedSubtree(
+                  key: ValueKey('$tab/$revision'),
+                  child: section,
                 ),
               ),
-              child: Row(
-                children: [
-                  for (final entry
-                      in const {
-                        'Packets': Icons.layers_outlined,
-                        'Channels': Icons.chat_bubble_outline,
-                        'Map': Icons.location_on_outlined,
-                        'Nodes': Icons.hub_outlined,
-                        'More': Icons.more_horiz,
-                      }.entries.where(
-                        (entry) => entry.key == 'More'
-                            ? config.tabs.any(
-                                (name) => ![
-                                  'Packets',
-                                  'Channels',
-                                  'Map',
-                                  'Nodes',
-                                ].contains(name),
-                              )
-                            : config.tabs.contains(entry.key),
-                      ))
-                    Expanded(
-                      child: Semantics(
-                        selected: tab == entry.key,
-                        button: true,
-                        child: InkWell(
-                          onTap: entry.key == 'More'
-                              ? more
-                              : () => setState(() => tab = entry.key),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 9),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  entry.value,
-                                  size: 21,
-                                  color:
-                                      tab == entry.key ||
-                                          (entry.key == 'More' &&
-                                              ![
-                                                'Packets',
-                                                'Channels',
-                                                'Map',
-                                                'Nodes',
-                                              ].contains(tab))
+            ),
+          ),
+          Container(
+            padding: EdgeInsets.only(
+              left: insets.left,
+              right: insets.right,
+              bottom: insets.bottom,
+            ),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              border: Border(
+                top: BorderSide(color: Theme.of(context).dividerColor),
+              ),
+            ),
+            child: Row(
+              children: [
+                for (final entry
+                    in const {
+                      'Packets': Icons.layers_outlined,
+                      'Channels': Icons.chat_bubble_outline,
+                      'Map': Icons.location_on_outlined,
+                      'Nodes': Icons.hub_outlined,
+                      'More': Icons.more_horiz,
+                    }.entries.where(
+                      (entry) => entry.key == 'More'
+                          ? config.tabs.any(
+                              (name) => ![
+                                'Packets',
+                                'Channels',
+                                'Map',
+                                'Nodes',
+                              ].contains(name),
+                            )
+                          : config.tabs.contains(entry.key),
+                    ))
+                  Expanded(
+                    child: Semantics(
+                      selected: tab == entry.key,
+                      button: true,
+                      child: InkWell(
+                        onTap: entry.key == 'More'
+                            ? more
+                            : () => setState(() => tab = entry.key),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 9),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                entry.value,
+                                size: 21,
+                                color:
+                                    tab == entry.key ||
+                                        (entry.key == 'More' &&
+                                            ![
+                                              'Packets',
+                                              'Channels',
+                                              'Map',
+                                              'Nodes',
+                                            ].contains(tab))
+                                    ? primary
+                                    : Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.color,
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                tr(entry.key),
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: tab == entry.key
                                       ? primary
                                       : Theme.of(context)
                                             .textTheme
                                             .bodySmall
                                             ?.color,
                                 ),
-                                const SizedBox(height: 3),
-                                Text(
-                                  tr(entry.key),
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    color: tab == entry.key
-                                        ? primary
-                                        : Theme.of(context)
-                                              .textTheme
-                                              .bodySmall
-                                              ?.color,
-                                  ),
-                                ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
                     ),
-                ],
-              ),
+                  ),
+              ],
             ),
-          ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// What the feed covers and whether it is live: one tap target in the header
+/// that opens the region picker.
+class FeedScope extends StatelessWidget {
+  const FeedScope({
+    super.key,
+    required this.status,
+    required this.label,
+    required this.onTap,
+  });
+  final String status, label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = BeaconColors.of(context);
+    final color = switch (status) {
+      'live' => palette.success,
+      'connecting' => palette.warning,
+      _ => palette.muted,
+    };
+    final state = tr(switch (status) {
+      'live' => 'LIVE',
+      'connecting' => 'Connecting',
+      _ => 'OFFLINE',
+    });
+    final hint = '$state\n${tr('Region')}: $label';
+    return Tooltip(
+      message: hint,
+      excludeFromSemantics: true,
+      child: Semantics(
+        button: true,
+        label: hint,
+        excludeSemantics: true,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(6),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 8, 4, 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: color,
+                    boxShadow: [
+                      if (status == 'live')
+                        BoxShadow(
+                          color: color.withValues(alpha: .35),
+                          spreadRadius: 3,
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 9),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontFamily: 'JetBrainsMono',
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+                Icon(Icons.expand_more, size: 16, color: palette.muted),
+              ],
+            ),
+          ),
         ),
       ),
     );
