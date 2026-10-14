@@ -11,6 +11,7 @@ import 'core/instance.dart';
 import 'core/json.dart';
 import 'core/live.dart';
 import 'core/preferences.dart';
+import 'core/region_selection.dart';
 import 'core/runtime_config.dart';
 import 'core/strings.dart';
 import 'core/theme.dart';
@@ -429,6 +430,7 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
   late LiveConnection live;
   StreamSubscription<Json>? liveEvents;
   late Map<String, dynamic> region;
+  late RegionSelection selection;
   String tab = 'Packets';
   int revision = 0;
   RuntimeConfig config = const RuntimeConfig();
@@ -438,6 +440,10 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
     final instance = widget.preferences.active!;
     api = widget.apiFactory?.call(instance.base) ?? ApiClient(instance.base);
     region = widget.preferences.regionFor(instance.url);
+    selection = RegionSelection.restore(
+      widget.preferences.regionSelectionFor(instance.url),
+      region,
+    );
     live = LiveConnection(instance.wsUri, region);
     liveEvents = live.events.listen(api.handleLiveEvent);
     if (widget.connectLive) live.start();
@@ -542,23 +548,28 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
     ),
   );
   Future<void> chooseRegion() async {
-    final selected = await showModalBottomSheet<Map<String, dynamic>>(
+    final picked = await showModalBottomSheet<(RegionSelection, Json)>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       builder: (_) => SafeArea(
         top: false,
-        child: RegionSheet(api: api, initial: region),
+        child: RegionSheet(api: api, initial: selection),
       ),
     );
-    if (!mounted || selected == null) return;
+    if (!mounted || picked == null) return;
     await liveEvents?.cancel();
     live.dispose();
-    region = selected;
+    selection = picked.$1;
+    region = picked.$2;
     live = LiveConnection(widget.preferences.active!.wsUri, region);
     liveEvents = live.events.listen(api.handleLiveEvent);
     if (widget.connectLive) live.start();
-    await widget.preferences.saveRegion(widget.preferences.active!.url, region);
+    await widget.preferences.saveRegion(
+      widget.preferences.active!.url,
+      region,
+      selection: selection.toJson(),
+    );
     if (mounted) setState(() => revision++);
   }
 
@@ -624,14 +635,6 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
             onOpen: open,
             events: live.events,
           );
-    final code = textOf(region['iatas']);
-    final regionLabel = region.isEmpty
-        ? tr('ALL')
-        : code.isEmpty
-        ? textOf(region['region'])
-        : code.split(',').length > 2
-        ? trKey('region.iataCount', count: code.split(',').length)
-        : code;
     // The header and tab bar paint behind the status bar and home indicator
     // and pad their own content; only the section in between is inset.
     final insets = MediaQuery.paddingOf(context);
@@ -676,7 +679,7 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
                         listenable: live,
                         builder: (_, _) => FeedScope(
                           status: live.status,
-                          label: regionLabel,
+                          label: selection.label,
                           onTap: chooseRegion,
                         ),
                       ),
@@ -901,24 +904,25 @@ class FeedScope extends StatelessWidget {
 class RegionSheet extends StatefulWidget {
   const RegionSheet({super.key, required this.api, required this.initial});
   final ApiClient api;
-  final Map<String, dynamic> initial;
+  final RegionSelection initial;
   @override
   State<RegionSheet> createState() => _RegionSheetState();
 }
 
+/// Grouped multi-select matching beacon-web's region picker: All, then
+/// regions (each a single choice that stands for its member areas), then
+/// individual areas.
 class _RegionSheetState extends State<RegionSheet> {
   List<Json> regions = [], airports = [];
-  Set<String> selected = {};
+  final members = <String, List<String>>{};
+  late final Set<String> pickedRegions = {...widget.initial.regions};
+  late final Set<String> pickedAreas = {...widget.initial.areas};
   String query = '';
   bool loading = true;
   String? error;
   @override
   void initState() {
     super.initState();
-    selected = textOf(widget.initial['iatas'])
-        .split(',')
-        .where((e) => e.isNotEmpty)
-        .toSet();
     load();
   }
 
@@ -929,12 +933,31 @@ class _RegionSheetState extends State<RegionSheet> {
     });
     try {
       final responses = await Future.wait([
-        widget.api.get('/regions'),
-        widget.api.get('/iatas'),
+        widget.api.getCached('/regions'),
+        widget.api.getCached('/iatas'),
       ]);
+      final list = rows(responses[0]);
+      // Member codes for every region, so rows can match on a code; one that
+      // fails just doesn't match by code.
+      await Future.wait(
+        list.map((r) async {
+          try {
+            final data = object(
+              await widget.api.getCached(
+                '/regions/${Uri.encodeComponent(textOf(r['id']))}',
+              ),
+            );
+            members[textOf(
+              r['slug'],
+            )] = (data['iatas'] is List ? data['iatas'] as List : const [])
+                .map((e) => e is Map ? textOf(e['iata']) : '$e')
+                .toList();
+          } catch (_) {}
+        }),
+      );
       if (mounted) {
         setState(() {
-          regions = rows(responses[0]);
+          regions = list;
           airports = rows(responses[1]);
         });
       }
@@ -945,122 +968,218 @@ class _RegionSheetState extends State<RegionSheet> {
     }
   }
 
-  Future<void> pickRegion(Json region) async {
-    try {
-      final data = object(
-        await widget.api.get(
-          '/regions/${Uri.encodeComponent(textOf(region['id']))}',
-        ),
-      );
-      final codes = (data['iatas'] is List ? data['iatas'] as List : const [])
-          .map((e) => e is Map ? textOf(e['iata']) : e.toString())
-          .toSet();
-      if (!mounted) return;
-      if (codes.isEmpty) {
-        Navigator.pop(context, {'region': region['slug'], 'iatas': ''});
-        return;
-      }
-      setState(() {
-        if (selected.containsAll(codes)) {
-          selected.removeAll(codes);
-        } else {
-          selected.addAll(codes);
-        }
-      });
-    } catch (e) {
-      if (mounted) setState(() => error = e.toString());
-    }
+  void done() {
+    final picked = RegionSelection(
+      regions: {...pickedRegions},
+      areas: {...pickedAreas},
+    );
+    Navigator.pop(context, (picked, picked.toParams(members)));
+  }
+
+  Widget heading(String text, {bool divided = false}) => Container(
+    padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+    decoration: divided
+        ? BoxDecoration(
+            border: Border(
+              top: BorderSide(color: BeaconColors.of(context).borderSubtle),
+            ),
+          )
+        : null,
+    child: Text(
+      text.toUpperCase(),
+      style: TextStyle(
+        fontFamily: 'JetBrainsMono',
+        fontSize: 10,
+        letterSpacing: .8,
+        color: BeaconColors.of(context).muted,
+      ),
+    ),
+  );
+
+  /// [title] gets the row's text colour: picked rows read brighter, as on the
+  /// web, rather than in the tile's accent.
+  Widget choice({
+    required bool checked,
+    required VoidCallback onTap,
+    required Widget Function(Color color) title,
+    Widget? subtitle,
+  }) {
+    final palette = BeaconColors.of(context);
+    return CheckboxListTile(
+      dense: true,
+      controlAffinity: ListTileControlAffinity.leading,
+      visualDensity: VisualDensity.compact,
+      value: checked,
+      selected: checked,
+      tileColor: Colors.transparent,
+      selectedTileColor: palette.primary.withValues(alpha: .10),
+      onChanged: (_) => onTap(),
+      title: title(checked ? palette.bright : palette.normal),
+      subtitle: subtitle,
+    );
   }
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-    height: MediaQuery.sizeOf(context).height * 0.75,
-    child: Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-          child: Row(
-            children: [
-              Text(tr('Region'), style: Theme.of(context).textTheme.titleLarge),
-              const Spacer(),
-              TextButton(
-                onPressed: () => Navigator.pop(
-                  context,
-                  selected.isEmpty
-                      ? <String, dynamic>{}
-                      : {'iatas': (selected.toList()..sort()).join(',')},
+  Widget build(BuildContext context) {
+    final palette = BeaconColors.of(context);
+    final q = query.trim().toLowerCase();
+    // A region matches on its name or on member codes; a code match shows
+    // which codes, so the row doesn't look like a stray result.
+    final shownRegions = [
+      for (final r in regions)
+        if (q.isEmpty || textOf(r['name']).toLowerCase().contains(q))
+          (r, const <String>[])
+        else if ((members[textOf(r['slug'])] ?? const <String>[])
+                .where((code) => code.toLowerCase().contains(q))
+                .toList()
+            case final matched when matched.isNotEmpty)
+          (r, matched),
+    ];
+    final shownAreas = airports
+        .where(
+          (a) =>
+              q.isEmpty ||
+              textOf(a['iata']).toLowerCase().contains(q) ||
+              textOf(a['displayName']).toLowerCase().contains(q),
+        )
+        .toList();
+    final allLabel = trKey('region.allRegions');
+    final showAll = q.isEmpty || allLabel.toLowerCase().contains(q);
+    final isAll = pickedRegions.isEmpty && pickedAreas.isEmpty;
+    final code = TextStyle(
+      fontFamily: 'JetBrainsMono',
+      fontWeight: FontWeight.w600,
+      color: palette.primary,
+    );
+    return SizedBox(
+      height: MediaQuery.sizeOf(context).height * 0.75,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+            child: Row(
+              children: [
+                Text(
+                  tr('Region'),
+                  style: Theme.of(context).textTheme.titleLarge,
                 ),
-                child: Text(tr('Done')),
-              ),
-            ],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: TextField(
-            decoration: InputDecoration(
-              hintText: tr('Search region or area code…'),
-              prefixIcon: const Icon(Icons.search, size: 18),
+                const Spacer(),
+                TextButton(
+                  onPressed: loading ? null : done,
+                  child: Text(tr('Done')),
+                ),
+              ],
             ),
-            onChanged: (v) => setState(() => query = v.toLowerCase()),
           ),
-        ),
-        if (loading) const LinearProgressIndicator(),
-        if (error != null)
-          TextButton(
-            onPressed: load,
-            child: Text('${tr('$error')} · ${tr('Retry')}'),
-          ),
-        Expanded(
-          child: ListView(
-            children: [
-              ListTile(
-                selected: selected.isEmpty,
-                title: Text(tr('All Regions')),
-                trailing: selected.isEmpty ? const Icon(Icons.check) : null,
-                onTap: () => setState(() => selected.clear()),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: TextField(
+              decoration: InputDecoration(
+                hintText: tr('Search region or area code…'),
+                prefixIcon: const Icon(Icons.search, size: 18),
               ),
-              for (final r in regions.where(
-                (e) => e.toString().toLowerCase().contains(query),
-              ))
-                ListTile(
-                  title: Text(textOf(r['name'])),
-                  subtitle: Text(tr('Select region areas')),
-                  leading: const Icon(Icons.public, size: 18),
-                  onTap: () => pickRegion(r),
-                ),
-              const Divider(),
-              for (final a in airports.where(
-                (e) => e.toString().toLowerCase().contains(query),
-              ))
-                CheckboxListTile(
-                  dense: true,
-                  title: Text.rich(
-                    TextSpan(
-                      children: [
-                        TextSpan(
-                          text: '${a['iata']}  ',
-                          style: TextStyle(
-                            fontFamily: 'JetBrainsMono',
-                            color: BeaconColors.of(context).primary,
-                            fontWeight: FontWeight.w600,
+              onChanged: (v) => setState(() => query = v),
+            ),
+          ),
+          const SizedBox(height: 6),
+          if (loading) const LinearProgressIndicator(),
+          if (error != null)
+            TextButton(
+              onPressed: load,
+              child: Text('${tr('$error')} · ${tr('Retry')}'),
+            ),
+          Expanded(
+            child: ListView(
+              children: [
+                if (showAll)
+                  ListTile(
+                    dense: true,
+                    selected: isAll,
+                    selectedTileColor: palette.primary.withValues(alpha: .10),
+                    // Lines ALL up with the checkbox rows below.
+                    leading: const SizedBox(width: 24),
+                    title: Text.rich(
+                      TextSpan(
+                        children: [
+                          TextSpan(text: '${tr('ALL')}   ', style: code),
+                          TextSpan(
+                            text: allLabel,
+                            style: TextStyle(color: palette.muted),
                           ),
+                        ],
+                      ),
+                    ),
+                    onTap: () => setState(() {
+                      pickedRegions.clear();
+                      pickedAreas.clear();
+                    }),
+                  ),
+                if (shownRegions.isNotEmpty) ...[
+                  heading(trKey('region.group')),
+                  for (final (r, matched) in shownRegions)
+                    choice(
+                      checked: pickedRegions.contains(textOf(r['slug'])),
+                      onTap: () => setState(() {
+                        final slug = textOf(r['slug']);
+                        if (!pickedRegions.remove(slug)) {
+                          pickedRegions.add(slug);
+                        }
+                      }),
+                      title: (color) => Text(
+                        textOf(r['name']),
+                        style: TextStyle(color: color),
+                      ),
+                      subtitle: matched.isEmpty
+                          ? null
+                          : Text(
+                              matched.join(', '),
+                              style: const TextStyle(
+                                fontFamily: 'JetBrainsMono',
+                              ),
+                            ),
+                    ),
+                ],
+                if (shownAreas.isNotEmpty) ...[
+                  heading(
+                    trKey('region.areaGroup'),
+                    divided: showAll || shownRegions.isNotEmpty,
+                  ),
+                  for (final a in shownAreas)
+                    choice(
+                      checked: pickedAreas.contains(textOf(a['iata'])),
+                      onTap: () => setState(() {
+                        final iata = textOf(a['iata']);
+                        if (!pickedAreas.remove(iata)) pickedAreas.add(iata);
+                      }),
+                      title: (color) => Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(text: '${a['iata']}   ', style: code),
+                            TextSpan(
+                              text: textOf(a['displayName'], textOf(a['iata'])),
+                              style: TextStyle(color: color),
+                            ),
+                          ],
                         ),
-                        TextSpan(text: textOf(a['displayName'])),
-                      ],
+                      ),
+                    ),
+                ],
+                if (!loading &&
+                    !showAll &&
+                    shownRegions.isEmpty &&
+                    shownAreas.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(
+                      trKey('region.noMatches'),
+                      style: TextStyle(color: palette.muted),
                     ),
                   ),
-                  value: selected.contains(a['iata']),
-                  onChanged: (v) => setState(() {
-                    v == true
-                        ? selected.add(textOf(a['iata']))
-                        : selected.remove(a['iata']);
-                  }),
-                ),
-            ],
+              ],
+            ),
           ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 }
