@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import '../../core/json.dart';
 
 Map<String, dynamic> collection(Iterable<Map<String, dynamic>> features) => {
@@ -399,3 +401,44 @@ Uri mapShareUri(
     'flow': flow ? 'on' : 'off',
   },
 );
+
+Map<String, dynamic>? nearestFeature(List hits, double lat, double lng) {
+  final scale = math.cos(lat * math.pi / 180);
+  Map<String, dynamic>? best;
+  var bestDistance = double.infinity;
+  for (final hit in hits) {
+    final coords = object(object(hit)['geometry'])['coordinates'];
+    if (coords is! List || coords.length < 2) continue;
+    final x = number(coords[0]), y = number(coords[1]);
+    if (x == null || y == null) continue;
+    final dx = (x - lng) * scale, dy = y - lat;
+    final distance = dx * dx + dy * dy;
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = object(object(hit)['properties']);
+    }
+  }
+  return best;
+}
+
+int countInBounds(
+  Map<String, dynamic> points, {
+  required double south,
+  required double west,
+  required double north,
+  required double east,
+}) {
+  var count = 0;
+  for (final f in rows(points['features'])) {
+    final coords = object(f['geometry'])['coordinates'];
+    if (coords is! List || coords.length < 2) continue;
+    final lng = number(coords[0]), lat = number(coords[1]);
+    if (lng == null || lat == null || lat < south || lat > north) continue;
+    // A viewport across the antimeridian has west > east.
+    final inside = west <= east
+        ? lng >= west && lng <= east
+        : lng >= west || lng <= east;
+    if (inside) count++;
+  }
+  return count;
+}

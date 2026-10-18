@@ -241,4 +241,24 @@ void main() {
     ];
     expect(neighborFeatures(nodes, 'on', null)['features'], isEmpty);
   });
+  test('live taps pick the nearest hit and counts span the antimeridian', () {
+    Map<String, dynamic> hit(String id, double lng, double lat) =>
+        feature('Point', [lng, lat], {'id': id});
+    expect(
+      nearestFeature(
+        [hit('far', -75.02, 45), hit('near', -75.001, 45)],
+        45,
+        -75,
+      )!['id'],
+      'near',
+    );
+    expect(nearestFeature([], 45, -75), isNull);
+    final points = nodeFeatures([
+      {'id': 'w', 'lat': 0.5, 'lng': 179.5},
+      {'id': 'e', 'lat': 0.5, 'lng': -179.5},
+      {'id': 'x', 'lat': 0.5, 'lng': 10},
+    ]);
+    expect(countInBounds(points, south: 0, west: 179, north: 1, east: -179), 2);
+    expect(countInBounds(points, south: 0, west: 9, north: 1, east: 11), 1);
+  });
 }
