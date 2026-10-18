@@ -433,3 +433,18 @@ int countInBounds(
   }
   return count;
 }
+
+// One query over lit icons and dots, so a tap takes the nearest node.
+Future<String?> liveTapNode(
+  Future<List> Function(List<String> layers) query,
+  double lat,
+  double lng,
+) async {
+  final hits = await query([
+    'beacon-live-icons',
+    'beacon-live-selected-marker',
+    'beacon-live-dots',
+  ]);
+  final id = nearestFeature(hits, lat, lng)?['id'];
+  return id == null ? null : textOf(id);
+}

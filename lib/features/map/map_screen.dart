@@ -172,9 +172,8 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   Future<void> _load({bool replace = false}) async {
     if (_loading && _generation > 0 && !replace) return;
     final gen = ++_generation;
-    _flows.clear();
-    _flowTimer?.cancel();
-    _flowTimer = null;
+    // A refresh mid-animation would otherwise leave lit nodes frozen on.
+    _clearFlow();
     setState(() {
       if (replace) {
         _nodes = [];
@@ -1295,23 +1294,13 @@ class _NativeMapState extends State<NativeMap> {
           Theme.of(context).platform,
           MediaQuery.devicePixelRatioOf(context),
         );
-        var hits = await c.queryRenderedFeaturesInRect(rect, [
-          'beacon-live-icons',
-        ], null);
-        if (!mounted || epoch != _epoch) return;
-        if (hits.isEmpty) {
-          hits = await c.queryRenderedFeaturesInRect(rect, [
-            'beacon-live-selected-marker',
-            'beacon-live-dots',
-          ], null);
-          if (!mounted || epoch != _epoch) return;
-        }
-        final id = nearestFeature(
-          hits,
+        final id = await liveTapNode(
+          (layers) => c.queryRenderedFeaturesInRect(rect, layers, null),
           location.latitude,
           location.longitude,
-        )?['id'];
-        if (id != null) widget.onNode(textOf(id));
+        );
+        if (!mounted || epoch != _epoch) return;
+        if (id != null) widget.onNode(id);
         return;
       }
       final hits = await c.queryRenderedFeatures(point, [

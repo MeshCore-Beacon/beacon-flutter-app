@@ -275,4 +275,18 @@ void main() {
     expect(liveDotTypes('repeater'), ['repeater']);
     expect(liveDotTypes('sensor'), ['sensor']);
   });
+  test('a live tap picks the nearest dot even beside a lit icon', () async {
+    Map<String, dynamic> hit(String id, double lng) =>
+        feature('Point', [lng, 45.0], {'id': id});
+    final layers = <String, List>{
+      'beacon-live-icons': [hit('lit', -75.003)],
+      'beacon-live-dots': [hit('dot', -75.0005), hit('lit', -75.003)],
+    };
+    Future<List> query(List<String> ids) async => [
+      for (final id in ids) ...?layers[id],
+    ];
+    expect(await liveTapNode(query, 45, -75), 'dot');
+    expect(await liveTapNode(query, 45, -75.0029), 'lit');
+    expect(await liveTapNode((_) async => [], 45, -75), isNull);
+  });
 }

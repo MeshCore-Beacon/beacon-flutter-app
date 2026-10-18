@@ -332,8 +332,7 @@ final _glyph = RegExp(
   dotAll: true,
 );
 
-/// A node a live packet crosses: solid type disc, white glyph, glow and the
-/// packet-orange ring baked in so the ring stacks with its own marker.
+// The ring is baked in so it stacks with its own marker.
 String liveMarkerSvg(String type) {
   final color = nodeColors[type]!;
   final glyph = _glyph
