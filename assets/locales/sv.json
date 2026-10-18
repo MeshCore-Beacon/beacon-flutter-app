@@ -1178,7 +1178,8 @@
       "carpeaterHint": "Mobile repeater in a vehicle: its position moves."
     },
     "liveMap": {
-      "clusteringOff": "Av medan livekartan är på"
+      "clusteringOff": "Av medan livekartan är på",
+      "neighborLinesOff": "Alla linjer är av medan livekartan är på"
     }
   }
 }

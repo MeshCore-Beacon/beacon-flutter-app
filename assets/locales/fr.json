@@ -1221,7 +1221,8 @@
       "carpeaterHint": "Mobile repeater in a vehicle: its position moves."
     },
     "liveMap": {
-      "clusteringOff": "Désactivé tant que la carte en direct est active"
+      "clusteringOff": "Désactivé tant que la carte en direct est active",
+      "neighborLinesOff": "Toutes les lignes sont désactivées tant que la carte en direct est active"
     }
   }
 }
