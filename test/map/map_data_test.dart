@@ -127,43 +127,84 @@ void main() {
       isEmpty,
     );
   });
-  test(
-    'flow lights reached nodes, combines packets and fades back to idle',
-    () {
-      final nodes = [
-        {'id': 'a', 'lat': 43, 'lng': -79},
-        {'id': 'b', 'lat': 44, 'lng': -79},
-      ];
-      final flows = [
-        {'nodes': nodes, 'start': 0},
-      ];
-      expect(flowFrame(flows, 240)['glow'], {'a': 1.0});
-      expect(flowFrame(flows, 480)['glow'], {'a': 1.0, 'b': 1.0});
-      expect(flowFrame(flows, 980)['glow'], {'a': .5, 'b': .5});
-      expect(
-        flowFrame([
-          ...flows,
-          {'nodes': nodes, 'start': 900},
-        ], 980)['glow'],
-        {'a': 1.0, 'b': .5},
-      );
-      expect(flowFrame(flows, 1480)['glow'], isEmpty);
-      expect(flowFrame([], 0)['glow'], isEmpty);
-      expect(liveMarkerOpacity(false, {'a': 1}), 1.0);
-      expect(liveMarkerOpacity(true, {}), 0.08);
-      expect(liveMarkerOpacity(true, {'a': 1.0, 'b': .5}), [
-        'match',
-        ['get', 'id'],
-        'a',
-        1.0,
-        'b',
-        .5,
-        .08,
-      ]);
-      final features = nodeFeatures(nodes)['features'] as List;
-      expect(features.map((f) => f['id']), ['a', 'b']);
-    },
-  );
+  test('live light peaks when the dot arrives and fades over 0.9 s', () {
+    final nodes = [
+      {'id': 'a', 'lat': 43, 'lng': -79},
+      {'id': 'b', 'lat': 44, 'lng': -79},
+    ];
+    final flows = [
+      {'nodes': nodes, 'start': 0},
+    ];
+    expect(flowFrame(flows, 0)['lit'], {
+      'a': {'a': 1.0, 'at': 0},
+    });
+    expect(flowFrame(flows, 480)['lit'], {
+      'a': {'a': closeTo(1 - 480 / 900, 1e-9), 'at': 0},
+      'b': {'a': 1.0, 'at': 480},
+    });
+    expect(flowFrame(flows, 900)['lit'], {
+      'b': {'a': closeTo(1 - 420 / 900, 1e-9), 'at': 480},
+    });
+    expect(flowFrame(flows, 1380)['lit'], isEmpty);
+    // A later packet re-lights a node to full.
+    expect(
+      flowFrame([
+        ...flows,
+        {'nodes': nodes, 'start': 600},
+      ], 600)['lit']['a'],
+      {'a': 1.0, 'at': 600},
+    );
+    expect(flowFrame([], 0)['lit'], isEmpty);
+  });
+  test('lit features rank newest last, name only repeaters, skip unknowns', () {
+    final index = featureIndex(
+      nodeFeatures([
+        {
+          'id': 'r',
+          'name': 'Valentine 💬',
+          'nodeTypeName': 'repeater',
+          'lat': 47.6,
+          'lng': -122.3,
+        },
+        {
+          'id': 'c',
+          'name': 'Phone',
+          'nodeTypeName': 'companion',
+          'lat': 47.5,
+          'lng': -122.2,
+        },
+        {
+          'id': 'u',
+          'name': 'Odd',
+          'nodeTypeName': 'unknown',
+          'lat': 47.4,
+          'lng': -122.1,
+        },
+      ]),
+    );
+    final fc = litFeatures({
+      'c': {'a': 1.0, 'at': 960},
+      'r': {'a': .5, 'at': 480},
+      'u': {'a': 1.0, 'at': 960},
+      'gone': {'a': 1.0, 'at': 960},
+    }, index);
+    final fs = fc['features'] as List;
+    expect(fs.map((f) => f['properties']['id']), ['r', 'c']);
+    expect(fs.map((f) => f['properties']['seq']), [0, 1]);
+    expect(fs.map((f) => f['properties']['label']), ['Valentine', '']);
+    expect(fs.map((f) => f['properties']['a']), [.5, 1.0]);
+    // Position comes from the node list, not the packet hop.
+    expect(fs.first['geometry']['coordinates'], [-122.3, 47.6]);
+  });
+  test('map labels drop emoji the map font cannot draw', () {
+    expect(mapLabel('Portage Bay 🐳'), 'Portage Bay');
+    expect(mapLabel('🇨🇦 Ottawa'), 'Ottawa');
+    expect(mapLabel('👍🏽 ok'), 'ok');
+    expect(mapLabel('a 1️⃣ b'), 'a 1 b');
+    expect(mapLabel('🐳🐳'), '');
+    expect(mapLabel('Ålesund_Rpt'), 'Ålesund_Rpt');
+    expect(mapLabel(null), '');
+  });
   test('unknown hops break paths instead of fabricating a connection', () {
     Map<String, dynamic> hop(String id, int lat) => {
       'confidence': 'high',

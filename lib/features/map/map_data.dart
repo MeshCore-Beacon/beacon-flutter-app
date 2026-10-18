@@ -261,22 +261,28 @@ List<Map<String, dynamic>> flowNodes(Map<String, dynamic> observation) {
   return result;
 }
 
+const nodeTypes = ['companion', 'repeater', 'room_server', 'sensor'];
+
 Map<String, dynamic> flowFrame(List<Map<String, dynamic>> flows, int now) {
   final dots = <Map<String, dynamic>>[], trails = <Map<String, dynamic>>[];
-  final glow = <String, double>{};
+  final lit = <String, Map<String, num>>{};
   for (final flow in flows) {
     final ns = rows(flow['nodes']);
     if (ns.length < 2) continue;
-    final elapsed = now - (number(flow['start']) ?? 0);
+    final start = number(flow['start']) ?? 0;
+    final elapsed = now - start;
     if (elapsed < 0) continue;
     final duration = (ns.length - 1) * 480;
     final fade = (1 - (elapsed - duration) / 1000).clamp(0.0, 1.0);
     if (fade <= 0) continue;
     final t = (elapsed / 480).clamp(0.0, (ns.length - 1).toDouble());
     final idx = t.floor();
-    for (final node in ns.take(idx + 1)) {
-      final id = textOf(node['id']);
-      if (id.isNotEmpty && fade > (glow[id] ?? 0)) glow[id] = fade;
+    for (var i = 0; i <= idx; i++) {
+      final id = textOf(ns[i]['id']), at = start + i * 480;
+      // The light follows the packet: full on arrival, out 0.9 s later.
+      final light = 1 - (now - at) / 900;
+      if (id.isEmpty || light <= 0 || at <= (lit[id]?['at'] ?? -1)) continue;
+      lit[id] = {'a': light, 'at': at};
     }
     final coords = ns.take(idx + 1).map(coordinates).toList();
     if (idx < ns.length - 1) {
@@ -292,7 +298,7 @@ Map<String, dynamic> flowFrame(List<Map<String, dynamic>> flows, int now) {
       trails.add(feature('LineString', coords, {'a': 0.6 * fade}));
     }
   }
-  return {'dots': collection(dots), 'trails': collection(trails), 'glow': glow};
+  return {'dots': collection(dots), 'trails': collection(trails), 'lit': lit};
 }
 
 // Match expressions work on both native SDKs; iOS lacks feature-state updates.
@@ -308,6 +314,56 @@ dynamic liveMarkerOpacity(bool live, Map<String, dynamic> glow) {
     ],
     0.08,
   ];
+}
+
+// The map's glyph font has no emoji; they would render as blank boxes.
+final _pictographs = RegExp(
+  r'[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}\u{1F3FB}-\u{1F3FF}'
+  r'\u{E0020}-\u{E007F}\u{FE0E}\u{FE0F}\u{200D}\u{20E3}]',
+  unicode: true,
+);
+String mapLabel(Object? name) =>
+    textOf(name)
+        .replaceAll(_pictographs, '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+Map<String, Map<String, dynamic>> featureIndex(Map<String, dynamic> points) => {
+  for (final f in rows(points['features']))
+    textOf(object(f['properties'])['id']): f,
+};
+
+// Lit nodes come from the node list: packet hops carry no node type.
+Map<String, dynamic> litFeatures(
+  Map<String, dynamic> lit,
+  Map<String, Map<String, dynamic>> index,
+) {
+  final entries = [
+    for (final MapEntry(:key, :value) in lit.entries)
+      if (nodeTypes.contains(object(index[key]?['properties'])['nodeTypeName']))
+        (id: key, light: object(value)),
+  ];
+  entries.sort((a, b) {
+    final order = (number(a.light['at']) ?? 0).compareTo(
+      number(b.light['at']) ?? 0,
+    );
+    return order != 0 ? order : a.id.compareTo(b.id);
+  });
+  final features = <Map<String, dynamic>>[];
+  for (final (seq, e) in entries.indexed) {
+    final f = index[e.id]!, props = object(f['properties']);
+    final type = props['nodeTypeName'];
+    features.add(
+      feature('Point', object(f['geometry'])['coordinates'], {
+        'id': e.id,
+        'nodeTypeName': type,
+        'label': type == 'repeater' ? mapLabel(props['name']) : '',
+        'a': e.light['a'],
+        'seq': seq,
+      }),
+    );
+  }
+  return collection(features);
 }
 
 Uri mapShareUri(
