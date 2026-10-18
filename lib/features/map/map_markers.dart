@@ -320,13 +320,41 @@ const markerSvgs = <String, String>{
   'cluster-4': r'''<svg xmlns="http://www.w3.org/2000/svg" width="88" height="88" viewBox="-8 -8 88 88"><polygon points="36,10 58.5,23 58.5,49 36,62 13.5,49 13.5,23" fill="#0c1018" fill-opacity="0.92" stroke="#3b82f6" stroke-width="2.25" stroke-linejoin="round"/><line x1="36" y1="3" x2="36" y2="5.5" stroke="#3b82f6" stroke-width="2.4" stroke-linecap="round" opacity="0.95"/><line x1="52.5" y1="7.4" x2="51.3" y2="9.6" stroke="#3b82f6" stroke-width="2.4" stroke-linecap="round" opacity="0.95"/><line x1="64.6" y1="19.5" x2="62.4" y2="20.8" stroke="#3b82f6" stroke-width="2.4" stroke-linecap="round" opacity="0.95"/><line x1="69" y1="36" x2="66.5" y2="36" stroke="#3b82f6" stroke-width="2.4" stroke-linecap="round" opacity="0.95"/><line x1="64.6" y1="52.5" x2="62.4" y2="51.3" stroke="#3b82f6" stroke-width="2.4" stroke-linecap="round" opacity="0.95"/><line x1="52.5" y1="64.6" x2="51.3" y2="62.4" stroke="#3b82f6" stroke-width="2.4" stroke-linecap="round" opacity="0.95"/><line x1="36" y1="69" x2="36" y2="66.5" stroke="#3b82f6" stroke-width="2.4" stroke-linecap="round" opacity="0.95"/><line x1="19.5" y1="64.6" x2="20.8" y2="62.4" stroke="#3b82f6" stroke-width="2.4" stroke-linecap="round" opacity="0.95"/><line x1="7.4" y1="52.5" x2="9.6" y2="51.3" stroke="#3b82f6" stroke-width="2.4" stroke-linecap="round" opacity="0.16"/><line x1="3" y1="36" x2="5.5" y2="36" stroke="#3b82f6" stroke-width="2.4" stroke-linecap="round" opacity="0.16"/><line x1="7.4" y1="19.5" x2="9.6" y2="20.7" stroke="#3b82f6" stroke-width="2.4" stroke-linecap="round" opacity="0.16"/><line x1="19.5" y1="7.4" x2="20.7" y2="9.6" stroke="#3b82f6" stroke-width="2.4" stroke-linecap="round" opacity="0.16"/></svg>''',
   'cluster-5': r'''<svg xmlns="http://www.w3.org/2000/svg" width="88" height="88" viewBox="-8 -8 88 88"><polygon points="36,10 58.5,23 58.5,49 36,62 13.5,49 13.5,23" fill="#0c1018" fill-opacity="0.92" stroke="#3b82f6" stroke-width="2.25" stroke-linejoin="round"/><line x1="36" y1="3" x2="36" y2="5.5" stroke="#3b82f6" stroke-width="2.4" stroke-linecap="round" opacity="0.95"/><line x1="52.5" y1="7.4" x2="51.3" y2="9.6" stroke="#3b82f6" stroke-width="2.4" stroke-linecap="round" opacity="0.95"/><line x1="64.6" y1="19.5" x2="62.4" y2="20.8" stroke="#3b82f6" stroke-width="2.4" stroke-linecap="round" opacity="0.95"/><line x1="69" y1="36" x2="66.5" y2="36" stroke="#3b82f6" stroke-width="2.4" stroke-linecap="round" opacity="0.95"/><line x1="64.6" y1="52.5" x2="62.4" y2="51.3" stroke="#3b82f6" stroke-width="2.4" stroke-linecap="round" opacity="0.95"/><line x1="52.5" y1="64.6" x2="51.3" y2="62.4" stroke="#3b82f6" stroke-width="2.4" stroke-linecap="round" opacity="0.95"/><line x1="36" y1="69" x2="36" y2="66.5" stroke="#3b82f6" stroke-width="2.4" stroke-linecap="round" opacity="0.95"/><line x1="19.5" y1="64.6" x2="20.8" y2="62.4" stroke="#3b82f6" stroke-width="2.4" stroke-linecap="round" opacity="0.95"/><line x1="7.4" y1="52.5" x2="9.6" y2="51.3" stroke="#3b82f6" stroke-width="2.4" stroke-linecap="round" opacity="0.95"/><line x1="3" y1="36" x2="5.5" y2="36" stroke="#3b82f6" stroke-width="2.4" stroke-linecap="round" opacity="0.95"/><line x1="7.4" y1="19.5" x2="9.6" y2="20.7" stroke="#3b82f6" stroke-width="2.4" stroke-linecap="round" opacity="0.95"/><line x1="19.5" y1="7.4" x2="20.7" y2="9.6" stroke="#3b82f6" stroke-width="2.4" stroke-linecap="round" opacity="0.95"/></svg>''',
 };
+const nodeColors = {
+  'companion': '#3b82f6',
+  'repeater': '#a78bfa',
+  'room_server': '#22c55e',
+  'sensor': '#eab308',
+};
+
+final _glyph = RegExp(
+  r'<g fill="none" stroke="#[0-9a-f]{6}" stroke-width="3".*?</g>',
+  dotAll: true,
+);
+
+/// A node a live packet crosses: solid type disc, white glyph, glow and the
+/// packet-orange ring baked in so the ring stacks with its own marker.
+String liveMarkerSvg(String type) {
+  final color = nodeColors[type]!;
+  final glyph = _glyph
+      .firstMatch(markerSvgs['glitch-$type']!)![0]!
+      .replaceAll(color, '#ffffff');
+  return '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="-12 -12 88 88" width="88" height="88" fill="none">
+  <defs><radialGradient id="glow" gradientUnits="userSpaceOnUse" cx="32" cy="32" r="44"><stop offset="0.6" stop-color="$color" stop-opacity="0.5"/><stop offset="1" stop-color="$color" stop-opacity="0"/></radialGradient></defs>
+  <circle cx="32" cy="32" r="44" fill="url(#glow)"/>
+  <circle cx="32" cy="32" r="29" fill="$color" stroke="#ffffff" stroke-opacity="0.5" stroke-width="2.5"/>
+  $glyph
+  <circle cx="32" cy="32" r="39" stroke="#ff6b35" stroke-width="6"/>
+</svg>''';
+}
+
 final _markerCache = <String, Future<Uint8List>>{};
 Future<Uint8List> markerImage(String key, {double scale = 1}) =>
     _markerCache.putIfAbsent('$key@$scale', () async {
-      final picture = await vg.loadPicture(
-        SvgStringLoader(markerSvgs[key]!),
-        null,
-      );
+      final svg = key.startsWith('live-')
+          ? liveMarkerSvg(key.substring(5))
+          : markerSvgs[key]!;
+      final picture = await vg.loadPicture(SvgStringLoader(svg), null);
       final recorder = ui.PictureRecorder();
       final canvas = ui.Canvas(recorder)..scale(scale);
       canvas.drawPicture(picture.picture);
