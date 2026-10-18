@@ -289,4 +289,28 @@ void main() {
     expect(await liveTapNode(query, 45, -75.0029), 'lit');
     expect(await liveTapNode((_) async => [], 45, -75), isNull);
   });
+  test('a nearly faded lit icon lets the tap fall through', () async {
+    final lit = feature('Point', [-75.0, 45.0], {'id': 'lit', 'a': .1});
+    final dot = feature('Point', [-75.001, 45.0], {'id': 'dot'});
+    Future<List> query(List<String> _) async => [lit, dot];
+    expect(await liveTapNode(query, 45, -75), 'dot');
+    lit['properties']['a'] = .2;
+    expect(await liveTapNode(query, 45, -75), 'lit');
+  });
+  test('Live keeps a selected node the type filter would drop', () {
+    final all = nodeFeatures([
+      {'id': 'r', 'nodeTypeName': 'repeater', 'lat': 45, 'lng': -75},
+      {'id': 'c', 'nodeTypeName': 'companion', 'lat': 45.1, 'lng': -75},
+    ]);
+    final repeaters = nodeFeatures([
+      {'id': 'r', 'nodeTypeName': 'repeater', 'lat': 45, 'lng': -75},
+    ]);
+    List ids(Map<String, dynamic> fc) =>
+        (fc['features'] as List).map((f) => f['id']).toList();
+    expect(ids(withSelected(repeaters, all, 'c')), ['r', 'c']);
+    expect(ids(withSelected(repeaters, all, 'r')), ['r']);
+    expect(ids(withSelected(repeaters, all, 'gone')), ['r']);
+    expect(withSelected(repeaters, all, null), same(repeaters));
+    expect(withSelected(repeaters, null, 'c'), same(repeaters));
+  });
 }

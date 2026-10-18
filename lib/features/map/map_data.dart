@@ -445,6 +445,24 @@ Future<String?> liveTapNode(
     'beacon-live-selected-marker',
     'beacon-live-dots',
   ]);
-  final id = nearestFeature(hits, lat, lng)?['id'];
+  // A lit icon this faded no longer takes taps; shared with the web.
+  final live = [
+    for (final h in hits)
+      if ((number(object(object(h)['properties'])['a']) ?? 1) >= 0.2) h,
+  ];
+  final id = nearestFeature(live, lat, lng)?['id'];
   return id == null ? null : textOf(id);
+}
+
+// A lit node of another type can be tapped; keep its marker after it fades.
+Map<String, dynamic> withSelected(
+  Map<String, dynamic> points,
+  Map<String, dynamic>? all,
+  String? selected,
+) {
+  if (all == null || selected == null) return points;
+  final features = rows(points['features']);
+  if (features.any((f) => textOf(f['id']) == selected)) return points;
+  final extra = rows(all['features']).where((f) => textOf(f['id']) == selected);
+  return extra.isEmpty ? points : collection([...features, ...extra]);
 }

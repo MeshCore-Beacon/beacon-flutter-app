@@ -358,7 +358,12 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         _mode == 'selected' && selected != null && _neighbors.isNotEmpty
         ? focusedFeatures(selected, _neighbors)
         : neighborFeatures(_nodes, _mode, _selected);
-    final points = nodeFeatures(_nodes, type: _type);
+    final all = _flow && _type.isNotEmpty ? nodeFeatures(_nodes) : null;
+    final points = withSelected(
+      nodeFeatures(_nodes, type: _type),
+      all,
+      _selected,
+    );
     return Stack(
       children: [
         Positioned.fill(
@@ -369,7 +374,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
             liveFlow: _flow,
             points: points,
             // Crossed nodes light under any type filter.
-            liveNodes: _flow && _type.isNotEmpty ? nodeFeatures(_nodes) : null,
+            liveNodes: all,
             liveDotTypes: liveDotTypes(_type),
             lines: edges,
             borders: collection(_showBorders ? _borders : []),
