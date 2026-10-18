@@ -1219,6 +1219,9 @@
       "updated": "updated",
       "carpeater": "CARpeater",
       "carpeaterHint": "Mobile repeater in a vehicle: its position moves."
+    },
+    "liveMap": {
+      "clusteringOff": "Désactivé tant que la carte en direct est active"
     }
   }
 }

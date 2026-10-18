@@ -156,7 +156,7 @@ void main() {
     );
     expect(flowFrame([], 0)['lit'], isEmpty);
   });
-  test('lit features rank newest last, name only repeaters, skip unknowns', () {
+  test('lit features rank newest last, name repeaters and companions, skip unknowns', () {
     final index = featureIndex(
       nodeFeatures([
         {
@@ -174,6 +174,13 @@ void main() {
           'lng': -122.2,
         },
         {
+          'id': 's',
+          'name': 'Temp',
+          'nodeTypeName': 'sensor',
+          'lat': 47.3,
+          'lng': -122.0,
+        },
+        {
           'id': 'u',
           'name': 'Odd',
           'nodeTypeName': 'unknown',
@@ -185,14 +192,16 @@ void main() {
     final fc = litFeatures({
       'c': {'a': 1.0, 'at': 960},
       'r': {'a': .5, 'at': 480},
+      's': {'a': 1.0, 'at': 1440},
       'u': {'a': 1.0, 'at': 960},
       'gone': {'a': 1.0, 'at': 960},
     }, index);
     final fs = fc['features'] as List;
-    expect(fs.map((f) => f['properties']['id']), ['r', 'c']);
-    expect(fs.map((f) => f['properties']['seq']), [0, 1]);
-    expect(fs.map((f) => f['properties']['label']), ['Valentine', '']);
-    expect(fs.map((f) => f['properties']['a']), [.5, 1.0]);
+    expect(fs.map((f) => f['properties']['id']), ['r', 'c', 's']);
+    expect(fs.map((f) => f['properties']['seq']), [0, 1, 2]);
+    // Repeaters and companions are named; room servers and sensors are not.
+    expect(fs.map((f) => f['properties']['label']), ['Valentine', 'Phone', '']);
+    expect(fs.map((f) => f['properties']['a']), [.5, 1.0, 1.0]);
     // Position comes from the node list, not the packet hop.
     expect(fs.first['geometry']['coordinates'], [-122.3, 47.6]);
   });
@@ -260,5 +269,10 @@ void main() {
     ]);
     expect(countInBounds(points, south: 0, west: 179, north: 1, east: -179), 2);
     expect(countInBounds(points, south: 0, west: 9, north: 1, east: 11), 1);
+  });
+  test('idle live dots are repeaters and companions unless filtered', () {
+    expect(liveDotTypes(''), ['repeater', 'companion']);
+    expect(liveDotTypes('repeater'), ['repeater']);
+    expect(liveDotTypes('sensor'), ['sensor']);
   });
 }

@@ -265,6 +265,10 @@ List<Map<String, dynamic>> flowNodes(Map<String, dynamic> observation) {
 
 const nodeTypes = ['companion', 'repeater', 'room_server', 'sensor'];
 
+// Under All, Live keeps repeaters and companions on the map as idle dots.
+List<String> liveDotTypes(String filter) =>
+    filter.isEmpty ? ['repeater', 'companion'] : [filter];
+
 Map<String, dynamic> flowFrame(List<Map<String, dynamic>> flows, int now) {
   final dots = <Map<String, dynamic>>[], trails = <Map<String, dynamic>>[];
   final lit = <String, Map<String, num>>{};
@@ -301,21 +305,6 @@ Map<String, dynamic> flowFrame(List<Map<String, dynamic>> flows, int now) {
     }
   }
   return {'dots': collection(dots), 'trails': collection(trails), 'lit': lit};
-}
-
-// Match expressions work on both native SDKs; iOS lacks feature-state updates.
-dynamic liveMarkerOpacity(bool live, Map<String, dynamic> glow) {
-  if (!live) return 1.0;
-  if (glow.isEmpty) return 0.08;
-  return [
-    'match',
-    ['get', 'id'],
-    for (final entry in glow.entries) ...[
-      entry.key,
-      (number(entry.value) ?? 0).clamp(0.08, 1.0),
-    ],
-    0.08,
-  ];
 }
 
 // The map's glyph font has no emoji; they would render as blank boxes.
@@ -361,7 +350,9 @@ Map<String, dynamic> litFeatures(
       feature('Point', object(f['geometry'])['coordinates'], {
         'id': e.id,
         'nodeTypeName': type,
-        'label': type == 'repeater' ? mapLabel(props['name']) : '',
+        'label': type == 'repeater' || type == 'companion'
+            ? mapLabel(props['name'])
+            : '',
         'a': e.light['a'],
         'seq': seq,
       }),
