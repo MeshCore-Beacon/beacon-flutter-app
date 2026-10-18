@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import '../../core/json.dart';
 
 Map<String, dynamic> collection(Iterable<Map<String, dynamic>> features) => {
@@ -261,22 +263,32 @@ List<Map<String, dynamic>> flowNodes(Map<String, dynamic> observation) {
   return result;
 }
 
+const nodeTypes = ['companion', 'repeater', 'room_server', 'sensor'];
+
+// Under All, Live keeps repeaters and companions on the map as idle dots.
+List<String> liveDotTypes(String filter) =>
+    filter.isEmpty ? ['repeater', 'companion'] : [filter];
+
 Map<String, dynamic> flowFrame(List<Map<String, dynamic>> flows, int now) {
   final dots = <Map<String, dynamic>>[], trails = <Map<String, dynamic>>[];
-  final glow = <String, double>{};
+  final lit = <String, Map<String, num>>{};
   for (final flow in flows) {
     final ns = rows(flow['nodes']);
     if (ns.length < 2) continue;
-    final elapsed = now - (number(flow['start']) ?? 0);
+    final start = number(flow['start']) ?? 0;
+    final elapsed = now - start;
     if (elapsed < 0) continue;
     final duration = (ns.length - 1) * 480;
     final fade = (1 - (elapsed - duration) / 1000).clamp(0.0, 1.0);
     if (fade <= 0) continue;
     final t = (elapsed / 480).clamp(0.0, (ns.length - 1).toDouble());
     final idx = t.floor();
-    for (final node in ns.take(idx + 1)) {
-      final id = textOf(node['id']);
-      if (id.isNotEmpty && fade > (glow[id] ?? 0)) glow[id] = fade;
+    for (var i = 0; i <= idx; i++) {
+      final id = textOf(ns[i]['id']), at = start + i * 480;
+      // The light follows the packet: full on arrival, out 0.9 s later.
+      final light = 1 - (now - at) / 900;
+      if (id.isEmpty || light <= 0 || at <= (lit[id]?['at'] ?? -1)) continue;
+      lit[id] = {'a': light, 'at': at};
     }
     final coords = ns.take(idx + 1).map(coordinates).toList();
     if (idx < ns.length - 1) {
@@ -292,22 +304,61 @@ Map<String, dynamic> flowFrame(List<Map<String, dynamic>> flows, int now) {
       trails.add(feature('LineString', coords, {'a': 0.6 * fade}));
     }
   }
-  return {'dots': collection(dots), 'trails': collection(trails), 'glow': glow};
+  return {'dots': collection(dots), 'trails': collection(trails), 'lit': lit};
 }
 
-// Match expressions work on both native SDKs; iOS lacks feature-state updates.
-dynamic liveMarkerOpacity(bool live, Map<String, dynamic> glow) {
-  if (!live) return 1.0;
-  if (glow.isEmpty) return 0.08;
-  return [
-    'match',
-    ['get', 'id'],
-    for (final entry in glow.entries) ...[
-      entry.key,
-      (number(entry.value) ?? 0).clamp(0.08, 1.0),
-    ],
-    0.08,
+// The map's glyph font has no emoji; they would render as blank boxes.
+final _pictographs = RegExp(
+  // The lint parses without unicode: true; this is valid in unicode mode.
+  // ignore: valid_regexps
+  r'[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}\u{1F3FB}-\u{1F3FF}'
+  r'\u{E0020}-\u{E007F}\u{FE0E}\u{FE0F}\u{200D}\u{20E3}]',
+  unicode: true,
+);
+String mapLabel(Object? name) =>
+    textOf(name)
+        .replaceAll(_pictographs, '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+Map<String, Map<String, dynamic>> featureIndex(Map<String, dynamic> points) => {
+  for (final f in rows(points['features']))
+    textOf(object(f['properties'])['id']): f,
+};
+
+// Lit nodes come from the node list: packet hops carry no node type.
+Map<String, dynamic> litFeatures(
+  Map<String, dynamic> lit,
+  Map<String, Map<String, dynamic>> index,
+) {
+  final entries = [
+    for (final MapEntry(:key, :value) in lit.entries)
+      if (nodeTypes.contains(object(index[key]?['properties'])['nodeTypeName']))
+        (id: key, light: object(value)),
   ];
+  entries.sort((a, b) {
+    final order = (number(a.light['at']) ?? 0).compareTo(
+      number(b.light['at']) ?? 0,
+    );
+    return order != 0 ? order : a.id.compareTo(b.id);
+  });
+  final features = <Map<String, dynamic>>[];
+  for (final (seq, e) in entries.indexed) {
+    final f = index[e.id]!, props = object(f['properties']);
+    final type = props['nodeTypeName'];
+    features.add(
+      feature('Point', object(f['geometry'])['coordinates'], {
+        'id': e.id,
+        'nodeTypeName': type,
+        'label': type == 'repeater' || type == 'companion'
+            ? mapLabel(props['name'])
+            : '',
+        'a': e.light['a'],
+        'seq': seq,
+      }),
+    );
+  }
+  return collection(features);
 }
 
 Uri mapShareUri(
@@ -341,3 +392,77 @@ Uri mapShareUri(
     'flow': flow ? 'on' : 'off',
   },
 );
+
+Map<String, dynamic>? nearestFeature(List hits, double lat, double lng) {
+  final scale = math.cos(lat * math.pi / 180);
+  Map<String, dynamic>? best;
+  var bestDistance = double.infinity;
+  for (final hit in hits) {
+    final coords = object(object(hit)['geometry'])['coordinates'];
+    if (coords is! List || coords.length < 2) continue;
+    final x = number(coords[0]), y = number(coords[1]);
+    if (x == null || y == null) continue;
+    final dx = (x - lng) * scale, dy = y - lat;
+    final distance = dx * dx + dy * dy;
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = object(object(hit)['properties']);
+    }
+  }
+  return best;
+}
+
+int countInBounds(
+  Map<String, dynamic> points, {
+  required double south,
+  required double west,
+  required double north,
+  required double east,
+}) {
+  var count = 0;
+  for (final f in rows(points['features'])) {
+    final coords = object(f['geometry'])['coordinates'];
+    if (coords is! List || coords.length < 2) continue;
+    final lng = number(coords[0]), lat = number(coords[1]);
+    if (lng == null || lat == null || lat < south || lat > north) continue;
+    // A viewport across the antimeridian has west > east.
+    final inside = west <= east
+        ? lng >= west && lng <= east
+        : lng >= west || lng <= east;
+    if (inside) count++;
+  }
+  return count;
+}
+
+// One query over lit icons and dots, so a tap takes the nearest node.
+Future<String?> liveTapNode(
+  Future<List> Function(List<String> layers) query,
+  double lat,
+  double lng,
+) async {
+  final hits = await query([
+    'beacon-live-icons',
+    'beacon-live-selected-marker',
+    'beacon-live-dots',
+  ]);
+  // A lit icon this faded no longer takes taps; shared with the web.
+  final live = [
+    for (final h in hits)
+      if ((number(object(object(h)['properties'])['a']) ?? 1) >= 0.2) h,
+  ];
+  final id = nearestFeature(live, lat, lng)?['id'];
+  return id == null ? null : textOf(id);
+}
+
+// A lit node of another type can be tapped; keep its marker after it fades.
+Map<String, dynamic> withSelected(
+  Map<String, dynamic> points,
+  Map<String, dynamic>? all,
+  String? selected,
+) {
+  if (all == null || selected == null) return points;
+  final features = rows(points['features']);
+  if (features.any((f) => textOf(f['id']) == selected)) return points;
+  final extra = rows(all['features']).where((f) => textOf(f['id']) == selected);
+  return extra.isEmpty ? points : collection([...features, ...extra]);
+}

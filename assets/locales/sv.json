@@ -1176,6 +1176,9 @@
       "updated": "updated",
       "carpeater": "CARpeater",
       "carpeaterHint": "Mobile repeater in a vehicle: its position moves."
+    },
+    "liveMap": {
+      "clusteringOff": "Av medan livekartan är på"
     }
   }
 }
