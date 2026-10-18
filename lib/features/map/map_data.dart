@@ -318,6 +318,8 @@ dynamic liveMarkerOpacity(bool live, Map<String, dynamic> glow) {
 
 // The map's glyph font has no emoji; they would render as blank boxes.
 final _pictographs = RegExp(
+  // The lint parses without unicode: true; this is valid in unicode mode.
+  // ignore: valid_regexps
   r'[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}\u{1F3FB}-\u{1F3FF}'
   r'\u{E0020}-\u{E007F}\u{FE0E}\u{FE0F}\u{200D}\u{20E3}]',
   unicode: true,
