@@ -265,6 +265,10 @@ List<Map<String, dynamic>> flowNodes(Map<String, dynamic> observation) {
 
 const nodeTypes = ['companion', 'repeater', 'room_server', 'sensor'];
 
+// Live hides the all-node lines; a saved On draws like Selected meanwhile.
+String neighborMode(String saved, {required bool live}) =>
+    live && saved == 'on' ? 'selected' : saved;
+
 // Under All, Live keeps repeaters and companions on the map as idle dots.
 List<String> liveDotTypes(String filter) =>
     filter.isEmpty ? ['repeater', 'companion'] : [filter];

@@ -313,4 +313,13 @@ void main() {
     expect(withSelected(repeaters, all, null), same(repeaters));
     expect(withSelected(repeaters, null, 'c'), same(repeaters));
   });
+  test(
+    'Live draws only the selected node\'s lines when the saved mode is On',
+    () {
+      expect(neighborMode('on', live: true), 'selected');
+      expect(neighborMode('on', live: false), 'on');
+      expect(neighborMode('selected', live: true), 'selected');
+      expect(neighborMode('off', live: true), 'off');
+    },
+  );
 }

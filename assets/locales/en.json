@@ -1178,7 +1178,8 @@
       "carpeaterHint": "Mobile repeater in a vehicle: its position moves."
     },
     "liveMap": {
-      "clusteringOff": "Off while Live Map is on"
+      "clusteringOff": "Off while Live Map is on",
+      "neighborLinesOff": "All lines are off while Live Map is on"
     }
   }
 }

@@ -311,7 +311,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     Map<String, String> options,
     String current,
     void Function(String) changed, {
-    bool enabled = true,
+    Set<String> disabled = const {},
   }) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 5),
     child: Column(
@@ -338,12 +338,12 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                   selected: e.key == current,
                   visualDensity: VisualDensity.compact,
                   showCheckmark: false,
-                  onSelected: enabled
-                      ? (_) {
+                  onSelected: disabled.contains(e.key)
+                      ? null
+                      : (_) {
                           setState(() => changed(e.key));
                           _save();
-                        }
-                      : null,
+                        },
                 ),
               )
               .toList(),
@@ -354,10 +354,11 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final selected = _selectedNode;
+    final mode = neighborMode(_mode, live: _flow);
     final edges =
-        _mode == 'selected' && selected != null && _neighbors.isNotEmpty
+        mode == 'selected' && selected != null && _neighbors.isNotEmpty
         ? focusedFeatures(selected, _neighbors)
-        : neighborFeatures(_nodes, _mode, _selected);
+        : neighborFeatures(_nodes, mode, _selected);
     final all = _flow && _type.isNotEmpty ? nodeFeatures(_nodes) : null;
     final points = withSelected(
       nodeFeatures(_nodes, type: _type),
@@ -474,7 +475,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                               {'on': 'On', 'off': 'Off'},
                               _cluster && !_flow ? 'on' : 'off',
                               (v) => _cluster = v == 'on',
-                              enabled: !_flow,
+                              disabled: _flow ? const {'on', 'off'} : const {},
                             ),
                             if (_flow)
                               Text(
@@ -491,10 +492,19 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                                 'selected': 'Selected',
                                 'off': 'Off',
                               },
-                              _mode,
+                              mode,
                               (v) => _mode = v,
+                              disabled: _flow ? const {'on'} : const {},
                             ),
-                            if (_mode == 'selected')
+                            if (_flow)
+                              Text(
+                                trKey('liveMap.neighborLinesOff'),
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: BeaconColors.of(context).normal,
+                                ),
+                              ),
+                            if (mode == 'selected')
                               Text(
                                 '${tr('Observations')}: 1 · 20 · 150+\n${tr('fainter = heard longer ago')}',
                                 style: TextStyle(
