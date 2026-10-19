@@ -197,4 +197,141 @@ void main() {
       expect(nextPageParams({'hasMore': true}), isEmpty);
     });
   });
+
+  ApiClient busy(List<int> calls, int status, Map<String, String> headers) =>
+      ApiClient(
+        Uri.parse('https://test'),
+        client: MockClient((r) async {
+          calls.add(status);
+          return http.Response(
+            '{"error":{"code":"deadline_exceeded","message":"The request ran past its database time limit. Retry later."}}',
+            status,
+            headers: headers,
+          );
+        }),
+      );
+
+  test('a 503 with Retry-After carries the delay and does not block later requests', () async {
+    final calls = <int>[];
+    final api = busy(calls, 503, {'retry-after': '5'});
+    await expectLater(
+      api.get('/packets'),
+      throwsA(
+        isA<ApiException>()
+            .having((e) => e.status, 'status', 503)
+            .having(
+              (e) => e.retryAfter,
+              'retryAfter',
+              const Duration(seconds: 5),
+            )
+            .having(
+              (e) => e.message,
+              'message',
+              'The request ran past its database time limit. Retry later.',
+            ),
+      ),
+    );
+    await expectLater(
+      api.get('/packets'),
+      throwsA(isA<ApiException>().having((e) => e.status, 'status', 503)),
+    );
+    expect(calls, [
+      503,
+      503,
+    ]); // a 429 would have answered the second call locally
+    api.close();
+  });
+  test(
+    'a 503 without Retry-After has no delay; Retry-After 0 clamps to 1 s',
+    () async {
+      final api = busy([], 503, {});
+      await expectLater(
+        api.get('/packets'),
+        throwsA(
+          isA<ApiException>().having((e) => e.retryAfter, 'retryAfter', isNull),
+        ),
+      );
+      final zero = busy([], 503, {'retry-after': '0'});
+      await expectLater(
+        zero.get('/packets'),
+        throwsA(
+          isA<ApiException>().having(
+            (e) => e.retryAfter,
+            'retryAfter',
+            const Duration(seconds: 1),
+          ),
+        ),
+      );
+      api.close();
+      zero.close();
+    },
+  );
+
+  group('retryTransient', () {
+    const deadline = ApiException(
+      'busy',
+      status: 503,
+      retryAfter: Duration(seconds: 5),
+    );
+    test('waits Retry-After and returns the retried result', () async {
+      final waits = <Duration>[];
+      var n = 0;
+      final result = await retryTransient(
+        () async => n++ == 0 ? throw deadline : 'page',
+        wait: (d) async => waits.add(d),
+      );
+      expect(result, 'page');
+      expect(waits, [const Duration(seconds: 5)]);
+    });
+    test('gives up after three retries', () async {
+      var n = 0;
+      await expectLater(
+        retryTransient<String>(() async {
+          n++;
+          throw deadline;
+        }, wait: (_) async {}),
+        throwsA(same(deadline)),
+      );
+      expect(n, 4);
+    });
+    test('does not retry a 500 or a 503 without Retry-After', () async {
+      for (final e in const [
+        ApiException('x', status: 500),
+        ApiException('x', status: 503),
+      ]) {
+        var n = 0;
+        await expectLater(
+          retryTransient<String>(() async {
+            n++;
+            throw e;
+          }, wait: (_) async {}),
+          throwsA(same(e)),
+        );
+        expect(n, 1);
+      }
+    });
+    test(
+      'stops without another request once superseded during the wait',
+      () async {
+        var n = 0;
+        var current = true;
+        final result = await retryTransient<String>(
+          () async {
+            n++;
+            throw deadline;
+          },
+          isCurrent: () => current,
+          wait: (_) async => current = false,
+        );
+        expect(result, isNull);
+        expect(n, 1);
+      },
+    );
+    test('isTransient', () {
+      expect(isTransient(const ApiException('x', status: 429)), true);
+      expect(isTransient(deadline), true);
+      expect(isTransient(const ApiException('x', status: 503)), false);
+      expect(isTransient(StateError('x')), false);
+    });
+  });
 }

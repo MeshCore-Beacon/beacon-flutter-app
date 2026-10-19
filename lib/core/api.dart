@@ -29,6 +29,34 @@ Map<String, Object> nextPageParams(Map<String, dynamic> page) {
   };
 }
 
+/// A 429, or a 503 that said when to come back.
+bool isTransient(Object error) =>
+    error is ApiException &&
+    (error.status == 429 || (error.status == 503 && error.retryAfter != null));
+
+Future<void> _sleep(Duration d) => Future<void>.delayed(d);
+
+/// Runs [request] again after a transient error, waiting its retryAfter (10 s if absent),
+/// at most [retries] times; rethrows anything else. Returns null once [isCurrent] turns false.
+Future<T?> retryTransient<T>(
+  Future<T> Function() request, {
+  bool Function()? isCurrent,
+  int retries = 3,
+  Future<void> Function(Duration) wait = _sleep,
+}) async {
+  for (var attempt = 0; ; attempt++) {
+    try {
+      return await request();
+    } catch (error) {
+      if (!isTransient(error) || attempt >= retries) rethrow;
+      await wait(
+        (error as ApiException).retryAfter ?? const Duration(seconds: 10),
+      );
+      if (isCurrent != null && !isCurrent()) return null;
+    }
+  }
+}
+
 /// Reads a GET body, giving up once it passes [maxBytes] so a hostile
 /// server can't exhaust memory.
 Future<http.Response> getLimited(
@@ -314,20 +342,13 @@ class ApiClient {
       }
       if (response.statusCode < 200 || response.statusCode >= 300) {
         Duration? delay;
+        final header = response.headers['retry-after'];
         if (response.statusCode == 429) {
-          final retry = response.headers['retry-after'] ?? '10';
-          final seconds = int.tryParse(retry);
-          DateTime? date;
-          if (seconds == null) {
-            try {
-              date = HttpDate.parse(retry);
-            } catch (_) {}
-          }
-          delay = Duration(
-            seconds: (seconds ?? date?.difference(_now()).inSeconds ?? 10)
-                .clamp(1, 300),
-          );
+          delay = _retryAfter(header) ?? const Duration(seconds: 10);
           _limitedUntil = _now().add(delay);
+        } else if (response.statusCode == 503) {
+          // A busy 503 is per request, so it must not block other screens.
+          delay = _retryAfter(header);
         }
         throw ApiException(
           textOf(
@@ -357,6 +378,23 @@ class ApiClient {
         'Could not reach this server. Check your connection.',
       );
     }
+  }
+
+  Duration? _retryAfter(String? header) {
+    if (header == null) return null;
+    final seconds = int.tryParse(header);
+    DateTime? date;
+    if (seconds == null) {
+      try {
+        date = HttpDate.parse(header);
+      } catch (_) {}
+    }
+    return Duration(
+      seconds: (seconds ?? date?.difference(_now()).inSeconds ?? 10).clamp(
+        1,
+        300,
+      ),
+    );
   }
 
   void close() {
