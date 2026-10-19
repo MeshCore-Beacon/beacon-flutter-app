@@ -180,4 +180,32 @@ void main() {
     expect(find.text('00000002'), findsOneWidget);
     expect(find.text('invalid pageCursor'), findsNothing);
   });
+
+  testWidgets(
+    'an older page with hasMore but no cursor hides Load older packets',
+    (tester) async {
+      await pump(
+        tester,
+        {},
+        (q, n) => n == 1
+            ? page(['00000001'], more: true)
+            : http.Response(
+                jsonEncode({
+                  'items': [
+                    {
+                      'packetHash': '00000002',
+                      'payloadType': 4,
+                      'lastHeardAt': 1,
+                    },
+                  ],
+                  'hasMore': true,
+                }),
+                200,
+              ),
+      );
+      await older(tester);
+      expect(find.text('00000002'), findsOneWidget);
+      expect(find.text('Load older packets'), findsNothing);
+    },
+  );
 }

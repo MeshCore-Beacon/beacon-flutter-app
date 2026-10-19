@@ -22,6 +22,7 @@ retryingGet(
         () => (fresh ? api.get : api.getCached)(path, p),
         isCurrent: isCurrent,
       ),
+      isCurrent: isCurrent,
     );
 
 Map<String, dynamic> nextDirectoryCursor(

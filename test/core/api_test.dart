@@ -424,4 +424,46 @@ void main() {
       },
     );
   });
+
+  test(
+    'an unparsable Retry-After makes a 503 final but a 429 waits 10 s',
+    () async {
+      final unavailable = busy([], 503, {'retry-after': 'soon'});
+      await expectLater(
+        unavailable.get('/packets'),
+        throwsA(
+          isA<ApiException>().having((e) => e.retryAfter, 'retryAfter', isNull),
+        ),
+      );
+      final limited = busy([], 429, {'retry-after': 'soon'});
+      await expectLater(
+        limited.get('/packets'),
+        throwsA(
+          isA<ApiException>().having(
+            (e) => e.retryAfter,
+            'retryAfter',
+            const Duration(seconds: 10),
+          ),
+        ),
+      );
+      unavailable.close();
+      limited.close();
+    },
+  );
+  test(
+    'withPageCursorFallback skips the legacy request once superseded',
+    () async {
+      var n = 0;
+      final result = await withPageCursorFallback<String>(
+        {'cursor': 5, 'pageCursor': 'v1:x'},
+        (p) async {
+          n++;
+          throw const ApiException('invalid pageCursor', status: 400);
+        },
+        isCurrent: () => false,
+      );
+      expect(result, isNull);
+      expect(n, 1);
+    },
+  );
 }

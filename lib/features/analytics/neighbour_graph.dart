@@ -27,6 +27,7 @@ Future<List<Map<String, dynamic>>?> loadNeighbourNodes(
         () => api.getCached('/nodes', p),
         isCurrent: isCurrent,
       ),
+      isCurrent: isCurrent,
     );
     if (response == null || isCurrent?.call() == false) return null;
     for (final n in rows(response)) {

@@ -550,6 +550,7 @@ class _DirectoryScreenState extends State<DirectoryScreen>
                 'iata': area,
                 if (more) ...object(routeCursors[area]),
               });
+          if (!current()) return;
           combined.addAll(rows(page));
           final c = nextDirectoryCursor('routes', page, 50);
           if (c.isNotEmpty) next[area] = c;

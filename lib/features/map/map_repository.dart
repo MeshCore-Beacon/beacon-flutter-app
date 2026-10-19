@@ -29,6 +29,7 @@ Stream<List<Map<String, dynamic>>> loadMapNodes(
         () => api.getCached('/nodes', p),
         isCurrent: isCurrent,
       ),
+      isCurrent: isCurrent,
     );
     if (response == null || isCurrent?.call() == false) return;
     for (final n in rows(response)) {

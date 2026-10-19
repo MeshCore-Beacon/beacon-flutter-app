@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:beacon/core/api.dart';
@@ -189,4 +190,38 @@ void main() {
       expect(find.text('invalid pageCursor'), findsNothing);
     },
   );
+
+  testWidgets('a superseded routes load stops before the next area', (
+    tester,
+  ) async {
+    final requested = <String>[];
+    final first = Completer<http.Response>();
+    final api = ApiClient(
+      Uri.parse('https://test.invalid'),
+      client: MockClient((r) async {
+        if (!r.url.path.endsWith('/routes')) return http.Response('[]', 200);
+        final iata = r.url.queryParameters['iata']!;
+        requested.add(iata);
+        if (iata == 'AAA') return first.future;
+        return http.Response('{"items":[],"hasMore":false}', 200);
+      }),
+    );
+    Widget routes(String iatas) => MaterialApp(
+      home: Scaffold(
+        body: DirectoryScreen(
+          kind: 'routes',
+          api: api,
+          region: {'iatas': iatas},
+          onOpen: (_, _) {},
+        ),
+      ),
+    );
+    await tester.pumpWidget(routes('AAA,BBB'));
+    await tester.pump();
+    await tester.pumpWidget(routes('CCC'));
+    await tester.pump();
+    first.complete(http.Response('{"items":[],"hasMore":false}', 200));
+    await tester.pumpAndSettle();
+    expect(requested, ['AAA', 'CCC']);
+  });
 }

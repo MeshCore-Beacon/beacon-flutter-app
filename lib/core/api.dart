@@ -59,10 +59,12 @@ Future<T?> retryTransient<T>(
 
 /// Runs [request] with [params]; a 400 "invalid pageCursor" is retried once with the
 /// legacy cursor alone. Without a cursor, dropping it would restart at page 1.
-Future<T> withPageCursorFallback<T>(
+/// Returns null once [isCurrent] turns false.
+Future<T?> withPageCursorFallback<T>(
   Map<String, dynamic> params,
-  Future<T> Function(Map<String, dynamic> params) request,
-) async {
+  Future<T?> Function(Map<String, dynamic> params) request, {
+  bool Function()? isCurrent,
+}) async {
   try {
     return await request(params);
   } on ApiException catch (e) {
@@ -72,6 +74,7 @@ Future<T> withPageCursorFallback<T>(
         params['cursor'] == null) {
       rethrow;
     }
+    if (isCurrent != null && !isCurrent()) return null;
     return request({...params}..remove('pageCursor'));
   }
 }
@@ -367,7 +370,8 @@ class ApiClient {
           _limitedUntil = _now().add(delay);
         } else if (response.statusCode == 503) {
           // A busy 503 is per request, so it must not block other screens.
-          final wait = _retryAfter(header);
+          // Like web, a 503 whose Retry-After can't be read is final.
+          final wait = _retryAfter(header, unparsable: null);
           const most = Duration(seconds: 30);
           delay = wait == null || wait < most ? wait : most;
         }
@@ -401,21 +405,22 @@ class ApiClient {
     }
   }
 
-  Duration? _retryAfter(String? header) {
+  Duration? _retryAfter(
+    String? header, {
+    Duration? unparsable = const Duration(seconds: 10),
+  }) {
     if (header == null) return null;
-    final seconds = int.tryParse(header);
-    DateTime? date;
-    if (seconds == null) {
-      try {
-        date = HttpDate.parse(header);
-      } catch (_) {}
-    }
-    return Duration(
-      seconds: (seconds ?? date?.difference(_now()).inSeconds ?? 10).clamp(
-        1,
-        300,
-      ),
-    );
+    final seconds =
+        int.tryParse(header) ??
+        (() {
+          try {
+            return HttpDate.parse(header).difference(_now()).inSeconds;
+          } catch (_) {
+            return null;
+          }
+        })();
+    if (seconds == null) return unparsable;
+    return Duration(seconds: seconds.clamp(1, 300));
   }
 
   void close() {

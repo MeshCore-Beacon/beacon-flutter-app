@@ -177,6 +177,7 @@ class _PacketScreenState extends State<PacketScreen> {
                 (older ? widget.api.getCached : widget.api.get)('/packets', p),
             isCurrent: () => mounted && request == generation,
           ),
+          isCurrent: () => mounted && request == generation,
         ),
       );
       if (!mounted || request != generation) return;
@@ -194,7 +195,8 @@ class _PacketScreenState extends State<PacketScreen> {
         }
         if (older || nextPage?.isNotEmpty != true) {
           nextPage = nextPageParams(response);
-          hasMore = response['hasMore'] == true;
+          // Like web, no usable cursor means no older page.
+          hasMore = nextPage!.isNotEmpty;
         }
       });
     } catch (e) {
