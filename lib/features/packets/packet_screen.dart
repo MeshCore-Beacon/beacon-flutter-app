@@ -38,7 +38,7 @@ class _PacketScreenState extends State<PacketScreen> {
   Timer? searchDebounce;
   String? hashPrefix;
   bool loading = false, hasMore = true;
-  dynamic cursor;
+  Map<String, Object>? nextPage;
   String? error;
   String mode = 'Hash';
   Set<int> types = {};
@@ -121,7 +121,7 @@ class _PacketScreenState extends State<PacketScreen> {
       expandedHash = null;
       refreshPending = false;
       pending = [];
-      cursor = null;
+      nextPage = null;
       loading = false;
       load();
     }
@@ -159,16 +159,26 @@ class _PacketScreenState extends State<PacketScreen> {
       error = null;
     });
     try {
+      final params = {
+        ...widget.region,
+        'limit': 100,
+        if (types.isNotEmpty) 'payloadTypes': types.join(','),
+        if (routes.isNotEmpty) 'routeTypes': routes.join(','),
+        if (selectedScopes.isNotEmpty) 'scopes': selectedScopes.join(','),
+        if (hashPrefix != null) 'hashPrefix': hashPrefix,
+        if (older) ...?nextPage,
+      };
+      // Waits out a busy server with the same params; loaded rows stay.
       final response = object(
-        await (older ? widget.api.getCached : widget.api.get)('/packets', {
-          ...widget.region,
-          'limit': 100,
-          if (types.isNotEmpty) 'payloadTypes': types.join(','),
-          if (routes.isNotEmpty) 'routeTypes': routes.join(','),
-          if (selectedScopes.isNotEmpty) 'scopes': selectedScopes.join(','),
-          if (hashPrefix != null) 'hashPrefix': hashPrefix,
-          if (older) 'cursor': cursor,
-        }),
+        await withPageCursorFallback(
+          params,
+          (p) => retryTransient(
+            () =>
+                (older ? widget.api.getCached : widget.api.get)('/packets', p),
+            isCurrent: () => mounted && request == generation,
+          ),
+          isCurrent: () => mounted && request == generation,
+        ),
       );
       if (!mounted || request != generation) return;
       setState(() {
@@ -183,9 +193,10 @@ class _PacketScreenState extends State<PacketScreen> {
                 .add(id);
           }
         }
-        if (older || cursor == null) {
-          cursor = response['nextCursor'];
-          hasMore = response['hasMore'] == true;
+        if (older || nextPage?.isNotEmpty != true) {
+          nextPage = nextPageParams(response);
+          // Like web, no usable cursor means no older page.
+          hasMore = nextPage!.isNotEmpty;
         }
       });
     } catch (e) {
@@ -223,7 +234,7 @@ class _PacketScreenState extends State<PacketScreen> {
     expandedHash = null;
     refreshPending = false;
     pending = [];
-    cursor = null;
+    nextPage = null;
     hasMore = true;
     loading = false;
     load();

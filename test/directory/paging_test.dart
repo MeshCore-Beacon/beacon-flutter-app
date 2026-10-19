@@ -104,4 +104,46 @@ void main() {
     );
     expect(nextDirectoryCursor('traces', [], 50), isEmpty);
   });
+
+  test('nodes and observers send both cursors so a server ignoring pageCursor still advances', () {
+    final page = {
+      'items': [
+        {'id': 'a'},
+      ],
+      'hasMore': true,
+      'nextCursor': 99,
+      'nextPageCursor': 'v1:99000:00000000-0000-0000-0000-00000000000a',
+    };
+    for (final kind in ['nodes', 'observers']) {
+      expect(nextDirectoryCursor(kind, page, 50), {
+        'cursor': 99,
+        'pageCursor': 'v1:99000:00000000-0000-0000-0000-00000000000a',
+      });
+    }
+  });
+  test('nodes on an older server page by cursor alone', () {
+    expect(
+      nextDirectoryCursor('nodes', {
+        'items': [
+          {'id': 'a'},
+        ],
+        'hasMore': true,
+        'nextCursor': 99,
+      }, 50),
+      {'cursor': 99},
+    );
+  });
+  test('nodes stop when hasMore is false', () {
+    expect(
+      nextDirectoryCursor('nodes', {
+        'items': [
+          {'id': 'a'},
+        ],
+        'hasMore': false,
+        'nextCursor': 99,
+        'nextPageCursor': 'x',
+      }, 50),
+      isEmpty,
+    );
+  });
 }
