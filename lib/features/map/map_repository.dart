@@ -18,36 +18,29 @@ Stream<List<Map<String, dynamic>>> loadMapNodes(
   }
   final collected = <String, Map<String, dynamic>>{};
   final seen = <String>{};
-  dynamic cursor;
+  Map<String, Object> next = {};
   var pages = 0;
   do {
-    dynamic response;
-    var retries = 0;
-    while (true) {
-      if (isCurrent?.call() == false) return;
-      try {
-        response = await api.getCached('/nodes', {
-          ...region,
-          'neighbors': true,
-          'limit': 200,
-          'cursor': ?cursor,
-        });
-        break;
-      } on ApiException catch (e) {
-        if (e.status != 429 || retries++ >= 3) rethrow;
-        // Keep the current cursor and visible nodes during the server cooldown.
-        await Future<void>.delayed(e.retryAfter ?? const Duration(seconds: 10));
-      }
-    }
     if (isCurrent?.call() == false) return;
+    // Keeps the same cursors and visible nodes during a server cooldown.
+    final response = await retryTransient(
+      () => api.getCached('/nodes', {
+        ...region,
+        'neighbors': true,
+        'limit': 200,
+        ...next,
+      }),
+      isCurrent: isCurrent,
+    );
+    if (response == null || isCurrent?.call() == false) return;
     for (final n in rows(response)) {
       collected[textOf(n['id'])] = n;
     }
     yield collected.values.toList();
     final page = object(response);
-    cursor = page['nextCursor'];
     if (page['hasMore'] != true || ++pages >= mapNodePageCap) break;
-    if (cursor == null || !seen.add(jsonEncode(cursor))) {
+    next = nextPageParams(page);
+    if (next.isEmpty || !seen.add(jsonEncode(next))) {
       throw StateError('The server returned an invalid map page cursor.');
     }
   } while (true);

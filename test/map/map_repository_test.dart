@@ -154,4 +154,138 @@ void main() {
     expect(pages.last.length, 250);
     api.close();
   });
+
+  const pc = 'v1:5000:00000000-0000-0000-0000-00000000000a';
+  test('sends both cursors when the server returns both', () async {
+    final seen = <Map<String, String>>[];
+    final api = ApiClient(
+      Uri.parse('https://example.org'),
+      client: MockClient((r) async {
+        seen.add(r.url.queryParameters);
+        return http.Response(
+          jsonEncode(
+            seen.length == 1
+                ? {
+                    'items': [
+                      {'id': 'a'},
+                    ],
+                    'hasMore': true,
+                    'nextCursor': 5,
+                    'nextPageCursor': pc,
+                  }
+                : {
+                    'items': [
+                      {'id': 'b'},
+                    ],
+                    'hasMore': false,
+                  },
+          ),
+          200,
+        );
+      }),
+    );
+    await loadMapNodes(api, {'iatas': 'AAA'}).drain<void>();
+    expect(seen[1]['cursor'], '5');
+    expect(seen[1]['pageCursor'], pc);
+    expect(seen[1]['iatas'], 'AAA');
+    api.close();
+  });
+  test('pages by cursor alone on a server without nextPageCursor', () async {
+    final seen = <Map<String, String>>[];
+    final api = ApiClient(
+      Uri.parse('https://example.org'),
+      client: MockClient((r) async {
+        seen.add(r.url.queryParameters);
+        return http.Response(
+          jsonEncode(
+            seen.length == 1
+                ? {
+                    'items': [
+                      {'id': 'a'},
+                    ],
+                    'hasMore': true,
+                    'nextCursor': 5,
+                  }
+                : {
+                    'items': [
+                      {'id': 'b'},
+                    ],
+                    'hasMore': false,
+                  },
+          ),
+          200,
+        );
+      }),
+    );
+    await loadMapNodes(api, {}).drain<void>();
+    expect(seen[1].containsKey('pageCursor'), false);
+    expect(seen[1]['cursor'], '5');
+    api.close();
+  });
+  test('pages forward when the server ignores pageCursor', () async {
+    // answers by cursor only, as a rolled-back server does
+    final api = ApiClient(
+      Uri.parse('https://example.org'),
+      client: MockClient(
+        (r) async => http.Response(
+          jsonEncode(
+            r.url.queryParameters['cursor'] == null
+                ? {
+                    'items': [
+                      {'id': 'a'},
+                      {'id': 'b'},
+                    ],
+                    'hasMore': true,
+                    'nextCursor': 5,
+                    'nextPageCursor': pc,
+                  }
+                : {
+                    'items': [
+                      {'id': 'b'},
+                      {'id': 'c'},
+                    ],
+                    'hasMore': false,
+                  },
+          ),
+          200,
+        ),
+      ),
+    );
+    final pages = await loadMapNodes(api, {}).toList();
+    expect(pages.last.map((n) => n['id']), ['a', 'b', 'c']);
+    api.close();
+  });
+  test('a busy 503 keeps loaded nodes and retries the same cursors', () async {
+    final seen = <Map<String, String>>[];
+    final api = ApiClient(
+      Uri.parse('https://example.org'),
+      client: MockClient((r) async {
+        seen.add(r.url.queryParameters);
+        return switch (seen.length) {
+          1 => http.Response(
+            jsonEncode({
+              'items': [
+                {'id': 'a'},
+              ],
+              'hasMore': true,
+              'nextCursor': 5,
+              'nextPageCursor': pc,
+            }),
+            200,
+          ),
+          2 => http.Response(
+            '{"error":{"code":"deadline_exceeded","message":"busy"}}',
+            503,
+            headers: {'retry-after': '1'},
+          ),
+          _ => http.Response('{"items":[{"id":"b"}],"hasMore":false}', 200),
+        };
+      }),
+    );
+    final pages = await loadMapNodes(api, {}).toList();
+    expect(seen.length, 3);
+    expect(seen[2], seen[1]);
+    expect(pages.last.map((n) => n['id']), ['a', 'b']);
+    api.close();
+  });
 }

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import '../../core/api.dart';
@@ -7,6 +9,36 @@ import '../../core/theme.dart';
 import 'charts.dart';
 import 'network_canvas.dart';
 import 'transforms.dart';
+
+/// Every node in [region] with neighbour ids, page by page; null once superseded.
+Future<List<Map<String, dynamic>>?> loadNeighbourNodes(
+  ApiClient api,
+  Map<String, dynamic> region, {
+  bool Function()? isCurrent,
+}) async {
+  final found = <String, Map<String, dynamic>>{};
+  final seen = <String>{};
+  Map<String, Object> next = {};
+  do {
+    if (isCurrent?.call() == false) return null;
+    final response = await retryTransient(
+      () => api.getCached('/nodes', {
+        ...region,
+        'neighbors': 'true',
+        'limit': 500,
+        ...next,
+      }),
+      isCurrent: isCurrent,
+    );
+    if (response == null || isCurrent?.call() == false) return null;
+    for (final n in rows(response)) {
+      found[textOf(n['id'])] = n;
+    }
+    next = nextPageParams(object(response));
+    if (next.isEmpty || !seen.add(jsonEncode(next))) break;
+  } while (true);
+  return found.values.toList();
+}
 
 class NeighbourGraph extends StatefulWidget {
   const NeighbourGraph({
@@ -68,26 +100,13 @@ class _NeighbourGraphState extends State<NeighbourGraph>
       return;
     }
     try {
-      final found = <String, Map<String, dynamic>>{};
-      dynamic cursor;
-      final cursors = <String>{};
-      do {
-        final response = await widget.api.getCached('/nodes', {
-          ...widget.region,
-          'neighbors': 'true',
-          'limit': 500,
-          'cursor': ?cursor,
-        });
-        if (!mounted || token != generation) return;
-        for (final n in rows(response)) {
-          found[textOf(n['id'])] = n;
-        }
-        final o = object(response);
-        if (o['hasMore'] == false) break;
-        cursor = o['nextCursor'];
-        if (cursor == null || !cursors.add('$cursor')) break;
-      } while (true);
-      final ranked = found.values.toList()
+      final found = await loadNeighbourNodes(
+        widget.api,
+        widget.region,
+        isCurrent: () => mounted && token == generation,
+      );
+      if (found == null || !mounted || token != generation) return;
+      final ranked = found
         ..sort((a, b) {
           final c = (number(b['knownNeighborCount']) ?? 0).compareTo(
             number(a['knownNeighborCount']) ?? 0,
