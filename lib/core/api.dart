@@ -17,6 +17,18 @@ class ApiException implements Exception {
   String toString() => message;
 }
 
+/// Query params for the next page of /packets, /nodes or /observers: both cursors when the
+/// server sent both, so a server that ignores pageCursor still advances. Empty when done.
+Map<String, Object> nextPageParams(Map<String, dynamic> page) {
+  if (page['hasMore'] != true) return {};
+  final Object? cursor = page['nextCursor'];
+  final pageCursor = page['nextPageCursor'];
+  return {
+    'cursor': ?cursor,
+    if (pageCursor is String && pageCursor.isNotEmpty) 'pageCursor': pageCursor,
+  };
+}
+
 /// Reads a GET body, giving up once it passes [maxBytes] so a hostile
 /// server can't exhaust memory.
 Future<http.Response> getLimited(
@@ -196,7 +208,14 @@ class ApiClient {
       final params = Uri.parse(entry.key).queryParameters;
       // Filter membership can change. Such queries need authoritative results.
       if (params.keys.any(
-        (k) => !{'iatas', 'region', 'neighbors', 'limit', 'cursor'}.contains(k),
+        (k) => !{
+          'iatas',
+          'region',
+          'neighbors',
+          'limit',
+          'cursor',
+          'pageCursor',
+        }.contains(k),
       )) {
         _cacheBytes -= _cache.remove(entry.key)!.body.length;
         _cacheTokens.remove(entry.key);

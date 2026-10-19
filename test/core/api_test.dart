@@ -142,4 +142,59 @@ void main() {
     );
     api.close();
   });
+
+  group('nextPageParams', () {
+    test('sends both cursors when the server returns both', () {
+      expect(
+        nextPageParams({
+          'items': [],
+          'hasMore': true,
+          'nextCursor': 5,
+          'nextPageCursor': 'v1:5000:ab',
+        }),
+        {'cursor': 5, 'pageCursor': 'v1:5000:ab'},
+      );
+    });
+    test(
+      'sends cursor alone for an older server or an unusable pageCursor',
+      () {
+        expect(nextPageParams({'hasMore': true, 'nextCursor': 5}), {
+          'cursor': 5,
+        });
+        expect(
+          nextPageParams({
+            'hasMore': true,
+            'nextCursor': 5,
+            'nextPageCursor': '',
+          }),
+          {'cursor': 5},
+        );
+        expect(
+          nextPageParams({
+            'hasMore': true,
+            'nextCursor': 5,
+            'nextPageCursor': 7,
+          }),
+          {'cursor': 5},
+        );
+      },
+    );
+    test('sends pageCursor alone when it is the only cursor', () {
+      expect(nextPageParams({'hasMore': true, 'nextPageCursor': 'v1:1:ab'}), {
+        'pageCursor': 'v1:1:ab',
+      });
+    });
+    test('is empty unless hasMore is true, or when no cursor is present', () {
+      expect(
+        nextPageParams({
+          'hasMore': false,
+          'nextCursor': 5,
+          'nextPageCursor': 'x',
+        }),
+        isEmpty,
+      );
+      expect(nextPageParams({'nextCursor': 5}), isEmpty);
+      expect(nextPageParams({'hasMore': true}), isEmpty);
+    });
+  });
 }
