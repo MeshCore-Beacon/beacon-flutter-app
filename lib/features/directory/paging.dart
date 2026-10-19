@@ -1,3 +1,4 @@
+import '../../core/api.dart';
 import '../../core/strings.dart';
 
 typedef DirectoryRow = Map<String, dynamic>;
@@ -16,6 +17,10 @@ Map<String, dynamic> nextDirectoryCursor(
   final items = directoryRows(response);
   if (items.isEmpty || (response is Map && response['hasMore'] == false)) {
     return {};
+  }
+  // /channels 400s on both; nodes and observers take both so a rollback still pages.
+  if ({'nodes', 'observers'}.contains(kind) && response is Map) {
+    return nextPageParams(Map<String, dynamic>.from(response));
   }
   if (response is Map) {
     if (response['nextPageCursor'] case final String cursor
