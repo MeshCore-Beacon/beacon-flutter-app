@@ -372,7 +372,11 @@ class _DirectoryScreenState extends State<DirectoryScreen>
           ? {...observerQuery, ...requestCursor!, 'limit': 50}
           : {...query(), 'sort': sortBy == 'recent' ? 'traffic' : 'name'};
       final response = object(
-        await widget.api.get('/observers/directory', params),
+        await retryingGet(
+          widget.api,
+          fresh: true,
+          isCurrent: () => mounted && g == generation,
+        )('/observers/directory', params),
       );
       if (!mounted || g != generation) return;
       if (response['items'] is! List ||
@@ -459,6 +463,7 @@ class _DirectoryScreenState extends State<DirectoryScreen>
       return loadObservers(more: more);
     }
     final g = ++generation;
+    bool current() => mounted && g == generation;
     final routeSearch =
         widget.kind == 'routes' &&
         from.text.trim().isNotEmpty &&
@@ -480,9 +485,11 @@ class _DirectoryScreenState extends State<DirectoryScreen>
           final seen = <String>{};
           do {
             final page =
-                await (more || live || fresh
-                    ? widget.api.get
-                    : widget.api.getCached)('/channels', {
+                await retryingGet(
+                  widget.api,
+                  fresh: more || live || fresh,
+                  isCurrent: current,
+                )('/channels', {
                   ...widget.region,
                   'limit': 200,
                   'keyKnown': 'true',
@@ -502,9 +509,11 @@ class _DirectoryScreenState extends State<DirectoryScreen>
         }
         final wantOthers = showOtherChannels || filters['keyKnown'] == 'false';
         final other = wantOthers
-            ? await (more || live || fresh
-                  ? widget.api.get
-                  : widget.api.getCached)('/channels', {
+            ? await retryingGet(
+                widget.api,
+                fresh: more || live || fresh,
+                isCurrent: current,
+              )('/channels', {
                 ...widget.region,
                 'limit': 50,
                 'keyKnown': 'false',
@@ -532,9 +541,11 @@ class _DirectoryScreenState extends State<DirectoryScreen>
         for (final area in areas) {
           if (more && !routeCursors.containsKey(area)) continue;
           final page =
-              await (more || live || fresh
-                  ? widget.api.get
-                  : widget.api.getCached)('/routes', {
+              await retryingGet(
+                widget.api,
+                fresh: more || live || fresh,
+                isCurrent: current,
+              )('/routes', {
                 ...query(),
                 'iata': area,
                 if (more) ...object(routeCursors[area]),
@@ -550,13 +561,11 @@ class _DirectoryScreenState extends State<DirectoryScreen>
         );
         response = {'items': combined, '_routeCursors': next};
       } else {
-        response =
-            await (more || live || fresh
-                ? widget.api.get
-                : widget.api.getCached)('/${widget.kind}', {
-              ...query(),
-              if (more) ...cursor,
-            });
+        response = await retryingGet(
+          widget.api,
+          fresh: more || live || fresh,
+          isCurrent: current,
+        )('/${widget.kind}', {...query(), if (more) ...cursor});
       }
       if (!mounted || g != generation) return;
       final batch = directoryRows(response);
@@ -634,11 +643,15 @@ class _DirectoryScreenState extends State<DirectoryScreen>
     // No iatas key at all means every area.
     final scope = {if (iatas.isNotEmpty) 'iatas': iatas.join(',')};
     Object? failure;
+    final g = generation;
+    final get = retryingGet(
+      widget.api,
+      fresh: fresh,
+      isCurrent: () => mounted && g == generation,
+    );
     Future<List<Json>> fetch(String path, Json params) async {
       try {
-        return rows(
-          await (fresh ? widget.api.get : widget.api.getCached)(path, params),
-        );
+        return rows(await get(path, params));
       } catch (e) {
         failure ??= e is ApiException && e.status == 503
             ? const ApiException(

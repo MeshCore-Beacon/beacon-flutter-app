@@ -148,9 +148,11 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
       final value = widget.kind == 'route'
           ? object(jsonDecode(widget.id))
           : object(
-              await (fresh ? widget.api.get : widget.api.getCached)(
-                '/${widget.kind}s/${Uri.encodeComponent(widget.id)}',
-              ),
+              await retryingGet(
+                widget.api,
+                fresh: fresh,
+                isCurrent: () => mounted && g == generation,
+              )('/${widget.kind}s/${Uri.encodeComponent(widget.id)}'),
             );
       if (!mounted || g != generation) return;
       setState(() {
@@ -190,9 +192,11 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
 
   Future<void> loadNeighbors(int g, {bool fresh = false}) async {
     try {
-      final n = await (fresh ? widget.api.get : widget.api.getCached)(
-        '/nodes/${Uri.encodeComponent(widget.id)}/neighbors',
-      );
+      final n = await retryingGet(
+        widget.api,
+        fresh: fresh,
+        isCurrent: () => mounted && g == generation,
+      )('/nodes/${Uri.encodeComponent(widget.id)}/neighbors');
       if (mounted && g == generation) {
         setState(() {
           neighbors = rows(n);
@@ -266,9 +270,12 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
       final response =
           widget.kind == 'channel' && emptyDirectoryRegion(widget.region)
           ? []
-          : await (more || live || fresh
-                ? widget.api.get
-                : widget.api.getCached)(path, params);
+          : await retryingGet(
+              widget.api,
+              fresh: more || live || fresh,
+              isCurrent: () =>
+                  mounted && g == generation && hg == historyGeneration,
+            )(path, params);
       if (!mounted || g != generation || hg != historyGeneration) return;
       setState(() {
         history = more || live

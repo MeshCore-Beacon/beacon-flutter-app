@@ -9,6 +9,18 @@ List<DirectoryRow> directoryRows(dynamic value) {
       : [];
 }
 
+/// A GET that waits out a busy server, as web's queries do; Retry stays the fallback.
+Future<dynamic> Function(String path, [Map<String, dynamic> params])
+retryingGet(
+  ApiClient api, {
+  required bool fresh,
+  required bool Function() isCurrent,
+}) =>
+    (path, [params = const {}]) => retryTransient(
+      () => (fresh ? api.get : api.getCached)(path, params),
+      isCurrent: isCurrent,
+    );
+
 Map<String, dynamic> nextDirectoryCursor(
   String kind,
   dynamic response,
