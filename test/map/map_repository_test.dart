@@ -288,4 +288,39 @@ void main() {
     expect(pages.last.map((n) => n['id']), ['a', 'b']);
     api.close();
   });
+
+  test('an invalid pageCursor falls back to cursor alone', () async {
+    final seen = <Map<String, String>>[];
+    final api = ApiClient(
+      Uri.parse('https://example.org'),
+      client: MockClient((r) async {
+        seen.add(r.url.queryParameters);
+        return switch (seen.length) {
+          1 => http.Response(
+            jsonEncode({
+              'items': [
+                {'id': 'a'},
+              ],
+              'hasMore': true,
+              'nextCursor': 5,
+              'nextPageCursor': pc,
+            }),
+            200,
+          ),
+          2 => http.Response(
+            '{"error":{"code":"bad_request","message":"invalid pageCursor"}}',
+            400,
+          ),
+          _ => http.Response('{"items":[{"id":"b"}],"hasMore":false}', 200),
+        };
+      }),
+    );
+    final pages = await loadMapNodes(api, {}).toList();
+    expect(seen.length, 3);
+    expect(seen[1]['pageCursor'], pc);
+    expect(seen[2].containsKey('pageCursor'), false);
+    expect(seen[2]['cursor'], '5');
+    expect(pages.last.map((n) => n['id']), ['a', 'b']);
+    api.close();
+  });
 }

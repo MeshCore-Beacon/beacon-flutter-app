@@ -170,12 +170,13 @@ class _PacketScreenState extends State<PacketScreen> {
       };
       // Waits out a busy server with the same params; loaded rows stay.
       final response = object(
-        await retryTransient(
-          () => (older ? widget.api.getCached : widget.api.get)(
-            '/packets',
-            params,
+        await withPageCursorFallback(
+          params,
+          (p) => retryTransient(
+            () =>
+                (older ? widget.api.getCached : widget.api.get)('/packets', p),
+            isCurrent: () => mounted && request == generation,
           ),
-          isCurrent: () => mounted && request == generation,
         ),
       );
       if (!mounted || request != generation) return;

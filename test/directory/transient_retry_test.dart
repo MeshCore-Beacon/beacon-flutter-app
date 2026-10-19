@@ -130,4 +130,63 @@ void main() {
     expect(find.text('busy'), findsNothing);
     expect(find.text('Retry'), findsNothing);
   });
+
+  testWidgets(
+    'directory falls back to cursor alone after an invalid pageCursor',
+    (tester) async {
+      final seen = <Map<String, String>>[];
+      final api = ApiClient(
+        Uri.parse('https://test.invalid'),
+        client: MockClient((r) async {
+          if (!r.url.path.endsWith('/nodes')) return http.Response('[]', 200);
+          seen.add(r.url.queryParameters);
+          return switch (seen.length) {
+            1 => http.Response(
+              jsonEncode({
+                'items': [
+                  for (var i = 0; i < 50; i++)
+                    {'id': 'n$i', 'name': 'Node $i', 'lastSeen': 1000 - i},
+                ],
+                'hasMore': true,
+                'nextCursor': 950,
+                'nextPageCursor': 'v1:950:n49',
+              }),
+              200,
+            ),
+            2 => http.Response(
+              '{"error":{"code":"bad_request","message":"invalid pageCursor"}}',
+              400,
+            ),
+            _ => http.Response(
+              jsonEncode({
+                'items': [
+                  {'id': 'z', 'name': 'Zulu', 'lastSeen': 1},
+                ],
+                'hasMore': false,
+              }),
+              200,
+            ),
+          };
+        }),
+      );
+      await tester.pumpWidget(directory(api));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('Load older'),
+        500,
+        scrollable: find
+            .byWidgetPredicate(
+              (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
+            )
+            .first,
+      );
+      await tester.tap(find.text('Load older'));
+      await tester.pumpAndSettle();
+      expect(seen.length, 3);
+      expect(seen[1]['pageCursor'], 'v1:950:n49');
+      expect(seen[2].containsKey('pageCursor'), false);
+      expect(seen[2]['cursor'], '950');
+      expect(find.text('invalid pageCursor'), findsNothing);
+    },
+  );
 }

@@ -57,6 +57,25 @@ Future<T?> retryTransient<T>(
   }
 }
 
+/// Runs [request] with [params]; a 400 "invalid pageCursor" is retried once with the
+/// legacy cursor alone. Without a cursor, dropping it would restart at page 1.
+Future<T> withPageCursorFallback<T>(
+  Map<String, dynamic> params,
+  Future<T> Function(Map<String, dynamic> params) request,
+) async {
+  try {
+    return await request(params);
+  } on ApiException catch (e) {
+    if (e.status != 400 ||
+        e.message != 'invalid pageCursor' ||
+        params['pageCursor'] == null ||
+        params['cursor'] == null) {
+      rethrow;
+    }
+    return request({...params}..remove('pageCursor'));
+  }
+}
+
 /// Reads a GET body, giving up once it passes [maxBytes] so a hostile
 /// server can't exhaust memory.
 Future<http.Response> getLimited(
@@ -348,7 +367,9 @@ class ApiClient {
           _limitedUntil = _now().add(delay);
         } else if (response.statusCode == 503) {
           // A busy 503 is per request, so it must not block other screens.
-          delay = _retryAfter(header);
+          final wait = _retryAfter(header);
+          const most = Duration(seconds: 30);
+          delay = wait == null || wait < most ? wait : most;
         }
         throw ApiException(
           textOf(

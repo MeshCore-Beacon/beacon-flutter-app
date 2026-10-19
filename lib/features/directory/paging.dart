@@ -16,9 +16,12 @@ retryingGet(
   required bool fresh,
   required bool Function() isCurrent,
 }) =>
-    (path, [params = const {}]) => retryTransient(
-      () => (fresh ? api.get : api.getCached)(path, params),
-      isCurrent: isCurrent,
+    (path, [params = const {}]) => withPageCursorFallback(
+      params,
+      (p) => retryTransient(
+        () => (fresh ? api.get : api.getCached)(path, p),
+        isCurrent: isCurrent,
+      ),
     );
 
 Map<String, dynamic> nextDirectoryCursor(

@@ -334,4 +334,94 @@ void main() {
       expect(isTransient(StateError('x')), false);
     });
   });
+
+  test(
+    'a 503 Retry-After waits at most 30 s; a 429 keeps its 300 s cap',
+    () async {
+      final slow = busy([], 503, {'retry-after': '120'});
+      await expectLater(
+        slow.get('/packets'),
+        throwsA(
+          isA<ApiException>().having(
+            (e) => e.retryAfter,
+            'retryAfter',
+            const Duration(seconds: 30),
+          ),
+        ),
+      );
+      final limited = busy([], 429, {'retry-after': '120'});
+      await expectLater(
+        limited.get('/packets'),
+        throwsA(
+          isA<ApiException>().having(
+            (e) => e.retryAfter,
+            'retryAfter',
+            const Duration(seconds: 120),
+          ),
+        ),
+      );
+      slow.close();
+      limited.close();
+    },
+  );
+
+  group('withPageCursorFallback', () {
+    const invalid = ApiException('invalid pageCursor', status: 400);
+    test(
+      'retries once with cursor alone after an invalid pageCursor',
+      () async {
+        final sent = <Map<String, dynamic>>[];
+        final result = await withPageCursorFallback(
+          {'limit': 50, 'cursor': 5, 'pageCursor': 'v1:x'},
+          (p) async {
+            sent.add(p);
+            if (sent.length == 1) throw invalid;
+            return 'page';
+          },
+        );
+        expect(result, 'page');
+        expect(sent, [
+          {'limit': 50, 'cursor': 5, 'pageCursor': 'v1:x'},
+          {'limit': 50, 'cursor': 5},
+        ]);
+      },
+    );
+    test('shows the error when the legacy request also fails', () async {
+      const other = ApiException('boom', status: 500);
+      var n = 0;
+      await expectLater(
+        withPageCursorFallback<String>({'cursor': 5, 'pageCursor': 'v1:x'}, (
+          p,
+        ) async {
+          n++;
+          throw n == 1 ? invalid : other;
+        }),
+        throwsA(same(other)),
+      );
+      expect(n, 2);
+    });
+    test(
+      'leaves other errors, and pageCursor without a cursor, alone',
+      () async {
+        for (final (params, error) in [
+          (
+            <String, dynamic>{'cursor': 5, 'pageCursor': 'v1:x'},
+            const ApiException('invalid cursor', status: 400),
+          ),
+          (<String, dynamic>{'pageCursor': 'v1:x'}, invalid),
+          (<String, dynamic>{'cursor': 5}, invalid),
+        ]) {
+          var n = 0;
+          await expectLater(
+            withPageCursorFallback<String>(params, (p) async {
+              n++;
+              throw error;
+            }),
+            throwsA(same(error)),
+          );
+          expect(n, 1);
+        }
+      },
+    );
+  });
 }

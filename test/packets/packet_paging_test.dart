@@ -156,4 +156,28 @@ void main() {
     }, (q, n) => page(['00000001']));
     expect(q, isEmpty);
   });
+
+  testWidgets('an invalid pageCursor falls back to cursor alone', (
+    tester,
+  ) async {
+    final q = await pump(
+      tester,
+      {},
+      (q, n) => switch (n) {
+        1 => page(['00000001'], more: true),
+        2 => http.Response(
+          '{"error":{"code":"bad_request","message":"invalid pageCursor"}}',
+          400,
+        ),
+        _ => page(['00000002']),
+      },
+    );
+    await older(tester);
+    expect(q.length, 3);
+    expect(q[1]['pageCursor'], pc);
+    expect(q[2].containsKey('pageCursor'), false);
+    expect(q[2]['cursor'], '999');
+    expect(find.text('00000002'), findsOneWidget);
+    expect(find.text('invalid pageCursor'), findsNothing);
+  });
 }

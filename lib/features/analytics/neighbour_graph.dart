@@ -21,14 +21,12 @@ Future<List<Map<String, dynamic>>?> loadNeighbourNodes(
   Map<String, Object> next = {};
   do {
     if (isCurrent?.call() == false) return null;
-    final response = await retryTransient(
-      () => api.getCached('/nodes', {
-        ...region,
-        'neighbors': 'true',
-        'limit': 500,
-        ...next,
-      }),
-      isCurrent: isCurrent,
+    final response = await withPageCursorFallback(
+      {...region, 'neighbors': 'true', 'limit': 500, ...next},
+      (p) => retryTransient(
+        () => api.getCached('/nodes', p),
+        isCurrent: isCurrent,
+      ),
     );
     if (response == null || isCurrent?.call() == false) return null;
     for (final n in rows(response)) {
