@@ -75,7 +75,14 @@ class TelemetrySharing {
     DateTime Function()? now,
     this.environment = true,
   }) : _http = client ?? http.Client(),
-       _storage = storage ?? const FlutterSecureStorage(),
+       _storage =
+           storage ??
+           const FlutterSecureStorage(
+             aOptions: AndroidOptions(resetOnError: false),
+             iOptions: IOSOptions(
+               accessibility: KeychainAccessibility.unlocked_this_device,
+             ),
+           ),
        _now = now ?? DateTime.now;
   static TelemetrySharing? _owner;
   final BeaconInstance instance;
@@ -127,6 +134,8 @@ class TelemetrySharing {
     }
     _owner = this;
     _running = true;
+    _busy = true;
+    _idle = Completer<void>();
     try {
       final raw = await _storage.read(key: _storageKey);
       if (raw == null) {
@@ -159,8 +168,17 @@ class TelemetrySharing {
       await _enroll(); // A missing/unsupported intake blocks RF, rather than collecting unsendable data.
       status = 'Sharing enabled. Checking the companion before the first poll.';
     } catch (_) {
-      await stop();
+      _running = false;
+      _http.close();
+      await radio.close();
+      for (final target in targets) {
+        target.password = '';
+      }
       rethrow;
+    } finally {
+      _busy = false;
+      _idle!.complete();
+      if (!_running && identical(_owner, this)) _owner = null;
     }
   }
 

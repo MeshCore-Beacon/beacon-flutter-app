@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -127,6 +128,66 @@ class FakeRadio {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   final instance = BeaconInstance.create('Test', 'https://telemetry.example');
+
+  test('corrupt saved policy stays fail-closed and is never reset', () async {
+    FlutterSecureStorage.setMockInitialValues({
+      'beacon.telemetry.v1': 'unreadable',
+    });
+    final fake = FakeRadio();
+    await fake.open();
+    addTearDown(fake.close);
+    final radio = await fake.connect();
+    final sharing = TelemetrySharing(instance, radio, [
+      PollTarget((await radio.contacts()).single),
+    ], 6);
+    await expectLater(sharing.start(), throwsFormatException);
+    expect(fake.rf, 0);
+    expect(
+      await const FlutterSecureStorage().read(key: 'beacon.telemetry.v1'),
+      'unreadable',
+    );
+  });
+
+  test(
+    'stopping enrollment holds the shared storage lease until startup settles',
+    () async {
+      FlutterSecureStorage.setMockInitialValues({});
+      final fake = FakeRadio();
+      await fake.open();
+      addTearDown(fake.close);
+      final radio = await fake.connect();
+      final pending = Completer<http.Response>(), requested = Completer<void>();
+      final sharing = TelemetrySharing(
+        instance,
+        radio,
+        [PollTarget((await radio.contacts()).single)],
+        6,
+        client: MockClient((_) {
+          requested.complete();
+          return pending.future;
+        }),
+      );
+      final started = expectLater(
+        sharing.start(),
+        throwsA(isA<IntakeFailure>()),
+      );
+      await requested.future;
+      var stopped = false;
+      final stop = sharing.stop().then((_) {
+        stopped = true;
+      });
+      await Future<void>.delayed(Duration.zero);
+      expect(stopped, false);
+      final replacement = TelemetrySharing(instance, radio, [], 6);
+      await expectLater(replacement.start(), throwsStateError);
+      await replacement.stop();
+      pending.complete(http.Response('{}', 503));
+      await started;
+      await stop;
+      expect(stopped, true);
+      expect(fake.rf, 0);
+    },
+  );
 
   test('unsupported intake blocks all RF', () async {
     FlutterSecureStorage.setMockInitialValues({});

@@ -195,7 +195,8 @@ Before removing draft status:
   signing. This PR preserves the existing declaration; it does not make a legal
   classification or authorize App Store/TestFlight distribution.
 - Audit secure-storage backup/restore behavior. Android auto-backup is disabled;
-  iOS uses the platform keychain and requires signing with the included entitlement.
+  decryption errors must not reset Android's saved identity or polling limits.
+  iOS uses an unlocked, device-only keychain item and requires signing with the included entitlement.
 - Agree on multi-client leases and controlled cohort limits before broad rollout.
 
 BLE uses Nordic UART service 6e400001 (RX 6e400002, TX 6e400003). Commands
