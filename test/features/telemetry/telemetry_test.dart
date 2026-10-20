@@ -138,6 +138,35 @@ void main() {
     );
   });
 
+  test(
+    'a one-hour interval cannot starve repeaters beyond the radio budget',
+    () {
+      final policy = PollPolicy({});
+      final now = DateTime.utc(2026);
+      policy.reserve('radio', 'first', 1, now);
+      policy.reserve('radio', 'second', 1, now.add(const Duration(minutes: 2)));
+      expect(
+        policy.nextNode(
+          'radio',
+          ['first', 'second', 'third'],
+          1,
+          now.add(const Duration(hours: 1)),
+        ),
+        'third',
+      );
+      policy.reserve('radio', 'third', 1, now.add(const Duration(hours: 1)));
+      expect(
+        policy.nextNode(
+          'radio',
+          ['first', 'second', 'third'],
+          1,
+          now.add(const Duration(hours: 1, minutes: 3)),
+        ),
+        'first',
+      );
+    },
+  );
+
   test('challenge binds the selected instance, radio and client before signing', () {
     final now = DateTime.utc(2026);
     final claims = {

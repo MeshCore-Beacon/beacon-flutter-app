@@ -315,22 +315,21 @@ class TelemetrySharing {
         return;
       }
       final policy = PollPolicy(_state['policy'] as Map<String, dynamic>);
-      PollTarget? target;
-      for (final candidate in targets) {
-        if (_unavailable.contains(candidate.contact.key)) continue;
-        final reason = policy.blocked(
-          radio.radioKey!,
-          candidate.contact.key,
-          now,
-          intervalHours: hours,
-        );
-        if (reason == null) {
-          target = candidate;
-          break;
-        }
-        status = reason;
+      final next = policy.nextNode(
+        radio.radioKey!,
+        targets
+            .map((t) => t.contact.key)
+            .where((key) => !_unavailable.contains(key)),
+        hours,
+        now,
+      );
+      if (next == null) {
+        status =
+            'Waiting for a repeater interval or the shared companion budget.';
+        return;
       }
-      if (target == null) return;
+      // Oldest-attempt-first prevents short intervals from starving later selections.
+      final target = targets.firstWhere((t) => t.contact.key == next);
       final key = target.contact.key;
       final contacts = await radio.contacts();
       // Firmware matches pending login by four bytes; reject even earlier ambiguity than its six-byte push.

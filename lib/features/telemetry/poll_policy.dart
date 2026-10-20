@@ -3,6 +3,28 @@ class PollPolicy {
   PollPolicy(this.state);
   final Map<String, dynamic> state;
 
+  String? nextNode(
+    String radio,
+    Iterable<String> selected,
+    int hours,
+    DateTime now,
+  ) {
+    final nodes =
+        (state[radio] as Map<String, dynamic>?)?['nodes']
+            as Map<String, dynamic>?;
+    final candidates = selected
+        .where(
+          (node) => blocked(radio, node, now, intervalHours: hours) == null,
+        )
+        .toList();
+    candidates.sort(
+      (a, b) => ((nodes?[a]?['at'] as int?) ?? 0).compareTo(
+        (nodes?[b]?['at'] as int?) ?? 0,
+      ),
+    );
+    return candidates.isEmpty ? null : candidates.first;
+  }
+
   String? blocked(
     String radio,
     String node,
