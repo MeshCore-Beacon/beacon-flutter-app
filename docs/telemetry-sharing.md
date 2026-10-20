@@ -144,6 +144,8 @@ hardware, repeater permission provenance, sensor calibration or measurement trut
 Display these as attributed community reports, separate from observer telemetry.
 No passwords, private keys, messages, raw packets, channel secrets or GPS enter
 the report. TCP companion traffic itself is unencrypted: use a trusted LAN.
+Raw BLE transport logging is disabled before connecting because command frames
+can contain repeater passwords.
 
 ## MQTT and backend adoption
 

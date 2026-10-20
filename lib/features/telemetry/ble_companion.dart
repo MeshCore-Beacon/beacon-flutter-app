@@ -53,6 +53,8 @@ class BleCompanion {
   bool _closed = false, _scanning = false;
 
   Future<void> _permission() async {
+    // The plugin defaults to debug logging; companion writes can contain passwords.
+    if (_android || _ios) await FlutterBluePlus.setLogLevel(LogLevel.none);
     if (_android) {
       final version = (await DeviceInfoPlugin().androidInfo).version.sdkInt;
       final permissions = version >= 31
