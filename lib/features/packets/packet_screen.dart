@@ -523,7 +523,8 @@ class _PacketScreenState extends State<PacketScreen> {
                     padding: const EdgeInsets.all(16),
                     child: Column(
                       children: [
-                        if (data.isEmpty && !loading)
+                        // A failed load is not an empty result; the error above says so.
+                        if (data.isEmpty && !loading && error == null)
                           Text(tr('No packets match the current filters.')),
                         if (hasMore)
                           OutlinedButton(
