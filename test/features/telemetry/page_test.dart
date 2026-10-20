@@ -26,6 +26,19 @@ void main() {
       await tester.pump();
       expect(find.text('Companion LAN address'), findsOneWidget);
       expect(find.text('5000'), findsOneWidget);
+      // An OS permission sheet before a radio is connected is local setup,
+      // not a background collection session that should be cancelled.
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(ListView), const Offset(0, -600));
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          'Sharing stopped; cooldowns and pending reports are retained.',
+        ),
+        findsNothing,
+      );
       for (final state in [
         AppLifecycleState.inactive,
         AppLifecycleState.hidden,

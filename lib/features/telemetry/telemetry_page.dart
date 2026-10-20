@@ -42,7 +42,15 @@ class _TelemetryPageState extends State<TelemetryPage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed) unawaited(_stop());
+    // Permission/pairing sheets can briefly make the app inactive. Allow local
+    // setup to finish, but stop active collection and every actual background exit.
+    if (state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached ||
+        (state == AppLifecycleState.inactive &&
+            (_radio != null || _sharing != null))) {
+      unawaited(_stop());
+    }
   }
 
   @override
