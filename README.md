@@ -14,6 +14,10 @@ all nine Analytics sections. It uses native Flutter widgets and MapLibre Native.
 See [development validation](docs/development.md) for test coverage, install
 commands, and remaining differences from Beacon-Web.
 
+An optional [telemetry-sharing alpha](docs/telemetry-sharing.md) supports BLE and
+Wi-Fi/TCP companions with a compatible Beacon intake. It is foreground-only and
+keeps the headless Collector as an alternate client.
+
 ## Local Development
 
 Install the [Flutter SDK](https://docs.flutter.dev/get-started/install), then:

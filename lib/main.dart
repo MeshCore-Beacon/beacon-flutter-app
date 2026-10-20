@@ -11,6 +11,9 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Future.wait([BeaconTheme.load(), loadStrings()]);
   LicenseRegistry.addLicense(() async* {
+    yield LicenseEntryWithLineBreaks([
+      'MeshMapper',
+    ], await rootBundle.loadString('docs/licenses/meshmapper-MIT.txt'));
     for (final family in ['Inter', 'JetBrainsMono']) {
       yield LicenseEntryWithLineBreaks([
         family,
