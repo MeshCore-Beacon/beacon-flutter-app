@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:beacon/core/api.dart';
 import 'package:beacon/features/directory/directory.dart';
+import 'package:beacon/features/packets/packet_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -35,7 +36,115 @@ Widget directory(ApiClient api) => MaterialApp(
   ),
 );
 
+// Lets the client's three transient retries (1 s each) run out, then settles.
+Future<void> exhaustRetries(WidgetTester tester) async {
+  for (var i = 0; i < 4; i++) {
+    await tester.pump(const Duration(seconds: 1));
+  }
+  await tester.pumpAndSettle();
+}
+
 void main() {
+  testWidgets(
+    'region packets show Retry, not an empty list, once 503s run out',
+    (tester) async {
+      var healthy = false;
+      final api = ApiClient(
+        Uri.parse('https://test.invalid'),
+        client: MockClient((r) async {
+          if (!r.url.path.endsWith('/packets')) return http.Response('[]', 200);
+          return healthy
+              ? http.Response(
+                  jsonEncode({
+                    'items': [
+                      {
+                        'packetHash': 'aa11',
+                        'payloadType': 4,
+                        'lastHeardAt': 1,
+                      },
+                    ],
+                    'hasMore': false,
+                  }),
+                  200,
+                )
+              : busy(503, '1');
+        }),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: PacketScreen(
+              api: api,
+              region: const {'iatas': 'YYZ'},
+              events: null,
+              onOpen: (_, _) {},
+            ),
+          ),
+        ),
+      );
+      await exhaustRetries(tester);
+      expect(find.text('Retry'), findsOneWidget);
+      expect(find.text('No packets match the current filters.'), findsNothing);
+      healthy = true;
+      await tester.tap(find.text('Retry'));
+      await tester.pumpAndSettle();
+      expect(find.text('Retry'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'region channel messages show Retry, not an empty list, once 503s run out',
+    (tester) async {
+      var healthy = false;
+      final api = ApiClient(
+        Uri.parse('https://test.invalid'),
+        client: MockClient((r) async {
+          final path = r.url.path;
+          if (path.endsWith('/scopes')) return http.Response('[]', 200);
+          if (!path.endsWith('/messages')) {
+            return http.Response('{"id":1,"name":"Public"}', 200);
+          }
+          return healthy
+              ? http.Response(
+                  jsonEncode({
+                    'items': [
+                      {
+                        'id': 1,
+                        'packetHash': 'aa',
+                        'senderName': 'alice',
+                        'content': 'hello',
+                        'sentAt': 1000,
+                      },
+                    ],
+                    'hasMore': false,
+                  }),
+                  200,
+                )
+              : busy(503, '1');
+        }),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: EntityDetailScreen(
+            kind: 'channel',
+            id: '1',
+            api: api,
+            region: const {'iatas': 'YYZ'},
+            onOpen: (_, _) {},
+          ),
+        ),
+      );
+      await exhaustRetries(tester);
+      expect(find.text('busy'), findsOneWidget);
+      expect(find.text('No messages in this scope.'), findsNothing);
+      healthy = true;
+      await tester.tap(find.text('Retry'));
+      await tester.pumpAndSettle();
+      expect(find.text('Retry'), findsNothing);
+      expect(find.textContaining('hello'), findsOneWidget);
+    },
+  );
+
   testWidgets('directory waits out a busy 503 and shows the page', (
     tester,
   ) async {

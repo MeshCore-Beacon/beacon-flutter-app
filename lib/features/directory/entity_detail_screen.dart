@@ -884,7 +884,8 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
   ];
 
   List<Widget> channelMessages() => [
-    if (history.isEmpty && !loadingHistory)
+    // A failed load is not an empty scope; the failure row says so.
+    if (history.isEmpty && !loadingHistory && historyError == null)
       const Padding(
         padding: EdgeInsets.all(20),
         child: DirectoryText('No messages in this scope.'),
