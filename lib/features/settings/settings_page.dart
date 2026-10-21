@@ -7,6 +7,7 @@ import '../../core/preferences.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
 import '../../core/version_gate.dart';
+import '../telemetry/session.dart';
 import '../telemetry/telemetry_page.dart';
 
 /// "Version 0.2.0" for releases, "Beta build 1791597587" for dev/beta builds.
@@ -74,8 +75,10 @@ class SettingsPage extends StatelessWidget {
                 ? null
                 : () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
-                      builder: (_) =>
-                          TelemetryPage(instance: preferences.active!),
+                      builder: (_) => TelemetryPage(
+                        instance: preferences.active!,
+                        session: TelemetryScope.of(context),
+                      ),
                     ),
                   ),
           ),

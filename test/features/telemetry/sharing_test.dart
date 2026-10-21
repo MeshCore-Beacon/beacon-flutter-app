@@ -21,6 +21,7 @@ class FakeRadio {
   List<int> signed = [];
   int uptime = 100, queue = 0;
   bool learned = false;
+  void Function(int)? onCommand;
 
   Future<void> open() async {
     server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
@@ -35,6 +36,7 @@ class FakeRadio {
           final command = buffer.sublist(3, length + 3);
           buffer.removeRange(0, length + 3);
           commands.add(command[0]);
+          onCommand?.call(command[0]);
           void send(List<int> frame) =>
               socket.add([62, frame.length, 0, ...frame]);
           List<int> contact() {
@@ -296,6 +298,11 @@ void main() {
     );
     addTearDown(sharing.stop);
     await sharing.start();
+    sharing.pause();
+    await sharing.step();
+    expect(fake.rf, 0);
+    expect(radio.closed, isFalse);
+    sharing.resume();
     await sharing.step();
     expect(fake.rf, 0);
     now = now.add(const Duration(seconds: 20));
@@ -317,6 +324,20 @@ void main() {
     expect(sharing.queued, 0);
     expect(sharing.accepted, 1);
     expect(reports[0], reports[1]);
+    // Stop during login must not start status/environment requests. Resuming
+    // keeps the interval reserved before that already-transmitted login.
+    now = now.add(const Duration(hours: 6));
+    fake.uptime += 21600;
+    fake.onCommand = (code) {
+      if (code == 26) sharing.pause();
+    };
+    await sharing.step();
+    expect(fake.rf, 4);
+    expect(sharing.paused, isTrue);
+    expect(radio.closed, isFalse);
+    sharing.resume();
+    await sharing.step();
+    expect(fake.rf, 4);
     await sharing.stop();
     expect(radio.closed, true);
   });

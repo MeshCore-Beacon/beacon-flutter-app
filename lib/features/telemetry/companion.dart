@@ -233,10 +233,13 @@ class Companion {
   late final StreamSubscription<List<int>> _subscription;
   bool closed = false, _busy = false;
   Future<void>? _closing;
+  final _closed = Completer<void>();
+  Future<void> get whenClosed => _closed.future;
   String? radioKey;
 
   Future<void> close() {
     if (_closing != null) return _closing!;
+    if (!_closed.isCompleted) _closed.complete();
     closed = true;
     return _closing = () async {
       try {

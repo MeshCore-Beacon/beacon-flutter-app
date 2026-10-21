@@ -63,7 +63,7 @@ class PollTarget {
   final bool requireAdmin;
 }
 
-/// A visible, foreground session. Intake and radio ownership are prerequisites to RF.
+/// A user-started session. Intake and exclusive radio ownership are prerequisites to RF.
 class TelemetrySharing {
   TelemetrySharing(
     this.instance,
@@ -101,6 +101,18 @@ class TelemetrySharing {
   String? _authorization;
   DateTime? _authorizationUntil;
   bool _running = false, _busy = false;
+  bool _paused = false;
+  bool get paused => _paused;
+  Future<void> waitForIdle() => _idle?.future ?? Future<void>.value();
+  void pause() {
+    _paused = true;
+  }
+
+  void resume() {
+    // A stop during an exchange must finish before the next explicit resume.
+    if (_running && !_busy && !radio.closed) _paused = false;
+  }
+
   Completer<void>? _idle;
   ({int queue, int uptime, int tx, int rx})? _lastStats;
   DateTime? _statsAt;
@@ -113,7 +125,9 @@ class TelemetrySharing {
   Future<void> _save() =>
       _storage.write(key: _storageKey, value: jsonEncode(_state));
   void _checkActive() {
-    if (!_running || radio.closed) throw StateError('Sharing stopped');
+    if (!_running || _paused || radio.closed) {
+      throw StateError('Sharing stopped');
+    }
   }
 
   Future<void> start() async {
@@ -278,7 +292,7 @@ class TelemetrySharing {
   }
 
   Future<void> step() async {
-    if (!_running || _busy) return;
+    if (!_running || _paused || _busy) return;
     _busy = true;
     _idle = Completer<void>();
     try {
@@ -297,6 +311,7 @@ class TelemetrySharing {
         return;
       }
       final stats = await radio.stats();
+      _checkActive();
       final previous = _lastStats, at = _statsAt;
       _lastStats = stats;
       _statsAt = now;
@@ -332,6 +347,7 @@ class TelemetrySharing {
       final target = targets.firstWhere((t) => t.contact.key == next);
       final key = target.contact.key;
       final contacts = await radio.contacts();
+      _checkActive();
       // Firmware matches pending login by four bytes; reject even earlier ambiguity than its six-byte push.
       if (contacts.where((c) => c.key.startsWith(key.substring(0, 8))).length !=
           1) {
@@ -359,14 +375,17 @@ class TelemetrySharing {
       // First use floods once. A failed route is rediscovered only after the full interval.
       if (!preferLearned && contact.hops != null) {
         await radio.resetPath(key);
+        _checkActive();
         contact = await radio.contact(key);
       }
+      _checkActive();
       final loginRoute = contact.hops == null ? 'flood' : 'direct';
       await radio.login(
         key,
         target.password,
         requireAdmin: target.requireAdmin,
       );
+      _checkActive();
       contact = await radio.contact(
         key,
       ); // Login can learn a route. Do not flood again if it did.
@@ -425,13 +444,13 @@ class TelemetrySharing {
         'signature': hexBytes(signed.bytes),
       });
       await _save();
-      if (!radio.closed) await _flush();
+      if (!radio.closed && !_paused && _running) await _flush();
       status = radio.closed
           ? 'Status report saved; reconnect to deliver it. Optional telemetry was unavailable.'
           : '${target.contact.name}: report accepted. Waiting for the next scheduled attempt.';
       if (radio.closed) _running = false;
     } catch (e) {
-      if (!_running) return;
+      if (!_running || _paused) return;
       if (e is IntakeFailure && e.status == 401) {
         _authorization = null;
       }

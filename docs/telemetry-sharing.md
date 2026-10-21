@@ -1,6 +1,6 @@
 # Companion telemetry sharing: research and draft integration
 
-Research snapshot: 20 October 2026. App base: `1fb479f97579defe069fae59cccff8fb92649eb0`.
+Research snapshot: 21 October 2026. App base: `1fb479f97579defe069fae59cccff8fb92649eb0`.
 This is a draft alpha, not a production rollout or a replacement for an always-on collector yet.
 
 ## What this adds
@@ -12,13 +12,70 @@ from one to 72 hours. Environmental sensors, including channel 2, are optional.
 The first attempt uses flood discovery; successful login can teach the companion
 a route used by the subsequent status/telemetry requests and future polls.
 
-The screen must remain open. Leaving it, locking/backgrounding the app, disconnecting,
-or stopping closes the companion connection. Reconnecting requires explicit action.
+The first selected repeater asks whether to allow Android background collection
+or collect only while using Beacon. The choice (including a refusal) is remembered
+and can be changed before the next session. Users may leave the setup screen while
+the app-owned session runs. Without the Android opt-in, backgrounding/locking the
+app closes the companion. Reconnecting always requires explicit action.
 Saved cooldowns and already collected reports survive a restart. Passwords do not.
 BLE discovery lists Nordic UART companions; select the radio and accept any OS pairing prompt.
 Wi-Fi/TCP requires its private LAN address and port. Both transports share identity,
 cooldowns, congestion checks, enrollment and delivery. There is no firmware installation, private-key export, radio console, packet forwarding,
-GPS upload or mobile background service in this draft.
+GPS upload or unattended restart after the app closes in this draft.
+
+### Android background collection
+
+The same BLE/TCP connection, Dart isolate, secure cooldown ledger and signed outbox
+continue under a native `connectedDevice` foreground service. There is no second
+engine, collector, scheduler budget or radio owner. The service starts from the
+visible app, after notification permission and before enrollment. Denied or muted
+notifications fail closed: choose foreground collection or enable notifications
+and reconnect. All RF still waits for successful intake enrollment.
+
+An ongoing, silent notification shows the transport and whether collection is
+preparing, active or stopped. Its optional expanded stats show selected repeater
+count, interval, accepted reports and pending reports. Stats visibility is remembered
+independently; the Android service notification itself is mandatory in this mode.
+No repeater names/keys, passwords, readings or server credentials enter the banner.
+Lock-screen content is private; system notification settings retain final control.
+
+- **Stop polling** pauses requests, preserves the companion connection and removes
+  the CPU wake lock. An already transmitted request may complete; no later RF step
+  starts after the pause is received. **Resume polling** in the app waits for the
+  current exchange to settle and preserves every saved interval/reservation.
+- **Disconnect BLE / Disconnect Wi-Fi** closes the companion and ends the service.
+  The app also has Stop and disconnect. Tapping the notification opens Beacon.
+- Loss of the companion closes the service. Changing Beacon instance, removing the
+  task, destroying the Flutter engine or stopping the app ends collection; there
+  is no boot receiver, sticky restart or automatic reconnection/flood retry.
+- Active polling holds a bounded, renewed partial CPU wake lock for screen-off
+  timers. It uses additional battery; stopping/disconnecting releases it. A missing
+  Dart heartbeat expires the service after 120–150 seconds of awake time. Paused
+  collection holds no wake lock. OEM power management, Android idle restrictions
+  or process death can still delay/stop a session; this is not an exact-time SLA.
+- Settings and collection notices are localized in English, French and Swedish.
+  Detailed collector diagnostic status strings retain the draft's English wording.
+
+iOS remains foreground-only. `bluetooth-central` event delivery does not grant
+arbitrary periodic Dart timers or continuous Wi-Fi work while suspended. This draft
+does not add that entitlement or claim iOS background parity. The headless Collector
+is still useful for unattended collection. The Beacon viewer's REST/WebSocket
+background behavior is unchanged.
+
+Sources: [Android BLE background work](https://developer.android.com/develop/connectivity/bluetooth/ble/background),
+[foreground service types](https://developer.android.com/develop/background-work/services/fgs/service-types),
+[notification permission](https://developer.android.com/develop/ui/compose/notifications/notification-permission),
+[wake-lock guidance](https://developer.android.com/develop/background-work/background-tasks/awake/wakelock/best-practices),
+[Apple Core Bluetooth background processing](https://developer.apple.com/library/archive/documentation/NetworkingInternetWeb/Conceptual/CoreBluetooth_concepts/CoreBluetoothBackgroundProcessingForIOSApps/PerformingTasksWhileYourAppIsInTheBackground.html).
+
+Background release qualification remains a physical-device gate: Android BLE and
+Wi-Fi with screen off for multiple intervals, notification permission/channel
+denial, pause during RF, resume without early repoll, disconnect/out-of-range,
+network switching, task swipe, force-stop, OEM battery controls and accessibility.
+Check notification content/actions and actual battery cost on Android 12, 13 and
+14+; verify iOS still closes on background. Unit/service tests and a debug APK
+build do not establish those hardware results. Play foreground-service declarations
+and platform/store review remain required before distribution.
 
 The current upstream Flutter app is an HTTP/WebSocket viewer. Its upstream backend
 does not expose the collected-node telemetry intake described below. A compatible
@@ -33,7 +90,7 @@ this yet. No production configuration is changed by this PR.
 
 | Area | Source finding | Draft choice |
 |---|---|---|
-| App architecture | Existing server picker, REST/WSS viewer, foreground lifecycle | Reuse the selected instance and settings flow; explicit foreground session |
+| App architecture | Existing server picker, REST/WSS viewer, foreground lifecycle | Reuse selected instance/settings; one app-owned collector with optional Android connected-device service |
 | Companion protocol | BLE values are complete frames; native TCP framing: `<`, uint16 LE length, command; replies use `>` | MeshMapper-pinned `flutter_blue_plus` 1.36.8 for BLE; `dart:io` for TCP; one shared protocol client |
 | Device signing | Firmware supports SIGN_START/DATA/FINISH (33/34/35) | Radio signs only the validated, domain-separated enrollment challenge; its private key stays on-device |
 | Identity | Contacts have full 32-byte keys; packed route length encodes 1/2/3-byte hashes | Full-key selection, preserve zero path bytes; reject malformed paths |
@@ -42,7 +99,7 @@ this yet. No production configuration is changed by this PR.
 | Sensors | Binary telemetry requests return all permitted LPP channels; guest permissions may expose base sensors only | Allowlist voltage, temperature, humidity, pressure and illuminance; preserve channel numbers and explicit zero; skip GPS |
 | MeshCore HA | Per-radio persisted flood/direct/message budgets; separate login and data costs | Conservative persisted budget covering all poll commands; no immediate route-healing retries |
 | MQTT | Observer packet forwarding is not the collected-repeater telemetry contract | Signed HTTPS first; dedicated MQTT topic/credentials/receipt work remains below |
-| Phones | iOS/Android can suspend background work; BLE requires platform permission and lifecycle qualification | Foreground-only BLE and Wi-Fi; retain Collector as an alternate always-on client |
+| Phones | iOS/Android can suspend background work; BLE requires platform permission and lifecycle qualification | Optional Android foreground service for BLE/Wi-Fi; iOS foreground-only; Collector remains an always-on alternate |
 
 Sources inspected at pinned revisions:
 
@@ -210,7 +267,8 @@ plus APP_START handshake. Contact frames require negotiated MTU of at least 151.
 We use notification-only `onValueReceived` to avoid replaying cached responses.
 Android 12+ requests scan/connect; older Android requests foreground location for
 scanning, but the app never collects coordinates. iOS requests Bluetooth permission.
-No background BLE modes or automatic RF reconnects are enabled.
+No iOS background BLE mode or automatic RF reconnect is enabled. Android uses the
+opt-in connected-device service described above with the existing BLE connection.
 
 ### MeshMapper compatibility review
 
@@ -240,5 +298,5 @@ removing a user's bond. Notifications use `onValueReceived`, not a replaying
 last-value stream. MTU too small for a complete contact fails before polling.
 These preserve transport compatibility while keeping the telemetry feature scoped.
 
-Browser BLE, USB from phones, background services and observer-firmware collection
-are separate work. Real iOS/Android qualification is still required.
+Browser BLE, USB from phones, iOS background scheduling and observer-firmware
+collection are separate work. Real iOS/Android qualification is still required.

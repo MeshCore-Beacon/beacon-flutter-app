@@ -15,8 +15,9 @@ See [development validation](docs/development.md) for test coverage, install
 commands, and remaining differences from Beacon-Web.
 
 An optional [telemetry-sharing alpha](docs/telemetry-sharing.md) supports BLE and
-Wi-Fi/TCP companions with a compatible Beacon intake. It is foreground-only and
-keeps the headless Collector as an alternate client.
+Wi-Fi/TCP companions with a compatible Beacon intake. Android offers opt-in
+background collection with a controllable notification; iOS stays foreground-only.
+The headless Collector remains an alternate client.
 
 ## Local Development
 

@@ -1,15 +1,74 @@
 import 'package:beacon/core/instance.dart';
+import 'package:beacon/core/preferences.dart';
+import 'package:beacon/features/telemetry/background.dart';
+import 'package:beacon/features/telemetry/background_choice.dart';
+import 'package:beacon/features/telemetry/session.dart';
 import 'package:beacon/features/telemetry/telemetry_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  testWidgets('first-node choice remembers refusal and can be changed later', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await Preferences.load();
+    var calls = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: FilledButton(
+              onPressed: () async {
+                if (await chooseTelemetryBackground(
+                  context,
+                  preferences,
+                  supported: true,
+                  edit: calls >= 2,
+                )) {
+                  calls++;
+                }
+              },
+              child: const Text('Choose'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Choose'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Collect while Beacon is in the background?'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Only while using Beacon'));
+    await tester.pumpAndSettle();
+    expect(preferences.telemetryBackground, isFalse);
+    await tester.tap(find.text('Choose'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(calls, 2);
+    await tester.tap(find.text('Choose'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Allow background collection'));
+    await tester.pumpAndSettle();
+    expect((await Preferences.load()).telemetryBackground, isTrue);
+  });
+
   testWidgets(
     'BLE and Wi-Fi require opt-in and leaving foreground stops the session',
     (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final session = TelemetrySession(
+        await Preferences.load(),
+        background: TelemetryBackground(supported: false),
+      );
+      addTearDown(session.dispose);
       await tester.pumpWidget(
         MaterialApp(
           home: TelemetryPage(
+            session: session,
             instance: BeaconInstance.create(
               'Preview',
               'https://example.test/beacon',

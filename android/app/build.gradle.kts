@@ -65,6 +65,9 @@ android {
             }
         }
     }
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
 }
 
 kotlin {
@@ -80,4 +83,6 @@ flutter {
 dependencies {
     // WindowCompat.enableEdgeToEdge (MainActivity)
     implementation("androidx.core:core:1.18.0")
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.17")
 }
