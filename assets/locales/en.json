@@ -1252,7 +1252,8 @@
       "searchRepeaters": "Search saved repeaters",
       "access": "Optional repeater access",
       "pollSettings": "Polling settings",
-      "batteryEnvironment": "Battery + environment"
+      "batteryEnvironment": "Battery + environment",
+      "requestDeferred": "Request failed; existing cooldowns are preserved. Collection will continue when eligible."
     }
   }
 }

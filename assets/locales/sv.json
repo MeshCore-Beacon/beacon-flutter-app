@@ -1252,7 +1252,8 @@
       "searchRepeaters": "Sök sparade repeatrar",
       "access": "Valfri repeateråtkomst",
       "pollSettings": "Avläsningsinställningar",
-      "batteryEnvironment": "Batteri + miljö"
+      "batteryEnvironment": "Batteri + miljö",
+      "requestDeferred": "Begäran misslyckades; befintliga väntetider behålls. Insamlingen fortsätter när det är tillåtet."
     }
   }
 }

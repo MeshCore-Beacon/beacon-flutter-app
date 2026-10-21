@@ -2,13 +2,92 @@ import 'package:beacon/core/instance.dart';
 import 'package:beacon/core/preferences.dart';
 import 'package:beacon/features/telemetry/background.dart';
 import 'package:beacon/features/telemetry/background_choice.dart';
+import 'package:beacon/features/telemetry/ble_companion.dart';
+import 'package:beacon/features/telemetry/companion.dart';
 import 'package:beacon/features/telemetry/session.dart';
 import 'package:beacon/features/telemetry/telemetry_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+class PageRadio implements Companion {
+  @override
+  bool closed = false;
+  @override
+  String? radioKey = 'ab'.padRight(64, '0');
+  @override
+  Future<String> identify() async => radioKey!;
+  @override
+  Future<List<CompanionContact>> contacts() async => [];
+  @override
+  Future<void> close() async {
+    closed = true;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class PageBle extends BleCompanion {
+  PageBle(this.onConnect);
+  final void Function() onConnect;
+  bool closed = false;
+  @override
+  Future<List<BlePeer>> scan() async => [
+    (id: 'test-id', name: 'Test companion', rssi: -60),
+  ];
+  @override
+  Future<Companion> connect(String id) async {
+    if (closed) throw StateError('Closed transport');
+    onConnect();
+    return PageRadio();
+  }
+
+  @override
+  Future<void> close() async {
+    closed = true;
+  }
+}
+
 void main() {
+  testWidgets('disconnect can reconnect from the retained scan results', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final session = TelemetrySession(
+      await Preferences.load(),
+      background: TelemetryBackground(supported: false),
+    );
+    addTearDown(session.dispose);
+    var connected = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TelemetryPage(
+          session: session,
+          instance: BeaconInstance.create(
+            'Preview',
+            'https://example.test/beacon',
+          ),
+          bleFactory: () => PageBle(() => connected++),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Allow telemetry sharing'));
+    await tester.pump();
+    await tester.tap(find.text('Scan for BLE companions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('Test companion'));
+    await tester.pumpAndSettle();
+    expect(connected, 1);
+    await tester.tap(find.byTooltip('Stop and disconnect'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('Test companion'));
+    await tester.pumpAndSettle();
+    expect(connected, 2);
+    expect(find.text('Bluetooth · Companion connected'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+  });
   testWidgets('bottom action clears Android system navigation', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final session = TelemetrySession(

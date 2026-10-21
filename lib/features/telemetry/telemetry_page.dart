@@ -15,9 +15,11 @@ class TelemetryPage extends StatefulWidget {
     super.key,
     required this.instance,
     required this.session,
+    this.bleFactory = BleCompanion.new,
   });
   final BeaconInstance instance;
   final TelemetrySession session;
+  final BleCompanion Function() bleFactory;
   @override
   State<TelemetryPage> createState() => _TelemetryPageState();
 }
@@ -111,7 +113,7 @@ class _TelemetryPageState extends State<TelemetryPage>
       _devices = [];
       _status = tr('Scanning for BLE companions…');
     });
-    final ble = BleCompanion();
+    final ble = widget.bleFactory();
     _ble = ble;
     try {
       final devices = await ble.scan();
@@ -153,6 +155,13 @@ class _TelemetryPageState extends State<TelemetryPage>
     Companion? connection;
     var stage = 'transport';
     try {
+      if (bleId != null) {
+        // Scan results outlive a connection. A cancelled or disconnected
+        // transport is terminal; reconnect with a fresh owner.
+        await _ble?.close();
+        if (!mounted || generation != _generation) return;
+        _ble = widget.bleFactory();
+      }
       connection = bleId == null
           ? await Companion.connect(_host.text, int.tryParse(_port.text) ?? 0)
           : await _ble!.connect(bleId);
@@ -330,21 +339,24 @@ class _TelemetryPageState extends State<TelemetryPage>
         border: Border.all(color: colors.outlineVariant),
         borderRadius: BorderRadius.circular(3),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            title.toUpperCase(),
-            style: TextStyle(
-              fontFamily: 'JetBrainsMono',
-              fontSize: 11,
-              letterSpacing: 1,
-              color: colors.primary,
+      child: Material(
+        type: MaterialType.transparency,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              title.toUpperCase(),
+              style: TextStyle(
+                fontFamily: 'JetBrainsMono',
+                fontSize: 11,
+                letterSpacing: 1,
+                color: colors.primary,
+              ),
             ),
-          ),
-          const SizedBox(height: 10),
-          ...children,
-        ],
+            const SizedBox(height: 10),
+            ...children,
+          ],
+        ),
       ),
     );
   }

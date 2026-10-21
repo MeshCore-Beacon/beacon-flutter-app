@@ -329,6 +329,23 @@ DEVICE_QUERY plus its wake-up APP_START now precede a separate SELF_INFO request
 contact transfers have a 120-second overall bound and a five-second silence bound,
 instead of the ordinary 12-second command deadline for the entire contact list.
 Regression tests cover a lost wake-up identity reply and a progressing contact
-stream longer than 12 seconds. These setup commands do not transmit RF. The
-NeoDriver retry and screen-off collection checks remain hardware qualification
-steps; the initial phone installation is not proof of these fixes on that radio.
+stream longer than 12 seconds. These setup commands do not transmit RF. A subsequent
+Android 16 handset check connected the previously failing companion, loaded its
+contacts and completed signed enrollment. Successful mobile RF delivery and sustained
+screen-off collection remain separate qualification steps.
+
+Physical testing also exposed an action covered by Android's three-button navigation
+bar and a failed reconnect from retained scan results. Bottom controls now respect
+system insets; every explicit BLE connection gets a fresh transport owner. The
+cached device list can be reused after disconnect without reviving a cancelled link.
+
+An unanswered repeater does not by itself invalidate a healthy companion link.
+Following MeshMapper's distinction between SENT and a remote reply, a timeout keeps
+the link only when the local write completed and SENT was confirmed. Login replies
+remain matched by the unique contact prefix and binary replies by their exact tag.
+Unknown local write/ACK outcomes still close the connection. Matching login denial
+also preserves the link. The attempt stays reserved, normal spacing/budgets apply,
+and other selected nodes remain eligible; no failed RF command is immediately resent.
+Optional sensor timeout can therefore retain and deliver an already valid battery
+sample. Regression checks cover late replies, missing ACKs and incomplete writes.
+Diagnostic logs contain operation stage and error type, never frames or credentials.

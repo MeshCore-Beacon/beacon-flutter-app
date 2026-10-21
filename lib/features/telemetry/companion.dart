@@ -257,12 +257,14 @@ class Companion {
     Duration timeout = const Duration(seconds: 12),
     Duration? silenceTimeout,
     List<int>? followup,
+    bool Function()? remoteReplyPending,
   }) async {
     if (closed || _busy) throw StateError('Companion unavailable or busy');
     if (command.length > 172 || (followup?.length ?? 0) > 172) {
       throw const FormatException('Command exceeds MeshCore frame size');
     }
     _busy = true;
+    var written = false;
     final done = Completer<T>();
     Timer? silence;
     void armSilenceTimeout() {
@@ -307,14 +309,21 @@ class Companion {
             if (closed) throw StateError('Companion disconnected');
             await _write(followup);
           }
+          written = true;
           return null;
         }(),
         done.future,
       ], eagerError: true).timeout(timeout);
       return results.last as T;
-    } catch (_) {
-      // A late ACK must not satisfy the next command after a failed exchange.
-      await close();
+    } catch (error) {
+      // A missing local ACK/write completion is ambiguous and still closes the
+      // link. Once SENT is confirmed, only the correlated RF reply is pending;
+      // late replies are ignored by the next request's key prefix or tag.
+      if (error is! TimeoutException ||
+          !written ||
+          remoteReplyPending?.call() != true) {
+        await close();
+      }
       rethrow;
     } finally {
       silence?.cancel();
@@ -411,19 +420,24 @@ class Companion {
     final prefix = key.substring(0, 12);
     bool sent = false;
     List<int>? reply;
-    await exchange<bool>([26, ...keyBytes(key), ...bytes], (frame) {
-      if (frame[0] == 6 && frame.length >= 10) sent = true;
-      if ((frame[0] == 0x85 || frame[0] == 0x86) &&
-          frame.length >= 8 &&
-          hexBytes(frame.sublist(2, 8)) == prefix) {
-        reply = frame;
-      }
-      if (!sent || reply == null) return null;
-      if (reply![0] == 0x86 || (requireAdmin && (reply![1] & 1) == 0)) {
-        throw StateError('Repeater login or requested admin permission failed');
-      }
-      return true;
-    }, timeout: const Duration(seconds: 60));
+    final allowed = await exchange<bool>(
+      [26, ...keyBytes(key), ...bytes],
+      (frame) {
+        if (frame[0] == 6 && frame.length >= 10) sent = true;
+        if ((frame[0] == 0x85 || frame[0] == 0x86) &&
+            frame.length >= 8 &&
+            hexBytes(frame.sublist(2, 8)) == prefix) {
+          reply = frame;
+        }
+        if (!sent || reply == null) return null;
+        return reply![0] != 0x86 && (!requireAdmin || (reply![1] & 1) != 0);
+      },
+      timeout: const Duration(seconds: 60),
+      remoteReplyPending: () => sent,
+    );
+    if (!allowed) {
+      throw StateError('Repeater login or requested admin permission failed');
+    }
   }
 
   Future<List<int>> binary(String key, int type) async {
@@ -449,6 +463,7 @@ class Companion {
         return tag == null ? null : early[tag];
       },
       timeout: const Duration(seconds: 60),
+      remoteReplyPending: () => tag != null,
     );
   }
 

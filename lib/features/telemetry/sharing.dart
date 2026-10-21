@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:cryptography/cryptography.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
@@ -295,6 +296,7 @@ class TelemetrySharing {
     if (!_running || _paused || _busy) return;
     _busy = true;
     _idle = Completer<void>();
+    var phase = 'delivery';
     try {
       final now = _now();
       final retry =
@@ -310,6 +312,7 @@ class TelemetrySharing {
         status = 'Saved report queue is full; polling paused.';
         return;
       }
+      phase = 'companion airtime';
       final stats = await radio.stats();
       _checkActive();
       final previous = _lastStats, at = _statsAt;
@@ -346,6 +349,7 @@ class TelemetrySharing {
       // Oldest-attempt-first prevents short intervals from starving later selections.
       final target = targets.firstWhere((t) => t.contact.key == next);
       final key = target.contact.key;
+      phase = 'saved contacts';
       final contacts = await radio.contacts();
       _checkActive();
       // Firmware matches pending login by four bytes; reject even earlier ambiguity than its six-byte push.
@@ -373,6 +377,7 @@ class TelemetrySharing {
       await _save(); // Durable reservation precedes every possible over-the-air request.
       _checkActive();
       // First use floods once. A failed route is rediscovered only after the full interval.
+      phase = 'route setup';
       if (!preferLearned && contact.hops != null) {
         await radio.resetPath(key);
         _checkActive();
@@ -380,6 +385,7 @@ class TelemetrySharing {
       }
       _checkActive();
       final loginRoute = contact.hops == null ? 'flood' : 'direct';
+      phase = 'repeater login';
       await radio.login(
         key,
         target.password,
@@ -393,6 +399,7 @@ class TelemetrySharing {
         throw StateError('Learned route exceeds three hops');
       }
       _checkActive();
+      phase = 'repeater status';
       final values = parseStatus(await radio.binary(key, 1));
       _checkActive();
       var telemetry = TelemetrySample({}, []);
@@ -443,6 +450,7 @@ class TelemetrySharing {
         'payload': base64Encode(payload),
         'signature': hexBytes(signed.bytes),
       });
+      phase = 'report persistence and delivery';
       await _save();
       if (!radio.closed && !_paused && _running) await _flush();
       status = radio.closed
@@ -451,6 +459,10 @@ class TelemetrySharing {
       if (radio.closed) _running = false;
     } catch (e) {
       if (!_running || _paused) return;
+      // No frames, passwords, tokens or exception payloads enter the log.
+      debugPrint(
+        '[telemetry] $phase failed (${e.runtimeType}); companion ${radio.closed ? 'closed' : 'open'}',
+      );
       if (e is IntakeFailure && e.status == 401) {
         _authorization = null;
       }
@@ -464,7 +476,11 @@ class TelemetrySharing {
         _running = false;
         await radio.close();
       }
-      status = e is IntakeFailure ? e.toString() : 'Sharing paused after a connection, storage or validation failure. Reconnect to continue.';
+      status = e is IntakeFailure
+          ? e.toString()
+          : radio.closed
+          ? 'Sharing paused after a connection, storage or validation failure. Reconnect to continue.'
+          : 'Request failed; existing cooldowns are preserved. Collection will continue when eligible.';
       // A lost companion requires an explicit reconnect; no automatic flood retry.
       if (radio.closed) _running = false;
     } finally {

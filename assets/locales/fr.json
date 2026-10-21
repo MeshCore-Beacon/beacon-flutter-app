@@ -1295,7 +1295,8 @@
       "searchRepeaters": "Rechercher les répéteurs enregistrés",
       "access": "Accès facultatif au répéteur",
       "pollSettings": "Paramètres d’interrogation",
-      "batteryEnvironment": "Batterie + environnement"
+      "batteryEnvironment": "Batterie + environnement",
+      "requestDeferred": "La requête a échoué ; les délais existants sont conservés. La collecte reprendra lorsque ce sera permis."
     }
   }
 }

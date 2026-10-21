@@ -8,6 +8,159 @@ import 'package:beacon/features/telemetry/sharing.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets('an unfinished local write still closes despite a SENT frame', (
+    tester,
+  ) async {
+    final frames = StreamController<List<int>>.broadcast(sync: true);
+    final write = Completer<void>();
+    final radio = Companion.frames(frames.stream, (_) async {
+      frames.add([6, 0, 1, 2, 3, 4, 0, 0, 0, 0]);
+      await write.future;
+    }, () async {});
+    Object? error;
+    unawaited(
+      radio.login('01'.padRight(64, '0'), '', requireAdmin: false).catchError((
+        Object e,
+      ) {
+        error = e;
+      }),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 61));
+    for (var turn = 0; turn < 4; turn++) {
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      await tester.pump();
+    }
+    expect(error, isA<TimeoutException>());
+    expect(radio.closed, isTrue);
+    write.complete();
+    await tester.pump();
+    await frames.close();
+  });
+
+  testWidgets('late login reply is ignored for another selected full key', (
+    tester,
+  ) async {
+    final frames = StreamController<List<int>>.broadcast(sync: true);
+    final first = '01'.padRight(64, '0'), second = '02'.padRight(64, '0');
+    var sends = 0;
+    final radio = Companion.frames(frames.stream, (_) async {
+      sends++;
+      frames.add([6, 0, sends, 0, 0, 0, 0, 0, 0, 0]);
+      if (sends == 2) {
+        frames.add([0x86, 0, ...keyBytes(first).take(6)]);
+        frames.add([0x85, 1, ...keyBytes(second).take(6)]);
+      }
+    }, () async {});
+    Object? error;
+    unawaited(
+      radio.login(first, '', requireAdmin: false).catchError((Object e) {
+        error = e;
+      }),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 61));
+    for (var turn = 0; turn < 4; turn++) {
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      await tester.pump();
+    }
+    expect(error, isA<TimeoutException>());
+    expect(radio.closed, isFalse);
+    await tester.runAsync(() => radio.login(second, '', requireAdmin: true));
+    expect(sends, 2);
+    expect(radio.closed, isFalse);
+    unawaited(radio.close());
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    await frames.close();
+  });
+
+  for (final acknowledged in [false, true]) {
+    testWidgets(
+      'login timeout keeps link only after confirmed send: $acknowledged',
+      (tester) async {
+        final frames = StreamController<List<int>>.broadcast(sync: true);
+        final radio = Companion.frames(frames.stream, (_) async {
+          if (acknowledged) frames.add([6, 0, 1, 2, 3, 4, 0, 0, 0, 0]);
+        }, () async {});
+        Object? error;
+        unawaited(
+          radio
+              .login('01'.padRight(64, '0'), '', requireAdmin: false)
+              .catchError((Object e) {
+                error = e;
+              }),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 61));
+        for (var turn = 0; turn < 4; turn++) {
+          await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+          await tester.pump();
+        }
+        expect(error, isA<TimeoutException>());
+        expect(radio.closed, !acknowledged);
+        unawaited(radio.close());
+        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+        await frames.close();
+      },
+    );
+  }
+
+  testWidgets('late binary reply cannot satisfy the next tagged request', (
+    tester,
+  ) async {
+    final frames = StreamController<List<int>>.broadcast(sync: true);
+    var sends = 0;
+    final radio = Companion.frames(frames.stream, (_) async {
+      sends++;
+      frames.add([6, 0, sends, 0, 0, 0, 0, 0, 0, 0]);
+      if (sends == 2) {
+        frames.add([0x8c, 0, 1, 0, 0, 0, 99]);
+        frames.add([0x8c, 0, 2, 0, 0, 0, 42]);
+      }
+    }, () async {});
+    Object? error;
+    unawaited(
+      radio.binary('01'.padRight(64, '0'), 3).catchError((Object e) {
+        error = e;
+        return <int>[];
+      }),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 61));
+    for (var turn = 0; turn < 4; turn++) {
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      await tester.pump();
+    }
+    expect(error, isA<TimeoutException>());
+    expect(radio.closed, isFalse);
+    final response = await tester.runAsync(
+      () => radio.binary('02'.padRight(64, '0'), 1),
+    );
+    expect(response, [42]);
+    unawaited(radio.close());
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    await frames.close();
+  });
+
+  test(
+    'matching login refusal does not disconnect a healthy companion',
+    () async {
+      final frames = StreamController<List<int>>.broadcast(sync: true);
+      final key = '01'.padRight(64, '0');
+      final radio = Companion.frames(frames.stream, (_) async {
+        frames.add([6, 0, 1, 2, 3, 4, 0, 0, 0, 0]);
+        frames.add([0x86, 0, ...keyBytes(key).take(6)]);
+      }, () async {});
+      await expectLater(
+        radio.login(key, '', requireAdmin: false),
+        throwsStateError,
+      );
+      expect(radio.closed, isFalse);
+      await radio.close();
+      await frames.close();
+    },
+  );
+
   testWidgets(
     'a progressing contact stream can exceed the ordinary command timeout',
     (tester) async {
