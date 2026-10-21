@@ -396,7 +396,9 @@ class _TelemetryPageState extends State<TelemetryPage>
             16,
             16,
             16,
-            MediaQuery.viewInsetsOf(context).bottom + 24,
+            MediaQuery.viewInsetsOf(context).bottom +
+                MediaQuery.paddingOf(context).bottom +
+                24,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -488,7 +490,12 @@ class _TelemetryPageState extends State<TelemetryPage>
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.all(12),
+        padding: EdgeInsets.fromLTRB(
+          12,
+          12,
+          12,
+          12 + MediaQuery.paddingOf(context).bottom,
+        ),
         children: [
           _panel(tr('Destination'), [
             Text(

@@ -9,6 +9,40 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  testWidgets('bottom action clears Android system navigation', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final session = TelemetrySession(
+      await Preferences.load(),
+      background: TelemetryBackground(supported: false),
+    );
+    addTearDown(session.dispose);
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 440);
+    tester.view.padding = const FakeViewPadding(bottom: 48);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetPadding);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TelemetryPage(
+          session: session,
+          instance: BeaconInstance.create(
+            'Preview',
+            'https://example.test/beacon',
+          ),
+        ),
+      ),
+    );
+    await tester.drag(find.byType(ListView), const Offset(0, -1500));
+    await tester.pumpAndSettle();
+    final scan = find.ancestor(
+      of: find.text('Scan for BLE companions'),
+      matching: find.byType(FilledButton),
+    );
+    expect(tester.getBottomRight(scan).dy, lessThanOrEqualTo(440 - 48));
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('first-node choice remembers refusal and can be changed later', (
     tester,
   ) async {
