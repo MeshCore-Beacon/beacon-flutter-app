@@ -1184,6 +1184,7 @@
     "telemetrySharing": {
       "budget": "A shared budget allows at most two repeater attempts per hour. Failed attempts also consume the interval. Busy companions defer polling. No catch-up bursts.",
       "accepted": "Accepted reports",
+      "expired": "Expired saved reports",
       "bleUnavailable": "BLE is unavailable. Check Bluetooth and app permissions.",
       "bluetooth": "Bluetooth",
       "intakeCheck": "Checking telemetry intake…",

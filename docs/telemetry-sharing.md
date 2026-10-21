@@ -1,6 +1,6 @@
 # Companion telemetry sharing: research and draft integration
 
-Research snapshot: 21 October 2026. App base: `1fb479f97579defe069fae59cccff8fb92649eb0`.
+Research snapshot: 21 October 2026. Current upstream app included: `a8107047f52d` (full SHA in Git history).
 This is a draft alpha, not a production rollout or a replacement for an always-on collector yet.
 
 ## What this adds
@@ -358,3 +358,27 @@ and existing bonds are never removed. Ordinary Connect remains available for
 companions that do not need a bond. A fresh Lineage tablet exposed the need for this
 path: Android requested a PIN, but the ordinary handshake timed out before pairing
 was completed.
+
+## Consolidated backend and preview qualification
+
+The optional telemetry layer is reviewed separately from the core backend,
+basic Atlas and Topology candidate. It uses automatic signed enrollment and the
+existing HTTPS reports contract, with the optional Beacon proxy in front of a
+separate intake database. A mobile polling client does not replace that intake.
+The headless Collector remains an alternate for unattended sessions.
+
+The collection screen and optional notification stats now count expired saved
+reports separately from accepted reports. Expiring an older-than-24-hour report
+does not mark it delivered and does not initiate another RF poll. An unchanged
+outbox no longer causes a secure-storage write on every idle delivery check.
+
+Normal minimum intervals remain 1-72 hours. The two-attempt/six-command hourly
+companion budget can make the effective interval longer when several nodes are
+selected. Different clients/Beacon instances are not a globally enforced RF
+lease; do not advertise that guarantee. Keep local reservations and congestion
+checks even when the server is unavailable.
+
+Canadaverse remains the test destination. Native tests, signed fixture delivery
+and a working API are distinct from a completed physical radio-to-Atlas test.
+The connected-device inventory was empty during this consolidation, so BLE/Wi-Fi
+physical polling, screen-off soak and iOS qualification remain unclaimed.

@@ -1227,6 +1227,7 @@
     "telemetrySharing": {
       "budget": "Un budget partagé autorise au plus deux tentatives de collecte par compagnon et par heure. Les échecs consomment aussi l’intervalle. La collecte attend si le compagnon est occupé. Aucun rattrapage en rafale.",
       "accepted": "Rapports acceptés",
+      "expired": "Relevés enregistrés expirés",
       "bleUnavailable": "BLE indisponible. Vérifiez le Bluetooth et les autorisations de l’application.",
       "bluetooth": "Bluetooth",
       "intakeCheck": "Vérification du service de télémétrie…",

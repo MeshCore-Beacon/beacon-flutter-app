@@ -1184,6 +1184,7 @@
     "telemetrySharing": {
       "budget": "En gemensam budget tillåter högst två repeaterförsök per timme. Misslyckade försök förbrukar också intervallet. Upptagna companion-enheter skjuter upp avfrågningar. Ingen uppsamlingsburst.",
       "accepted": "Godkända rapporter",
+      "expired": "Utgångna sparade rapporter",
       "bleUnavailable": "BLE är inte tillgängligt. Kontrollera Bluetooth och appens behörigheter.",
       "bluetooth": "Bluetooth",
       "intakeCheck": "Kontrollerar telemetrimottagningen…",

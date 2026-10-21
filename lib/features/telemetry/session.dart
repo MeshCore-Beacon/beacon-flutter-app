@@ -49,7 +49,7 @@ class TelemetrySession extends ChangeNotifier with WidgetsBindingObserver {
     'pausedTitle': tr('Telemetry polling stopped'),
     'summary': '$transport · ${tr('Companion connected')}',
     'details': preferences.telemetryNotificationStats && sharing != null
-        ? '${tr('Selected repeaters')}: ${sharing!.targets.length} · ${tr('Interval (hours)')}: ${sharing!.hours}\n${tr('Accepted reports')}: ${sharing!.accepted} · ${tr('Pending')}: ${sharing!.queued}'
+        ? '${tr('Selected repeaters')}: ${sharing!.targets.length} · ${tr('Interval (hours)')}: ${sharing!.hours}\n${tr('Accepted reports')}: ${sharing!.accepted} · ${tr('Pending')}: ${sharing!.queued} · ${tr('Expired saved reports')}: ${sharing!.expired}'
         : '',
     'pauseLabel': tr('Stop polling'),
     'disconnectLabel': transport == 'BLE'

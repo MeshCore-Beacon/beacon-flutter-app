@@ -557,6 +557,7 @@ class _TelemetryPageState extends State<TelemetryPage>
                       tr('Selected repeaters'): current.targets.length,
                       tr('Accepted reports'): current.accepted,
                       tr('Pending'): current.queued,
+                      tr('Expired saved reports'): current.expired,
                       tr('Interval (hours)'): current.hours,
                     }.entries)
                       SizedBox(

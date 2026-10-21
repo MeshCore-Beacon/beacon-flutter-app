@@ -11,6 +11,23 @@ import '../../core/instance.dart';
 import 'companion.dart';
 import 'poll_policy.dart';
 
+/// Expiry is accounted for separately from intake acceptance. Delivery retries
+/// never create a new RF sample or silently report an expired sample as sent.
+int expireSavedReports(Map<String, dynamic> state, DateTime now) {
+  final outbox = state['outbox'] as List;
+  final before = outbox.length;
+  outbox.removeWhere(
+    (entry) =>
+        now.millisecondsSinceEpoch - (entry['at'] as int) >
+        const Duration(hours: 24).inMilliseconds,
+  );
+  final count = before - outbox.length;
+  if (count > 0) {
+    state['expiredReports'] = ((state['expiredReports'] as int?) ?? 0) + count;
+  }
+  return count;
+}
+
 List<int> enrollmentMessage(
   Map<String, dynamic> reply,
   String instance,
@@ -120,6 +137,7 @@ class TelemetrySharing {
   final _unavailable = <String>{};
   String status = 'Not sharing';
   int accepted = 0;
+  int get expired => (_state['expiredReports'] as int?) ?? 0;
   bool get running => _running;
   int get queued => (_state['outbox'] as List).length;
 
@@ -491,12 +509,7 @@ class TelemetrySharing {
 
   Future<void> _flush() async {
     final outbox = _state['outbox'] as List;
-    outbox.removeWhere(
-      (entry) =>
-          _now().millisecondsSinceEpoch - (entry['at'] as int) >
-          const Duration(hours: 24).inMilliseconds,
-    );
-    await _save();
+    if (expireSavedReports(_state, _now()) > 0) await _save();
     for (final entry in List.of(outbox)) {
       if (entry['instance'] != instance.url ||
           entry['radioKey'] != radio.radioKey) {
