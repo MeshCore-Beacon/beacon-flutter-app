@@ -5,9 +5,39 @@ import 'dart:typed_data';
 import 'package:beacon/features/telemetry/companion.dart';
 import 'package:beacon/features/telemetry/poll_policy.dart';
 import 'package:beacon/features/telemetry/sharing.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test(
+    'failure diagnostics never include command payload or exception contents',
+    () async {
+      final messages = <String>[];
+      final original = debugPrint;
+      debugPrint = (String? message, {int? wrapWidth}) {
+        if (message != null) messages.add(message);
+      };
+      addTearDown(() {
+        debugPrint = original;
+      });
+      final frames = StreamController<List<int>>.broadcast(sync: true);
+      final radio = Companion.frames(frames.stream, (_) async {
+        throw StateError('private-password-value');
+      }, () async {});
+      await expectLater(
+        radio.login('ab' * 32, 'private-pass', requireAdmin: true),
+        throwsStateError,
+      );
+      final text = messages.join('\n');
+      expect(text, contains('command 26 failed'));
+      expect(text, contains('StateError'));
+      expect(text, isNot(contains('private-pass')));
+      expect(text, isNot(contains('ab' * 32)));
+      await radio.close();
+      await frames.close();
+    },
+  );
+
   testWidgets('an unfinished local write still closes despite a SENT frame', (
     tester,
   ) async {

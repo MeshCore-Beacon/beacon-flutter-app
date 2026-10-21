@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show debugPrint;
+
 String hexBytes(List<int> bytes) =>
     bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
 List<int> keyBytes(String hex) {
@@ -265,6 +267,7 @@ class Companion {
     }
     _busy = true;
     var written = false;
+    final responseTypes = <int>{};
     final done = Completer<T>();
     Timer? silence;
     void armSilenceTimeout() {
@@ -282,6 +285,7 @@ class Companion {
     final subscription = _frames.stream.listen(
       (frame) {
         if (done.isCompleted) return;
+        responseTypes.add(frame[0]);
         armSilenceTimeout();
         try {
           if (frame[0] == 1) throw StateError('Companion rejected the command');
@@ -316,6 +320,9 @@ class Companion {
       ], eagerError: true).timeout(timeout);
       return results.last as T;
     } catch (error) {
+      debugPrint(
+        '[telemetry] command ${command.first} failed (${error.runtimeType}); received response types ${responseTypes.join(',')}',
+      );
       // A missing local ACK/write completion is ambiguous and still closes the
       // link. Once SENT is confirmed, only the correlated RF reply is pending;
       // late replies are ignored by the next request's key prefix or tag.
