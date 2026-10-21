@@ -170,6 +170,15 @@ void main() {
   });
 
   testWidgets('long values fit a narrow phone', (tester) async {
+    final previousErrorHandler = FlutterError.onError;
+    FlutterError.onError = (details) {
+      // Preserve the overflowing widget/constraint diagnostics in CI, not just
+      // takeException()'s short message (fonts differ between host platforms).
+      FlutterError.presentError(details);
+      debugPrint(details.toString());
+      previousErrorHandler?.call(details);
+    };
+    addTearDown(() => FlutterError.onError = previousErrorHandler);
     tester.view.physicalSize = const Size(320, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);

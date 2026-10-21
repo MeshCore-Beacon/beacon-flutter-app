@@ -1,0 +1,278 @@
+import 'dart:async';
+import 'dart:typed_data';
+
+import 'package:beacon/features/telemetry/ble_companion.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+class TestCharacteristic implements BluetoothCharacteristic {
+  TestCharacteristic(this.uuid, this.owner);
+  @override
+  final Guid uuid;
+  final TestDevice owner;
+  @override
+  Stream<List<int>> get onValueReceived => owner.frames.stream;
+  @override
+  Future<bool> setNotifyValue(
+    bool notify, {
+    int timeout = 15,
+    bool forceIndications = false,
+  }) async {
+    owner.order.add('notify');
+    owner.notifying = notify;
+    return true;
+  }
+
+  @override
+  Future<void> write(
+    List<int> value, {
+    bool withoutResponse = false,
+    bool allowLongWrite = false,
+    int timeout = 15,
+  }) async {
+    expect(owner.notifying, true);
+    expect(withoutResponse, false);
+    expect(uuid, BleCompanion.rx);
+    owner.writes.add(List.of(value));
+    if (value.first == 22) owner.frames.add([13, 4]);
+    if (value.first == 1) {
+      if (owner.dropWakeIdentity &&
+          owner.writes.where((w) => w.first == 1).length == 1) {
+        return;
+      }
+      owner.frames.add([5, 1, 20, 22, ...List.filled(32, 0xab)]);
+    }
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class TestService implements BluetoothService {
+  TestService(this.owner);
+  final TestDevice owner;
+  @override
+  Guid get uuid => BleCompanion.service;
+  @override
+  List<BluetoothCharacteristic> get characteristics => [
+    TestCharacteristic(BleCompanion.rx, owner),
+    TestCharacteristic(BleCompanion.tx, owner),
+  ];
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class TestDevice implements BluetoothDevice {
+  int negotiatedMtu = 185;
+  bool cancelled = false, notifying = false;
+  bool dropWakeIdentity = false;
+  bool denyPairing = false;
+  Completer<void>? pairing;
+  @override
+  Future<void> createBond({int timeout = 90, Uint8List? pin}) async {
+    expect(pin, isNull);
+    expect(timeout, 90);
+    order.add('pair');
+    await pairing?.future;
+    if (denyPairing) throw StateError('Pairing cancelled');
+  }
+
+  // Both controllers are closed by each test after the transport is disconnected.
+  // ignore: close_sinks
+  final frames = StreamController<List<int>>.broadcast(sync: true);
+  // ignore: close_sinks
+  final states = StreamController<BluetoothConnectionState>.broadcast();
+  final writes = <List<int>>[];
+  final order = <String>[];
+  @override
+  Stream<int> get mtu => Stream.value(negotiatedMtu);
+  @override
+  Stream<BluetoothConnectionState> get connectionState async* {
+    yield BluetoothConnectionState.connected;
+    yield* states.stream;
+  }
+
+  @override
+  Future<void> connect({
+    Duration timeout = const Duration(seconds: 35),
+    int? mtu = 512,
+    bool autoConnect = false,
+  }) async {
+    expect(mtu, null);
+    expect(autoConnect, false);
+    order.add('connect');
+  }
+
+  @override
+  Future<int> requestMtu(
+    int desiredMtu, {
+    double predelay = .35,
+    int timeout = 15,
+  }) async {
+    expect(desiredMtu, 512);
+    order.add('mtu');
+    return negotiatedMtu;
+  }
+
+  @override
+  Future<List<BluetoothService>> discoverServices({
+    bool subscribeToServicesChanged = true,
+    int timeout = 15,
+  }) async {
+    order.add('discover');
+    return [TestService(this)];
+  }
+
+  @override
+  Future<void> disconnect({
+    int timeout = 35,
+    int androidDelay = 2000,
+    bool queue = true,
+  }) async {
+    cancelled = true;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+void main() {
+  test('explicit Android pairing finishes before protocol setup', () async {
+    final device = TestDevice()..pairing = Completer<void>();
+    final session = BleCompanion(
+      device: (_) => device,
+      android: true,
+      ios: false,
+    );
+    final connecting = session.connect('pin-protected', pair: true);
+    await Future<void>.delayed(Duration.zero);
+    expect(device.order, ['connect', 'pair']);
+    expect(device.writes, isEmpty);
+    device.pairing!.complete();
+    final radio = await connecting;
+    expect(device.order, ['connect', 'pair', 'mtu', 'discover', 'notify']);
+    expect(await radio.identify(), 'ab' * 32);
+    await radio.close();
+    await device.frames.close();
+    await device.states.close();
+  });
+
+  test(
+    'cancelled Android pairing is not retried or followed by protocol writes',
+    () async {
+      final device = TestDevice()..denyPairing = true;
+      final session = BleCompanion(
+        device: (_) => device,
+        android: true,
+        ios: false,
+      );
+      await expectLater(
+        session.connect('pin-protected', pair: true),
+        throwsStateError,
+      );
+      expect(device.order, ['connect', 'pair']);
+      expect(device.writes, isEmpty);
+      expect(device.cancelled, isTrue);
+      await device.frames.close();
+      await device.states.close();
+    },
+  );
+
+  test(
+    'a BLE MTU too small for saved contacts never sends a command',
+    () async {
+      final device = TestDevice()..negotiatedMtu = 23;
+      final session = BleCompanion(
+        device: (_) => device,
+        android: false,
+        ios: true,
+      );
+      await expectLater(session.connect('small'), throwsStateError);
+      expect(device.writes, isEmpty);
+      expect(device.cancelled, true);
+      await device.frames.close();
+      await device.states.close();
+    },
+  );
+  test('BLE follows MeshMapper connect, MTU, discovery, notification, acknowledged write order', () async {
+    final device = TestDevice();
+    final session = BleCompanion(
+      device: (_) => device,
+      android: true,
+      ios: false,
+    );
+    final radio = await session.connect('companion');
+    expect(await radio.identify(), 'ab' * 32);
+    expect(device.order, ['connect', 'mtu', 'discover', 'notify']);
+    expect(device.writes.map((w) => w.first), [22, 1, 1]);
+    expect(device.writes.first, [22, 4]);
+    await radio.close();
+    expect(device.cancelled, true);
+    expect(radio.closed, true);
+    await device.frames.close();
+    await device.states.close();
+  });
+  test('identification reads self info separately when the wake-up response is lost', () async {
+    final device = TestDevice()..dropWakeIdentity = true;
+    final session = BleCompanion(
+      device: (_) => device,
+      android: true,
+      ios: false,
+    );
+    final radio = await session.connect('single-response-buffer');
+    try {
+      expect(
+        await radio.identify().timeout(const Duration(seconds: 2)),
+        'ab' * 32,
+      );
+      expect(device.writes.map((w) => w.first), [22, 1, 1]);
+    } finally {
+      await radio.close();
+      await device.frames.close();
+      await device.states.close();
+    }
+  });
+  test(
+    'iOS reads negotiated MTU instead of requesting Android-only negotiation',
+    () async {
+      final device = TestDevice();
+      final session = BleCompanion(
+        device: (_) => device,
+        android: false,
+        ios: true,
+      );
+      final radio = await session.connect('companion');
+      expect(device.order, ['connect', 'discover', 'notify']);
+      await radio.close();
+      await device.frames.close();
+      await device.states.close();
+    },
+  );
+  test(
+    'only a confirmed GATT busy refusal is retried; ambiguous failures are not',
+    () async {
+      var calls = 0;
+      final delays = <int>[];
+      await writeRetryingGattBusy(
+        () async {
+          calls++;
+          if (calls < 4) throw StateError('ERROR_GATT_WRITE_REQUEST_BUSY');
+        },
+        sleep: (d) async {
+          delays.add(d.inMilliseconds);
+        },
+      );
+      expect(calls, 4);
+      expect(delays, [50, 100, 150]);
+      calls = 0;
+      await expectLater(
+        writeRetryingGattBusy(() async {
+          calls++;
+          throw StateError('write timed out');
+        }),
+        throwsStateError,
+      );
+      expect(calls, 1);
+    },
+  );
+}
