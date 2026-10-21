@@ -109,10 +109,10 @@ class MeshMapperSection extends StatelessWidget {
       return Padding(
         padding: const EdgeInsets.only(left: 12, top: 2, bottom: 2),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.baseline,
-          textBaseline: TextBaseline.alphabetic,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Flexible(
+            Expanded(
+              flex: 2,
               child: Text(
                 textOf(s['scope']),
                 maxLines: 1,
@@ -126,7 +126,8 @@ class MeshMapperSection extends StatelessWidget {
             ),
             if (how.isNotEmpty) ...[
               const SizedBox(width: 8),
-              Flexible(
+              Expanded(
+                flex: 3,
                 child: Text(
                   how,
                   maxLines: 1,
@@ -135,12 +136,21 @@ class MeshMapperSection extends StatelessWidget {
                 ),
               ),
             ],
-            const Spacer(),
-            if (latest > 0)
-              Tooltip(
-                message: stamp(latest),
-                child: mono(age(latest), color: colors.muted),
+            if (latest > 0) ...[
+              const SizedBox(width: 8),
+              Flexible(
+                flex: 2,
+                child: Tooltip(
+                  message: stamp(latest),
+                  child: Text(
+                    age(latest),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: dim,
+                  ),
+                ),
               ),
+            ],
           ],
         ),
       );
