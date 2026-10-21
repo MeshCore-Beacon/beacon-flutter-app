@@ -112,17 +112,22 @@ class MeshMapperSection extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.baseline,
           textBaseline: TextBaseline.alphabetic,
           children: [
-            Text(
-              textOf(s['scope']),
-              style: TextStyle(
-                fontFamily: 'JetBrainsMono',
-                fontSize: 11,
-                color: colors.bright,
+            Flexible(
+              child: Text(
+                textOf(s['scope']),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontFamily: 'JetBrainsMono',
+                  fontSize: 11,
+                  color: colors.bright,
+                ),
               ),
             ),
             if (how.isNotEmpty) ...[
               const SizedBox(width: 8),
-              Expanded(
+              Flexible(
+                flex: 2,
                 child: Text(
                   how,
                   maxLines: 1,
@@ -130,8 +135,8 @@ class MeshMapperSection extends StatelessWidget {
                   style: dim,
                 ),
               ),
-            ] else
-              const Spacer(),
+            ],
+            const Spacer(),
             if (latest > 0) ...[
               const SizedBox(width: 8),
               Tooltip(
