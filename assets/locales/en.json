@@ -1239,7 +1239,20 @@
       "backgroundEnabled": "Enabled with ongoing notification",
       "notificationStats": "Show collection stats in notification",
       "resumePolling": "Resume polling",
-      "startFailed": "Collection could not start. Check notification permission and the companion, or choose foreground collection."
+      "startFailed": "Collection could not start. Check notification permission and the companion, or choose foreground collection.",
+      "readingIdentity": "Connected. Reading companion identity…",
+      "readingContacts": "Reading saved repeaters…",
+      "transportError": "Could not connect. Check pairing and that no other app is using this companion.",
+      "identityError": "Bluetooth or Wi-Fi connected, but the companion did not finish identification. Reconnect and try again.",
+      "contactsError": "Connected, but saved contacts could not be read. Reconnect and check companion firmware compatibility.",
+      "about": "About telemetry sharing",
+      "cancel": "Cancel",
+      "allowSharing": "Allow telemetry sharing",
+      "publicReadings": "Selected readings will be public.",
+      "searchRepeaters": "Search saved repeaters",
+      "access": "Optional repeater access",
+      "pollSettings": "Polling settings",
+      "batteryEnvironment": "Battery + environment"
     }
   }
 }

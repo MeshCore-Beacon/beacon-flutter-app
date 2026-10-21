@@ -310,3 +310,25 @@ These preserve transport compatibility while keeping the telemetry feature scope
 
 Browser BLE, USB from phones, iOS background scheduling and observer-firmware
 collection are separate work. Real iOS/Android qualification is still required.
+
+### Connection and UI follow-up (21 October)
+
+Telemetry setup now uses compact Beacon-themed sections and button choices for
+transport, consent and sensor selection. Saved repeaters are searchable inside a
+bounded list; optional passwords/admin requirements live in each selected node's
+access sheet. Connection progress, failure stage and cancellation stay visible.
+Full identity remains available without dominating the setup screen.
+
+Android phone logs confirmed a successful GATT connection, notification setup and
+MTU 176 on the failing companion attempt, followed by a setup timeout. They do not
+establish which protocol response was missing. Raw frames remain unlogged because
+device-info responses can contain the Bluetooth PIN.
+
+Two differences from the pinned MeshMapper implementation were corrected:
+DEVICE_QUERY plus its wake-up APP_START now precede a separate SELF_INFO request;
+contact transfers have a 120-second overall bound and a five-second silence bound,
+instead of the ordinary 12-second command deadline for the entire contact list.
+Regression tests cover a lost wake-up identity reply and a progressing contact
+stream longer than 12 seconds. These setup commands do not transmit RF. The
+NeoDriver retry and screen-off collection checks remain hardware qualification
+steps; the initial phone installation is not proof of these fixes on that radio.

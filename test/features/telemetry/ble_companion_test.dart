@@ -35,6 +35,10 @@ class TestCharacteristic implements BluetoothCharacteristic {
     owner.writes.add(List.of(value));
     if (value.first == 22) owner.frames.add([13, 4]);
     if (value.first == 1) {
+      if (owner.dropWakeIdentity &&
+          owner.writes.where((w) => w.first == 1).length == 1) {
+        return;
+      }
       owner.frames.add([5, 1, 20, 22, ...List.filled(32, 0xab)]);
     }
   }
@@ -60,6 +64,7 @@ class TestService implements BluetoothService {
 class TestDevice implements BluetoothDevice {
   int negotiatedMtu = 185;
   bool cancelled = false, notifying = false;
+  bool dropWakeIdentity = false;
   // Both controllers are closed by each test after the transport is disconnected.
   // ignore: close_sinks
   final frames = StreamController<List<int>>.broadcast(sync: true);
@@ -146,13 +151,33 @@ void main() {
     final radio = await session.connect('companion');
     expect(await radio.identify(), 'ab' * 32);
     expect(device.order, ['connect', 'mtu', 'discover', 'notify']);
-    expect(device.writes.map((w) => w.first), [22, 1]);
+    expect(device.writes.map((w) => w.first), [22, 1, 1]);
     expect(device.writes.first, [22, 4]);
     await radio.close();
     expect(device.cancelled, true);
     expect(radio.closed, true);
     await device.frames.close();
     await device.states.close();
+  });
+  test('identification reads self info separately when the wake-up response is lost', () async {
+    final device = TestDevice()..dropWakeIdentity = true;
+    final session = BleCompanion(
+      device: (_) => device,
+      android: true,
+      ios: false,
+    );
+    final radio = await session.connect('single-response-buffer');
+    try {
+      expect(
+        await radio.identify().timeout(const Duration(seconds: 2)),
+        'ab' * 32,
+      );
+      expect(device.writes.map((w) => w.first), [22, 1, 1]);
+    } finally {
+      await radio.close();
+      await device.frames.close();
+      await device.states.close();
+    }
   });
   test(
     'iOS reads negotiated MTU instead of requesting Android-only negotiation',

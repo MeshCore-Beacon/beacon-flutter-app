@@ -255,6 +255,7 @@ class Companion {
     List<int> command,
     T? Function(List<int>) consume, {
     Duration timeout = const Duration(seconds: 12),
+    Duration? silenceTimeout,
     List<int>? followup,
   }) async {
     if (closed || _busy) throw StateError('Companion unavailable or busy');
@@ -263,9 +264,23 @@ class Companion {
     }
     _busy = true;
     final done = Completer<T>();
+    Timer? silence;
+    void armSilenceTimeout() {
+      if (silenceTimeout == null) return;
+      silence?.cancel();
+      silence = Timer(silenceTimeout, () {
+        if (!done.isCompleted) {
+          done.completeError(
+            TimeoutException('Companion response stream stopped'),
+          );
+        }
+      });
+    }
+
     final subscription = _frames.stream.listen(
       (frame) {
         if (done.isCompleted) return;
+        armSilenceTimeout();
         try {
           if (frame[0] == 1) throw StateError('Companion rejected the command');
           final value = consume(frame);
@@ -284,6 +299,7 @@ class Companion {
       },
     );
     try {
+      armSilenceTimeout();
       final results = await Future.wait<Object?>([
         () async {
           await _write(command);
@@ -301,6 +317,7 @@ class Companion {
       await close();
       rethrow;
     } finally {
+      silence?.cancel();
       await subscription.cancel();
       _busy = false;
     }
@@ -310,45 +327,46 @@ class Companion {
       exchange(command, (frame) => frame[0] == response ? frame : null);
 
   Future<String> identify() async {
-    // MeshMapper queries protocol 4, then APP_START enters companion mode on
-    // radios that do not answer the query until APP_START arrives.
+    // Match MeshMapper's two exchanges: DEVICE_QUERY plus a wake-up APP_START,
+    // followed by a fresh SELF_INFO request. Some BLE radios don't retain both
+    // responses to the first pair; requiring both from that pair times out.
     await Future<void>.delayed(const Duration(milliseconds: 500));
-    bool queried = false;
-    String? key;
-    return radioKey = await exchange<String>(
+    final appStart = [
+      1,
+      1,
+      ...List.filled(6, 0),
+      ...utf8.encode('Beacon telemetry'),
+    ];
+    await exchange<bool>(
       [22, 4],
-      (frame) {
-        if (frame[0] == 13 && frame.length >= 2) queried = true;
-        if (frame[0] == 5) {
-          if (frame.length < 36) {
-            throw const FormatException('Truncated companion identity');
-          }
-          key = hexBytes(frame.sublist(4, 36));
-        }
-        return queried ? key : null;
-      },
-      followup: [
-        1,
-        1,
-        ...List.filled(6, 0),
-        ...utf8.encode('Beacon telemetry'),
-      ],
+      (frame) => frame[0] == 13 && frame.length >= 2 ? true : null,
+      followup: appStart,
     );
+    final identity = await request(appStart, 5);
+    if (identity.length < 36) {
+      throw const FormatException('Truncated companion identity');
+    }
+    return radioKey = hexBytes(identity.sublist(4, 36));
   }
 
   Future<List<CompanionContact>> contacts() async {
     final result = <CompanionContact>[];
     var started = false;
-    return exchange([4], (frame) {
-      if (frame[0] == 2) started = true;
-      if (started && frame[0] == 3) {
-        if (result.length >= 4096) {
-          throw const FormatException('Too many contacts');
+    return exchange(
+      [4],
+      (frame) {
+        if (frame[0] == 2) started = true;
+        if (started && frame[0] == 3) {
+          if (result.length >= 4096) {
+            throw const FormatException('Too many contacts');
+          }
+          result.add(CompanionContact.parse(frame));
         }
-        result.add(CompanionContact.parse(frame));
-      }
-      return started && frame[0] == 4 ? result : null;
-    });
+        return started && frame[0] == 4 ? result : null;
+      },
+      timeout: const Duration(minutes: 2),
+      silenceTimeout: const Duration(seconds: 5),
+    );
   }
 
   Future<CompanionContact> contact(String key) async {

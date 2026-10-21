@@ -1239,7 +1239,20 @@
       "backgroundEnabled": "Aktiverad med löpande notis",
       "notificationStats": "Visa insamlingsstatistik i notisen",
       "resumePolling": "Återuppta avläsning",
-      "startFailed": "Insamlingen kunde inte starta. Kontrollera notisbehörigheten och din companion, eller välj insamling i förgrunden."
+      "startFailed": "Insamlingen kunde inte starta. Kontrollera notisbehörigheten och din companion, eller välj insamling i förgrunden.",
+      "readingIdentity": "Ansluten. Läser companion-identiteten…",
+      "readingContacts": "Läser sparade repeatrar…",
+      "transportError": "Kunde inte ansluta. Kontrollera parkopplingen och att ingen annan app använder denna companion.",
+      "identityError": "Bluetooth eller Wi-Fi är anslutet, men identifieringen slutfördes inte. Anslut igen och försök på nytt.",
+      "contactsError": "Ansluten, men sparade kontakter kunde inte läsas. Anslut igen och kontrollera kompatibiliteten med companion-enhetens firmware.",
+      "about": "Om telemetridelning",
+      "cancel": "Avbryt",
+      "allowSharing": "Tillåt telemetridelning",
+      "publicReadings": "Valda mätningar blir offentliga.",
+      "searchRepeaters": "Sök sparade repeatrar",
+      "access": "Valfri repeateråtkomst",
+      "pollSettings": "Avläsningsinställningar",
+      "batteryEnvironment": "Batteri + miljö"
     }
   }
 }

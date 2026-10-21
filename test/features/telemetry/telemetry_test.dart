@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -7,6 +8,51 @@ import 'package:beacon/features/telemetry/sharing.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets(
+    'a progressing contact stream can exceed the ordinary command timeout',
+    (tester) async {
+      final frames = StreamController<List<int>>.broadcast(sync: true);
+      final commands = <int>[];
+      final radio = Companion.frames(frames.stream, (command) async {
+        commands.add(command.first);
+      }, () async {});
+      List<CompanionContact>? contacts;
+      Object? error;
+      unawaited(
+        radio.contacts().then(
+          (value) {
+            contacts = value;
+          },
+          onError: (Object e) {
+            error = e;
+          },
+        ),
+      );
+      await tester.pump();
+      frames.add([2, 4, 0, 0, 0]);
+      for (var index = 0; index < 4; index++) {
+        await tester.pump(const Duration(seconds: 4));
+        final contact = Uint8List(148)
+          ..[0] = 3
+          ..[33] = 2
+          ..[35] = 255;
+        contact.setRange(1, 33, List.filled(32, index + 1));
+        frames.add(contact);
+      }
+      frames.add([4, 0, 0, 0, 0]);
+      await tester.pump();
+      // Stream cancellation can complete on the real event loop, outside the
+      // widget clock used above to advance a long, progressing transfer.
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      await tester.pump();
+      expect(error, isNull);
+      expect(contacts, hasLength(4));
+      expect(commands, [4]); // local saved contacts only; no RF
+      unawaited(radio.close());
+      await tester.pump();
+      await frames.close();
+    },
+  );
   test('TCP frames survive arbitrary fragmentation and coalescing', () {
     final decoder = CompanionFrames();
     expect(decoder.add([62, 3]), isEmpty);

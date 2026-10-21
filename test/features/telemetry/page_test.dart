@@ -76,9 +76,12 @@ void main() {
           ),
         ),
       );
-      final scan = find.widgetWithText(FilledButton, 'Scan for BLE companions');
+      final scan = find.ancestor(
+        of: find.text('Scan for BLE companions'),
+        matching: find.byWidgetPredicate((widget) => widget is FilledButton),
+      );
       expect(tester.widget<FilledButton>(scan).onPressed, isNull);
-      await tester.tap(find.byType(Checkbox).first);
+      await tester.tap(find.text('Allow telemetry sharing'));
       await tester.pump();
       expect(tester.widget<FilledButton>(scan).onPressed, isNotNull);
       await tester.tap(find.text('Wi-Fi'));
@@ -114,7 +117,7 @@ void main() {
         tester.binding.handleAppLifecycleStateChanged(state);
       }
       await tester.pumpAndSettle();
-      await tester.drag(find.byType(ListView), const Offset(0, -600));
+      await tester.drag(find.byType(ListView), const Offset(0, 1500));
       await tester.pumpAndSettle();
       expect(
         find.text(

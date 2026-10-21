@@ -1282,7 +1282,20 @@
       "backgroundEnabled": "Activée avec une notification permanente",
       "notificationStats": "Afficher les statistiques de collecte dans la notification",
       "resumePolling": "Reprendre les interrogations",
-      "startFailed": "La collecte n’a pas pu démarrer. Vérifiez l’autorisation des notifications et le compagnon, ou choisissez la collecte au premier plan."
+      "startFailed": "La collecte n’a pas pu démarrer. Vérifiez l’autorisation des notifications et le compagnon, ou choisissez la collecte au premier plan.",
+      "readingIdentity": "Connecté. Lecture de l’identité du compagnon…",
+      "readingContacts": "Lecture des répéteurs enregistrés…",
+      "transportError": "Connexion impossible. Vérifiez l’appairage et qu’aucune autre application n’utilise ce compagnon.",
+      "identityError": "Bluetooth ou Wi-Fi connecté, mais l’identification du compagnon n’a pas abouti. Reconnectez-vous et réessayez.",
+      "contactsError": "Connecté, mais les contacts enregistrés n’ont pas pu être lus. Reconnectez-vous et vérifiez la compatibilité du micrologiciel.",
+      "about": "À propos du partage de télémétrie",
+      "cancel": "Annuler",
+      "allowSharing": "Autoriser le partage de télémétrie",
+      "publicReadings": "Les mesures sélectionnées seront publiques.",
+      "searchRepeaters": "Rechercher les répéteurs enregistrés",
+      "access": "Accès facultatif au répéteur",
+      "pollSettings": "Paramètres d’interrogation",
+      "batteryEnvironment": "Batterie + environnement"
     }
   }
 }
