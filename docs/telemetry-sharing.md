@@ -77,6 +77,16 @@ Check notification content/actions and actual battery cost on Android 12, 13 and
 build do not establish those hardware results. Play foreground-service declarations
 and platform/store review remain required before distribution.
 
+For phone qualification, the Android workflow's manual `phone_test` option builds
+`meshcorebeacon.app.telemetry`, labelled **Beacon Telemetry**, alongside the normal
+installed app. It uploads the debug APK, commit ID and SHA-256 after service tests.
+The selected instance, secure identity and polling state belong to that separate
+test app; it never uninstalls or clears the normal Beacon app. Configure
+`https://canadaverse.org/beacon-dev` for the experimental preview. Debug signing
+is not a store release; preserve the signing identity before future in-place test
+updates, and never uninstall to work around a signature mismatch without deciding
+how to preserve saved cooldowns and pending reports.
+
 The current upstream Flutter app is an HTTP/WebSocket viewer. Its upstream backend
 does not expose the collected-node telemetry intake described below. A compatible
 separate intake must be deployed and routed by the instance operator before this
