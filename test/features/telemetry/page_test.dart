@@ -29,17 +29,19 @@ class PageRadio implements Companion {
 }
 
 class PageBle extends BleCompanion {
-  PageBle(this.onConnect);
+  PageBle(this.onConnect, {this.onPair});
   final void Function() onConnect;
+  final void Function(bool)? onPair;
   bool closed = false;
   @override
   Future<List<BlePeer>> scan() async => [
     (id: 'test-id', name: 'Test companion', rssi: -60),
   ];
   @override
-  Future<Companion> connect(String id) async {
+  Future<Companion> connect(String id, {bool pair = false}) async {
     if (closed) throw StateError('Closed transport');
     onConnect();
+    onPair?.call(pair);
     return PageRadio();
   }
 
@@ -60,6 +62,7 @@ void main() {
     );
     addTearDown(session.dispose);
     var connected = 0;
+    final pairing = <bool>[];
     await tester.pumpWidget(
       MaterialApp(
         home: TelemetryPage(
@@ -68,7 +71,7 @@ void main() {
             'Preview',
             'https://example.test/beacon',
           ),
-          bleFactory: () => PageBle(() => connected++),
+          bleFactory: () => PageBle(() => connected++, onPair: pairing.add),
         ),
       ),
     );
@@ -76,14 +79,16 @@ void main() {
     await tester.pump();
     await tester.tap(find.text('Scan for BLE companions'));
     await tester.pumpAndSettle();
-    await tester.tap(find.textContaining('Test companion'));
+    await tester.tap(find.text('Pair'));
     await tester.pumpAndSettle();
     expect(connected, 1);
+    expect(pairing, [true]);
     await tester.tap(find.byTooltip('Stop and disconnect'));
     await tester.pumpAndSettle();
     await tester.tap(find.textContaining('Test companion'));
     await tester.pumpAndSettle();
     expect(connected, 2);
+    expect(pairing, [true, false]);
     expect(find.text('Bluetooth · Companion connected'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
     await tester.pumpAndSettle();

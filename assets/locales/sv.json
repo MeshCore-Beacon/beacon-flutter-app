@@ -1253,7 +1253,11 @@
       "access": "Valfri repeateråtkomst",
       "pollSettings": "Avläsningsinställningar",
       "batteryEnvironment": "Batteri + miljö",
-      "requestDeferred": "Begäran misslyckades; befintliga väntetider behålls. Insamlingen fortsätter när det är tillåtet."
+      "requestDeferred": "Begäran misslyckades; befintliga väntetider behålls. Insamlingen fortsätter när det är tillåtet.",
+      "pair": "Parkoppla",
+      "pairingPrompt": "Slutför Androids Bluetooth-parkoppling. PIN-koden stannar i Android.",
+      "pairingFailed": "Parkopplingen slutfördes inte. Kontrollera Androids avisering och välj Parkoppla igen.",
+      "pairingHint": "Välj Parkoppla först om följeslagaren kräver en Bluetooth-PIN."
     }
   }
 }

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:beacon/features/telemetry/ble_companion.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
@@ -65,6 +66,17 @@ class TestDevice implements BluetoothDevice {
   int negotiatedMtu = 185;
   bool cancelled = false, notifying = false;
   bool dropWakeIdentity = false;
+  bool denyPairing = false;
+  Completer<void>? pairing;
+  @override
+  Future<void> createBond({int timeout = 90, Uint8List? pin}) async {
+    expect(pin, isNull);
+    expect(timeout, 90);
+    order.add('pair');
+    await pairing?.future;
+    if (denyPairing) throw StateError('Pairing cancelled');
+  }
+
   // Both controllers are closed by each test after the transport is disconnected.
   // ignore: close_sinks
   final frames = StreamController<List<int>>.broadcast(sync: true);
@@ -125,6 +137,47 @@ class TestDevice implements BluetoothDevice {
 }
 
 void main() {
+  test('explicit Android pairing finishes before protocol setup', () async {
+    final device = TestDevice()..pairing = Completer<void>();
+    final session = BleCompanion(
+      device: (_) => device,
+      android: true,
+      ios: false,
+    );
+    final connecting = session.connect('pin-protected', pair: true);
+    await Future<void>.delayed(Duration.zero);
+    expect(device.order, ['connect', 'pair']);
+    expect(device.writes, isEmpty);
+    device.pairing!.complete();
+    final radio = await connecting;
+    expect(device.order, ['connect', 'pair', 'mtu', 'discover', 'notify']);
+    expect(await radio.identify(), 'ab' * 32);
+    await radio.close();
+    await device.frames.close();
+    await device.states.close();
+  });
+
+  test(
+    'cancelled Android pairing is not retried or followed by protocol writes',
+    () async {
+      final device = TestDevice()..denyPairing = true;
+      final session = BleCompanion(
+        device: (_) => device,
+        android: true,
+        ios: false,
+      );
+      await expectLater(
+        session.connect('pin-protected', pair: true),
+        throwsStateError,
+      );
+      expect(device.order, ['connect', 'pair']);
+      expect(device.writes, isEmpty);
+      expect(device.cancelled, isTrue);
+      await device.frames.close();
+      await device.states.close();
+    },
+  );
+
   test(
     'a BLE MTU too small for saved contacts never sends a command',
     () async {

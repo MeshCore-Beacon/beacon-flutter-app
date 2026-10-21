@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 
 import '../../core/instance.dart';
@@ -145,15 +146,19 @@ class _TelemetryPageState extends State<TelemetryPage>
     }
   }
 
-  Future<void> _connect({String? bleId}) async {
+  Future<void> _connect({String? bleId, bool pair = false}) async {
     if (_busy || widget.session.stopping) return;
     final generation = ++_generation;
     setState(() {
       _busy = true;
-      _status = tr('Connecting to companion…');
+      _status = tr(
+        pair
+            ? 'Complete the Android Bluetooth pairing prompt. The PIN stays with Android.'
+            : 'Connecting to companion…',
+      );
     });
     Companion? connection;
-    var stage = 'transport';
+    var stage = pair ? 'pairing' : 'transport';
     try {
       if (bleId != null) {
         // Scan results outlive a connection. A cancelled or disconnected
@@ -164,7 +169,7 @@ class _TelemetryPageState extends State<TelemetryPage>
       }
       connection = bleId == null
           ? await Companion.connect(_host.text, int.tryParse(_port.text) ?? 0)
-          : await _ble!.connect(bleId);
+          : await _ble!.connect(bleId, pair: pair);
       if (!mounted || generation != _generation) {
         await connection.close();
         return;
@@ -208,7 +213,11 @@ class _TelemetryPageState extends State<TelemetryPage>
       if (mounted && generation == _generation) {
         _radio = null;
         setState(() {
-          _status = stage == 'transport'
+          _status = stage == 'pairing'
+              ? tr(
+                  'Pairing was not completed. Check the Android pairing notification, then try Pair again.',
+                )
+              : stage == 'transport'
               ? tr(
                   'Could not connect. Check pairing and that no other app is using this companion.',
                 )
@@ -719,6 +728,14 @@ class _TelemetryPageState extends State<TelemetryPage>
                     icon: const Icon(Icons.bluetooth_searching),
                     label: Text(tr('Scan for BLE companions')),
                   ),
+                  if (_devices.isNotEmpty &&
+                      defaultTargetPlatform == TargetPlatform.android)
+                    Text(
+                      tr(
+                        'For a companion with a Bluetooth PIN, choose Pair first.',
+                      ),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
                   for (final device in _devices)
                     ListTile(
                       dense: true,
@@ -733,7 +750,14 @@ class _TelemetryPageState extends State<TelemetryPage>
                         '${device.id} · ${device.rssi} dBm',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
-                      trailing: const Icon(Icons.chevron_right),
+                      trailing: defaultTargetPlatform == TargetPlatform.android
+                          ? TextButton(
+                              onPressed: canConnect
+                                  ? () => _connect(bleId: device.id, pair: true)
+                                  : null,
+                              child: Text(tr('Pair')),
+                            )
+                          : const Icon(Icons.chevron_right),
                       onTap: canConnect
                           ? () => _connect(bleId: device.id)
                           : null,

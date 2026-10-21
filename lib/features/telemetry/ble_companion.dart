@@ -133,8 +133,11 @@ class BleCompanion {
     if (_closed) throw StateError('Bluetooth operation cancelled');
   }
 
-  Future<Companion> connect(String id) async {
+  Future<Companion> connect(String id, {bool pair = false}) async {
     _check();
+    if (pair && !_android) {
+      throw UnsupportedError('Explicit pairing is Android only');
+    }
     for (var attempt = 1; ; attempt++) {
       final device = _deviceFor(id);
       _device = device;
@@ -145,6 +148,12 @@ class BleCompanion {
         await device.connect(timeout: const Duration(seconds: 15), mtu: null);
         if (_closed) {
           await device.disconnect(queue: false, timeout: 5);
+          _check();
+        }
+        if (pair) {
+          // Let Android own PIN entry before the shorter protocol deadlines.
+          // Do not collect a PIN, remove a bond or retry a cancelled pairing.
+          await device.createBond(timeout: 90);
           _check();
         }
         if (_android) {
@@ -207,7 +216,7 @@ class BleCompanion {
             (e.toString().contains('apple-code: 14') ||
                 e.toString().contains('apple-code: 15') ||
                 e.toString().contains('Peer removed pairing information'));
-        if (_closed || staleBond || attempt >= 3) rethrow;
+        if (pair || _closed || staleBond || attempt >= 3) rethrow;
         await Future<void>.delayed(const Duration(milliseconds: 500));
         _check();
       }

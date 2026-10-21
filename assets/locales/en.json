@@ -1253,7 +1253,11 @@
       "access": "Optional repeater access",
       "pollSettings": "Polling settings",
       "batteryEnvironment": "Battery + environment",
-      "requestDeferred": "Request failed; existing cooldowns are preserved. Collection will continue when eligible."
+      "requestDeferred": "Request failed; existing cooldowns are preserved. Collection will continue when eligible.",
+      "pair": "Pair",
+      "pairingPrompt": "Complete the Android Bluetooth pairing prompt. The PIN stays with Android.",
+      "pairingFailed": "Pairing was not completed. Check the Android pairing notification, then try Pair again.",
+      "pairingHint": "For a companion with a Bluetooth PIN, choose Pair first."
     }
   }
 }

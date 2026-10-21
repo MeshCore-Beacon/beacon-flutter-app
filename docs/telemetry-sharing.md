@@ -349,3 +349,12 @@ and other selected nodes remain eligible; no failed RF command is immediately re
 Optional sensor timeout can therefore retain and deliver an already valid battery
 sample. Regression checks cover late replies, missing ACKs and incomplete writes.
 Diagnostic logs contain operation stage and error type, never frames or credentials.
+
+For Android companions protected by a Bluetooth PIN, the optional **Pair** action
+connects and waits for Android's native bonding prompt before sending protocol
+requests. The 90-second pairing wait is separate from the short command deadlines;
+the app never reads or stores the Bluetooth PIN. Cancelled pairing is not retried,
+and existing bonds are never removed. Ordinary Connect remains available for
+companions that do not need a bond. A fresh Lineage tablet exposed the need for this
+path: Android requested a PIN, but the ordinary handshake timed out before pairing
+was completed.
