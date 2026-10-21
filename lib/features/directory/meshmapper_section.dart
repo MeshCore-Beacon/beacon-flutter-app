@@ -112,21 +112,17 @@ class MeshMapperSection extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.baseline,
           textBaseline: TextBaseline.alphabetic,
           children: [
-            Flexible(
-              child: Text(
-                textOf(s['scope']),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontFamily: 'JetBrainsMono',
-                  fontSize: 11,
-                  color: colors.bright,
-                ),
+            Text(
+              textOf(s['scope']),
+              style: TextStyle(
+                fontFamily: 'JetBrainsMono',
+                fontSize: 11,
+                color: colors.bright,
               ),
             ),
             if (how.isNotEmpty) ...[
               const SizedBox(width: 8),
-              Flexible(
+              Expanded(
                 child: Text(
                   how,
                   maxLines: 1,
@@ -134,13 +130,15 @@ class MeshMapperSection extends StatelessWidget {
                   style: dim,
                 ),
               ),
-            ],
-            const Spacer(),
-            if (latest > 0)
+            ] else
+              const Spacer(),
+            if (latest > 0) ...[
+              const SizedBox(width: 8),
               Tooltip(
                 message: stamp(latest),
                 child: mono(age(latest), color: colors.muted),
               ),
+            ],
           ],
         ),
       );
@@ -206,7 +204,7 @@ class MeshMapperSection extends StatelessWidget {
       const SizedBox(height: 8),
       Row(
         children: [
-          Flexible(child: footer(trKey('meshMapper.fromMeshMapper'))),
+          footer(trKey('meshMapper.fromMeshMapper')),
           if (iata.isNotEmpty) ...[
             const SizedBox(width: 6),
             Container(
@@ -219,7 +217,6 @@ class MeshMapperSection extends StatelessWidget {
               child: mono(iata, color: colors.primary),
             ),
           ],
-          const SizedBox(width: 12),
           const Spacer(),
           Flexible(
             child: Tooltip(
