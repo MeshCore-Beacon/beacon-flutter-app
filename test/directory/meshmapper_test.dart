@@ -175,6 +175,7 @@ void main() {
       // Preserve the overflowing widget/constraint diagnostics in CI, not just
       // takeException()'s short message (fonts differ between host platforms).
       FlutterError.presentError(details);
+      debugPrint(details.toString());
       previousErrorHandler?.call(details);
     };
     addTearDown(() => FlutterError.onError = previousErrorHandler);
