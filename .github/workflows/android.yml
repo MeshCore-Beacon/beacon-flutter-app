@@ -13,6 +13,11 @@ on:
   push:
     branches: [dev]
   workflow_dispatch:
+    inputs:
+      phone_test:
+        description: Build a separate Beacon Telemetry app beside the installed Beacon app
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -21,6 +26,8 @@ jobs:
   build-android:
     name: Build Android (debug)
     runs-on: ubuntu-latest
+    env:
+      BEACON_TELEMETRY_TEST_BUILD: ${{ github.event_name == 'workflow_dispatch' && inputs.phone_test && 'true' || 'false' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -44,3 +51,20 @@ jobs:
       - name: Test Android telemetry service
         working-directory: android
         run: ./gradlew :app:testDebugUnitTest --tests meshcorebeacon.app.TelemetryServiceTest
+      - name: Record phone test build
+        if: github.event_name == 'workflow_dispatch' && inputs.phone_test
+        run: |
+          git rev-parse HEAD > build/app/outputs/flutter-apk/commit.txt
+          cd build/app/outputs/flutter-apk
+          sha256sum app-debug.apk > SHA256SUMS
+      - name: Upload phone test APK
+        if: github.event_name == 'workflow_dispatch' && inputs.phone_test
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: beacon-telemetry-phone-${{ github.sha }}
+          path: |
+            build/app/outputs/flutter-apk/app-debug.apk
+            build/app/outputs/flutter-apk/commit.txt
+            build/app/outputs/flutter-apk/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14

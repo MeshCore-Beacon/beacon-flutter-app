@@ -6,7 +6,8 @@ import 'package:beacon/features/telemetry/background.dart';
 import 'package:beacon/features/telemetry/companion.dart';
 import 'package:beacon/features/telemetry/session.dart';
 import 'package:beacon/features/telemetry/sharing.dart';
-import 'package:flutter/widgets.dart';
+import 'package:beacon/features/telemetry/telemetry_page.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -76,7 +77,8 @@ class FakeSharing extends TelemetrySharing {
   @override
   Future<void> stop() async {
     enabled = false;
-    await radio.close();
+    // This fake has no I/O to drain. Real socket shutdown is covered in sharing_test.
+    unawaited(radio.close());
   }
 }
 
@@ -210,6 +212,40 @@ void main() {
     expect(session.sharing, same(first));
     await second.stop();
   });
+
+  testWidgets(
+    'leaving and reopening setup retains one background session and its controls',
+    (tester) async {
+      final sharing = FakeSharing();
+      await tester.runAsync(() async {
+        await preferences.setTelemetryBackground(true);
+        await session.start(sharing, transport: 'BLE');
+      });
+      await tester.pumpWidget(
+        MaterialApp(
+          home: TelemetryPage(instance: sharing.instance, session: session),
+        ),
+      );
+      expect(find.text('Background telemetry'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+      expect(sharing.running, isTrue);
+      expect(sharing.starts, 1);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: TelemetryPage(instance: sharing.instance, session: session),
+        ),
+      );
+      await tester.tap(find.text('Stop polling'));
+      await tester.pump();
+      expect(sharing.paused, isTrue);
+      expect(find.text('Resume polling'), findsOneWidget);
+      await tester.tap(find.text('Stop and disconnect'));
+      await tester.pumpAndSettle();
+      expect(sharing.running, isFalse);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 
   test(
     'physical companion disconnect removes background collection immediately',

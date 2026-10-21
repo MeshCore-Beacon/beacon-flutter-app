@@ -26,8 +26,16 @@ class TelemetryBackground {
     if (!supported || !await Permission.notification.request().isGranted) {
       throw StateError('Background collection needs notification permission');
     }
-    if (await _channel.invokeMethod<bool>('start', notice) != true) {
-      throw StateError('Background collection could not start');
+    try {
+      if (await _channel
+              .invokeMethod<bool>('start', notice)
+              .timeout(const Duration(seconds: 10)) !=
+          true) {
+        throw StateError('Background collection could not start');
+      }
+    } catch (_) {
+      await stop();
+      rethrow;
     }
   }
 

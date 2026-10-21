@@ -36,6 +36,7 @@ class TelemetrySession extends ChangeNotifier with WidgetsBindingObserver {
   String status = '';
   bool get active => sharing != null;
   bool get starting => _starting;
+  bool get stopping => _stopping != null;
 
   void _changed() {
     if (!_disposed) notifyListeners();

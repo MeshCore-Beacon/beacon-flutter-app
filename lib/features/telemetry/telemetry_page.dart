@@ -104,7 +104,7 @@ class _TelemetryPageState extends State<TelemetryPage>
   }
 
   Future<void> _scanBle() async {
-    if (_busy) return;
+    if (_busy || widget.session.stopping) return;
     final generation = ++_generation;
     setState(() {
       _busy = true;
@@ -144,7 +144,7 @@ class _TelemetryPageState extends State<TelemetryPage>
   }
 
   Future<void> _connect({String? bleId}) async {
-    if (_busy) return;
+    if (_busy || widget.session.stopping) return;
     final generation = ++_generation;
     setState(() {
       _busy = true;

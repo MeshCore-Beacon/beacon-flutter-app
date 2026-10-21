@@ -33,6 +33,7 @@ android {
 
     defaultConfig {
         applicationId = "meshcorebeacon.app"
+        manifestPlaceholders["beaconAppLabel"] = "BEACON"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -55,6 +56,14 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Opt-in device qualification beside the installed/store app, with
+            // independent settings and signing identity. Never alters release IDs.
+            if (System.getenv("BEACON_TELEMETRY_TEST_BUILD") == "true") {
+                applicationIdSuffix = ".telemetry"
+                manifestPlaceholders["beaconAppLabel"] = "Beacon Telemetry"
+            }
+        }
         release {
             // Without a release keystore (contributors), fall back to debug keys
             // so `flutter run --release` still works
@@ -85,4 +94,9 @@ dependencies {
     implementation("androidx.core:core:1.18.0")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.17")
+}
+
+// AGP's host-test APK consumes the assets Flutter generates outside mergeAssets.
+tasks.matching { it.name == "packageDebugUnitTestForUnitTest" }.configureEach {
+    dependsOn("copyFlutterAssetsDebug")
 }
