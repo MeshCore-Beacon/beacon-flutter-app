@@ -216,7 +216,7 @@ class MeshMapperSection extends StatelessWidget {
       const SizedBox(height: 8),
       Row(
         children: [
-          Flexible(child: footer(trKey('meshMapper.fromMeshMapper'))),
+          footer(trKey('meshMapper.fromMeshMapper')),
           if (iata.isNotEmpty) ...[
             const SizedBox(width: 6),
             Container(
@@ -229,7 +229,6 @@ class MeshMapperSection extends StatelessWidget {
               child: mono(iata, color: colors.primary),
             ),
           ],
-          const SizedBox(width: 12),
           const Spacer(),
           Flexible(
             child: Tooltip(
