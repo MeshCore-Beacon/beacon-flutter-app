@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:beacon/core/api.dart';
+import 'package:beacon/core/page_pacer.dart';
 import 'package:beacon/features/map/map_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -148,8 +149,12 @@ void main() {
         );
       }),
     );
-    // take() bounds the test if the cap is missing.
-    final pages = await loadMapNodes(api, {}).take(300).toList();
+    // take() bounds the test if the cap is missing; a roomy pacer keeps it fast.
+    final pages = await loadMapNodes(
+      api,
+      {},
+      pacer: PagePacer(burst: 1000),
+    ).take(300).toList();
     expect(requests, 250);
     expect(pages.last.length, 250);
     api.close();
@@ -323,4 +328,46 @@ void main() {
     expect(pages.last.map((n) => n['id']), ['a', 'b']);
     api.close();
   });
+  testWidgets(
+    'pages past a region-sized burst wait for the shared page budget',
+    (tester) async {
+      final start = tester.binding.clock.now();
+      final sentAt = <Duration>[];
+      final api = ApiClient(
+        Uri.parse('https://example.org'),
+        client: MockClient((r) async {
+          sentAt.add(tester.binding.clock.now().difference(start));
+          final n = sentAt.length;
+          return http.Response(
+            jsonEncode({
+              'items': [
+                {'id': '$n'},
+              ],
+              'hasMore': n < 45,
+              'nextCursor': '$n',
+            }),
+            200,
+          );
+        }),
+      );
+      final done = loadMapNodes(
+        api,
+        {},
+        pacer: PagePacer(now: tester.binding.clock.now),
+      ).drain<void>();
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      await done;
+      expect(sentAt, hasLength(45));
+      expect(sentAt.take(41), everyElement(Duration.zero));
+      expect(sentAt.skip(41), [
+        const Duration(milliseconds: 300),
+        const Duration(milliseconds: 600),
+        const Duration(milliseconds: 900),
+        const Duration(milliseconds: 1200),
+      ]);
+      api.close();
+    },
+  );
 }

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import '../../core/api.dart';
 import '../../core/json.dart';
+import '../../core/page_pacer.dart';
 
 // 50k nodes at 200 per page; bounds a server that never stops paging.
 const mapNodePageCap = 250;
@@ -10,6 +11,7 @@ Stream<List<Map<String, dynamic>>> loadMapNodes(
   ApiClient api,
   Map<String, dynamic> region, {
   bool Function()? isCurrent,
+  PagePacer? pacer,
 }) async* {
   final iatas = region['iatas'];
   if (iatas is List && iatas.isEmpty || iatas == '') {
@@ -21,6 +23,8 @@ Stream<List<Map<String, dynamic>>> loadMapNodes(
   Map<String, Object> next = {};
   var pages = 0;
   do {
+    // later pages share the app-wide page budget, so a big region can't trip the rate limit
+    if (pages > 0) await (pacer ?? pagePacer).wait();
     if (isCurrent?.call() == false) return;
     // Keeps the same cursors and visible nodes during a server cooldown.
     final response = await withPageCursorFallback(

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api.dart';
 import '../../core/json.dart';
+import '../../core/page_pacer.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
 import 'charts.dart';
@@ -15,11 +16,15 @@ Future<List<Map<String, dynamic>>?> loadNeighbourNodes(
   ApiClient api,
   Map<String, dynamic> region, {
   bool Function()? isCurrent,
+  PagePacer? pacer,
 }) async {
   final found = <String, Map<String, dynamic>>{};
   final seen = <String>{};
   Map<String, Object> next = {};
+  var pages = 0;
   do {
+    // later pages share the app-wide page budget, so a big region can't trip the rate limit
+    if (pages++ > 0) await (pacer ?? pagePacer).wait();
     if (isCurrent?.call() == false) return null;
     final response = await withPageCursorFallback(
       {...region, 'neighbors': 'true', 'limit': 500, ...next},
