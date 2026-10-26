@@ -4,8 +4,8 @@ import '../../core/api.dart';
 import '../../core/json.dart';
 import '../../core/page_pacer.dart';
 
-// 50k nodes at 200 per page; bounds a server that never stops paging.
-const mapNodePageCap = 250;
+// A million nodes, over 10x the largest mesh: only a server that never stops paging gets here.
+const mapNodePageCap = 5000;
 
 Stream<List<Map<String, dynamic>>> loadMapNodes(
   ApiClient api,
@@ -41,7 +41,13 @@ Stream<List<Map<String, dynamic>>> loadMapNodes(
     }
     yield collected.values.toList();
     final page = object(response);
-    if (page['hasMore'] != true || ++pages >= mapNodePageCap) break;
+    if (page['hasMore'] != true) break;
+    // Stopping here drops nodes, so the screen must show an error, not a smaller map.
+    if (++pages >= mapNodePageCap) {
+      throw StateError(
+        'The server sent more than $mapNodePageCap map pages; the map is incomplete.',
+      );
+    }
     next = nextPageParams(page);
     if (next.isEmpty || !seen.add(jsonEncode(next))) {
       throw StateError('The server returned an invalid map page cursor.');

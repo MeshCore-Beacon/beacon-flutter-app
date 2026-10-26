@@ -131,7 +131,60 @@ void main() {
       api.close();
     },
   );
-  test('stops paging after the page cap', () async {
+  // No pacing delay, so the long paging tests stay fast.
+  PagePacer unpaced() => PagePacer(interval: Duration.zero);
+  test('loads every node of a mesh far past 50,000 nodes', () async {
+    var requests = 0;
+    final api = ApiClient(
+      Uri.parse('https://example.org'),
+      client: MockClient((r) async {
+        final n = ++requests;
+        return http.Response(
+          jsonEncode({
+            'items': [
+              for (var i = 0; i < 200; i++) {'id': 'n$n-$i'},
+            ],
+            'hasMore': n < 400,
+            'nextCursor': 'c$n',
+          }),
+          200,
+        );
+      }),
+    );
+    final pages = await loadMapNodes(api, {}, pacer: unpaced()).toList();
+    expect(requests, 400);
+    expect(pages.last, hasLength(80000));
+    api.close();
+  });
+  test(
+    'a server looping back to an old cursor errors past 250 pages',
+    () async {
+      var requests = 0;
+      final api = ApiClient(
+        Uri.parse('https://example.org'),
+        client: MockClient((r) async {
+          requests++;
+          return http.Response(
+            jsonEncode({
+              'items': [
+                {'id': 'n$requests'},
+              ],
+              'hasMore': true,
+              'nextCursor': 'c${requests % 300}',
+            }),
+            200,
+          );
+        }),
+      );
+      await expectLater(
+        loadMapNodes(api, {}, pacer: unpaced()).drain<void>(),
+        throwsStateError,
+      );
+      expect(requests, 301);
+      api.close();
+    },
+  );
+  test('a server that never stops paging errors at the bound', () async {
     var requests = 0;
     final api = ApiClient(
       Uri.parse('https://example.org'),
@@ -142,21 +195,28 @@ void main() {
             'items': [
               {'id': 'n$requests'},
             ],
-            'hasMore': true,
+            // ends just past the bound, so a missing bound fails instead of hanging
+            'hasMore': requests <= mapNodePageCap,
             'nextCursor': 'c$requests',
           }),
           200,
         );
       }),
     );
-    // take() bounds the test if the cap is missing; a roomy pacer keeps it fast.
-    final pages = await loadMapNodes(
-      api,
-      {},
-      pacer: PagePacer(burst: 1000),
-    ).take(300).toList();
-    expect(requests, 250);
-    expect(pages.last.length, 250);
+    final pages = <List<Map<String, dynamic>>>[];
+    await expectLater(
+      loadMapNodes(api, {}, pacer: unpaced()).forEach(pages.add),
+      throwsA(
+        isA<StateError>().having(
+          (e) => e.message,
+          'message',
+          contains('incomplete'),
+        ),
+      ),
+    );
+    expect(requests, mapNodePageCap);
+    // the screen keeps every node that did arrive
+    expect(pages.last, hasLength(mapNodePageCap));
     api.close();
   });
 
