@@ -15,6 +15,7 @@ import 'map_data.dart';
 import 'map_markers.dart';
 import 'map_projection.dart';
 import 'map_repository.dart';
+import 'map_sync.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({
@@ -52,6 +53,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       _showBorders = false;
   int _generation = 0;
   final _canvas = GlobalKey<_NativeMapState>();
+  final _layers = MapLayers();
   @override
   void initState() {
     super.initState();
@@ -113,6 +115,8 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         final id = textOf(d['nodeId']);
         final index = _nodes.indexWhere((n) => n['id'] == id);
         setState(() {
+          // a new list, so the map layers see the change
+          _nodes = [..._nodes];
           if (index >= 0) {
             _nodes[index] = {..._nodes[index], ...d, 'id': id};
           } else {
@@ -192,10 +196,10 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     }
     try {
       List<Map<String, dynamic>>? latest;
-      await for (final nodes in loadMapNodes(
-        widget.api,
-        widget.region,
-        isCurrent: () => _current(gen),
+      // Each update resends every node to the map, so a paging load shows at most once a second.
+      await for (final nodes in throttleLatest(
+        loadMapNodes(widget.api, widget.region, isCurrent: () => _current(gen)),
+        const Duration(seconds: 1),
       )) {
         if (!_current(gen)) return;
         if (_nodes.length <= nodes.length) setState(() => _nodes = nodes);
@@ -355,15 +359,15 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final selected = _selectedNode;
     final mode = neighborMode(_mode, live: _flow);
-    final edges =
-        mode == 'selected' && selected != null && _neighbors.isNotEmpty
-        ? focusedFeatures(selected, _neighbors)
-        : neighborFeatures(_nodes, mode, _selected);
-    final all = _flow && _type.isNotEmpty ? nodeFeatures(_nodes) : null;
-    final points = withSelected(
-      nodeFeatures(_nodes, type: _type),
-      all,
-      _selected,
+    final layers = _layers.build(
+      nodes: _nodes,
+      type: _type,
+      flow: _flow,
+      mode: mode,
+      selected: _selected,
+      selectedNode: selected,
+      neighbors: _neighbors,
+      borders: _showBorders ? _borders : const [],
     );
     return Stack(
       children: [
@@ -373,12 +377,12 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
             style: _style,
             cluster: _cluster,
             liveFlow: _flow,
-            points: points,
+            points: layers.points,
             // Crossed nodes light under any type filter.
-            liveNodes: all,
+            liveNodes: layers.live,
             liveDotTypes: liveDotTypes(_type),
-            lines: edges,
-            borders: collection(_showBorders ? _borders : []),
+            lines: layers.lines,
+            borders: layers.borders,
             onNode: _select,
             onReady: _frame,
             onVisibleCount: (count) {
@@ -761,7 +765,7 @@ class _NativeMapState extends State<NativeMap> {
   MapLibreMapController? _controller;
   bool _ready = false;
   int _epoch = 0;
-  Future<void> _writes = Future.value();
+  MapSync? _sync;
   int _reload = 0;
   bool _firstReady = true;
   CameraPosition _camera = const CameraPosition(
@@ -771,59 +775,51 @@ class _NativeMapState extends State<NativeMap> {
   String get _identity => '${widget.style}-${widget.cluster}-$_reload';
   void reload() {
     setState(() {
-      _epoch++;
-      _ready = false;
-      _controller = null;
+      _drop();
       _reload++;
     });
+  }
+
+  void _drop() {
+    _epoch++;
+    _ready = false;
+    _controller = null;
+    _sync?.close();
+    _sync = null;
   }
 
   @override
   void didUpdateWidget(covariant NativeMap old) {
     super.didUpdateWidget(old);
     if (old.style != widget.style || old.cluster != widget.cluster) {
-      _epoch++;
-      _ready = false;
-      _controller = null;
+      _drop();
     } else {
       _update();
       if (widget.fitPoints) fit(_locations());
     }
   }
 
-  void _update() {
-    final epoch = _epoch;
-    _writes = _writes.catchError((Object _) {}).then((_) async {
-      final c = _controller;
-      if (!_ready || c == null || !mounted || epoch != _epoch) return;
-      try {
-        // Live swaps the nodes onto an unclustered source; the other goes empty.
-        final live = widget.liveFlow, empty = collection([]);
-        await c.setGeoJsonSource('beacon-nodes', live ? empty : widget.points);
-        if (!mounted || epoch != _epoch) return;
-        await c.setGeoJsonSource(
-          'beacon-live-nodes',
-          live ? widget.points : empty,
-        );
-        if (!mounted || epoch != _epoch) return;
-        await c.setGeoJsonSource('beacon-links', widget.lines);
-        if (!mounted || epoch != _epoch) return;
-        await c.setGeoJsonSource('beacon-borders', widget.borders);
-        if (!mounted || epoch != _epoch) return;
-        await c.setFilter('beacon-selected', _byId(widget.selected));
-        if (!mounted || epoch != _epoch) return;
-        await c.setFilter('beacon-live-selected', _byId(widget.selected));
-        if (!mounted || epoch != _epoch) return;
-        await c.setFilter(
-          'beacon-live-selected-marker',
-          _selectedMarker(widget.selected),
-        );
-        if (!mounted || epoch != _epoch) return;
-        await c.setFilter('beacon-live-dots', _ofTypes(widget.liveDotTypes));
-      } catch (e) {
-        if (mounted && epoch == _epoch) widget.onError?.call('Map layers: $e');
-      }
-    });
+  void _update() => unawaited(_sync?.sync());
+
+  // One shared empty source, so an unchanged empty one is never resent.
+  static final _none = collection([]);
+  List<MapWrite> _writes(MapLibreMapController c) {
+    // Live swaps the nodes onto an unclustered source; the other goes empty.
+    final live = widget.liveFlow, selected = widget.selected;
+    MapWrite source(String id, Map<String, dynamic> data) =>
+        (id: id, key: data, send: () => c.setGeoJsonSource(id, data));
+    MapWrite filter(String id, List<Object> f) =>
+        (id: id, key: jsonEncode(f), send: () => c.setFilter(id, f));
+    return [
+      source('beacon-nodes', live ? _none : widget.points),
+      source('beacon-live-nodes', live ? widget.points : _none),
+      source('beacon-links', widget.lines),
+      source('beacon-borders', widget.borders),
+      filter('beacon-selected', _byId(selected)),
+      filter('beacon-live-selected', _byId(selected)),
+      filter('beacon-live-selected-marker', _selectedMarker(selected)),
+      filter('beacon-live-dots', _ofTypes(widget.liveDotTypes)),
+    ];
   }
 
   Future<void> _styleLoaded() async {
@@ -1196,6 +1192,15 @@ class _NativeMapState extends State<NativeMap> {
       );
       if (!mounted || epoch != _epoch) return;
       _ready = true;
+      _sync?.close();
+      _sync = MapSync(
+        () => _writes(c),
+        onError: (e) {
+          if (mounted && epoch == _epoch) {
+            widget.onError?.call('Map layers: $e');
+          }
+        },
+      );
       _update();
       if (_firstReady) {
         _firstReady = false;
@@ -1430,9 +1435,7 @@ class _NativeMapState extends State<NativeMap> {
   );
   @override
   void dispose() {
-    _epoch++;
-    _ready = false;
-    _controller = null;
+    _drop();
     super.dispose();
   }
 }
