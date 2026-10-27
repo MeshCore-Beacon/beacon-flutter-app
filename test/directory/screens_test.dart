@@ -362,6 +362,72 @@ void main() {
     await tester.pumpAndSettle();
     expect(requests.last.queryParameters['typeName'], 'repeater');
   });
+  testWidgets('nodes scope filter goes to the server', (tester) async {
+    final events = StreamController<Map<String, dynamic>>.broadcast();
+    final requests = <Uri>[];
+    final api = ApiClient(
+      Uri.parse('https://test.invalid'),
+      client: MockClient((r) async {
+        requests.add(r.url);
+        if (r.url.path.endsWith('/scopes')) {
+          return http.Response('["#bc"]', 200);
+        }
+        final scoped = r.url.queryParameters['scope'] == '#bc';
+        return http.Response(
+          jsonEncode({
+            // List rows carry no defaultScope.
+            'items': [
+              {'id': 'a', 'name': 'Scoped node'},
+              if (!scoped) {'id': 'b', 'name': 'Other node'},
+            ],
+            'hasMore': false,
+          }),
+          200,
+        );
+      }),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: DirectoryScreen(
+            kind: 'nodes',
+            api: api,
+            region: const {},
+            events: events.stream,
+            onOpen: (_, _) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Filters'));
+    await tester.pumpAndSettle();
+    final scope = find.byKey(const ValueKey('scope:null'));
+    await tester.ensureVisible(scope);
+    await tester.tap(scope);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('#bc').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Apply'));
+    await tester.pumpAndSettle();
+    expect(requests.last.queryParameters['scope'], '#bc');
+    expect(find.text('Scoped node'), findsOneWidget);
+    expect(find.text('Other node'), findsNothing);
+
+    // A listed node that moves to another scope can leave the list.
+    final before = requests.length;
+    events.add({
+      'type': 'event',
+      'event': 'nodeUpdate',
+      'data': {'nodeId': 'a', 'defaultScope': '#other'},
+    });
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+    expect(requests.skip(before).single.queryParameters['scope'], '#bc');
+    await tester.pumpWidget(const SizedBox());
+    await events.close();
+  });
   testWidgets('empty region issues no unbounded directory request', (
     tester,
   ) async {

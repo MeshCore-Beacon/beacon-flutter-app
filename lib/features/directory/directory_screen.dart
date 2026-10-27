@@ -178,6 +178,9 @@ class _DirectoryScreenState extends State<DirectoryScreen>
           (search.text.trim().isNotEmpty &&
               data.containsKey('name') &&
               data['name'] != current['name']) ||
+          (textOf(filters['scope']).isNotEmpty &&
+              data.containsKey('defaultScope') &&
+              data['defaultScope'] != filters['scope']) ||
           filters.keys.any(
             (key) => data.containsKey(key) && data[key] != current[key],
           );
@@ -321,7 +324,7 @@ class _DirectoryScreenState extends State<DirectoryScreen>
     if (widget.kind == 'observers' && search.text.trim().isNotEmpty) {
       q['name'] = search.text.trim();
     }
-    if ({'traces', 'observers'}.contains(widget.kind) &&
+    if ({'nodes', 'traces', 'observers'}.contains(widget.kind) &&
         filters['scope']?.isNotEmpty == true) {
       q['scope'] = filters['scope'];
     }
@@ -756,7 +759,6 @@ class _DirectoryScreenState extends State<DirectoryScreen>
     final result = items.where((r) {
       final scope = filters['scope'];
       if (scope?.isNotEmpty == true && widget.kind != 'traces') {
-        if (widget.kind == 'nodes' && r['defaultScope'] != scope) return false;
         if (widget.kind == 'observers' &&
             !(r['scopes'] is List && (r['scopes'] as List).contains(scope))) {
           return false;
