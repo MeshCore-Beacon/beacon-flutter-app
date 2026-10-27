@@ -1180,6 +1180,9 @@
     "liveMap": {
       "clusteringOff": "Av medan livekartan är på",
       "neighborLinesOff": "Alla linjer är av medan livekartan är på"
+    },
+    "mapTerrain": {
+      "title": "Terräng"
     }
   }
 }

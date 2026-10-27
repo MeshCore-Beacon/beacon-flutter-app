@@ -1223,6 +1223,9 @@
     "liveMap": {
       "clusteringOff": "Désactivé tant que la carte en direct est active",
       "neighborLinesOff": "Toutes les lignes sont désactivées tant que la carte en direct est active"
+    },
+    "mapTerrain": {
+      "title": "Relief"
     }
   }
 }

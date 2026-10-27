@@ -50,7 +50,8 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   bool _loading = true,
       _settings = false,
       _cluster = true,
-      _showBorders = false;
+      _showBorders = false,
+      _terrain = false;
   int _generation = 0;
   final _canvas = GlobalKey<_NativeMapState>();
   final _layers = MapLayers();
@@ -74,6 +75,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       _cluster = p.getBool('beacon-map-clustering') ?? true;
       _mode = p.getString('beacon-map-neighbors') ?? 'selected';
       _showBorders = p.getBool('beacon-map-borders') ?? false;
+      _terrain = p.getBool('beacon-map-terrain') ?? false;
     });
     if (_showBorders) unawaited(_loadBorders());
   }
@@ -86,6 +88,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     await p.setBool('beacon-map-clustering', _cluster);
     await p.setString('beacon-map-neighbors', _mode);
     await p.setBool('beacon-map-borders', _showBorders);
+    await p.setBool('beacon-map-terrain', _terrain);
   }
 
   @override
@@ -376,6 +379,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
             key: _canvas,
             style: _style,
             cluster: _cluster,
+            hillshade: _terrain,
             liveFlow: _flow,
             points: layers.points,
             // Crossed nodes light under any type filter.
@@ -524,6 +528,12 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                                 _showBorders = v == 'on';
                                 if (_showBorders) _loadBorders();
                               },
+                            ),
+                            _choices(
+                              trKey('mapTerrain.title'),
+                              {'on': 'On', 'off': 'Off'},
+                              _terrain ? 'on' : 'off',
+                              (v) => _terrain = v == 'on',
                             ),
                             TextButton.icon(
                               onPressed: _copyLink,
@@ -735,6 +745,7 @@ class NativeMap extends StatefulWidget {
     required this.onNode,
     this.style = 'dark',
     this.cluster = false,
+    this.hillshade = false,
     this.liveFlow = false,
     this.liveNodes,
     this.liveDotTypes = const ['repeater', 'companion'],
@@ -752,6 +763,8 @@ class NativeMap extends StatefulWidget {
   final bool fitPoints;
   final String style;
   final bool cluster;
+  // Off by default: each view pulls dozens of uncached elevation tiles.
+  final bool hillshade;
   final bool liveFlow;
   final String? selected;
   final void Function(String) onNode;
@@ -772,7 +785,8 @@ class _NativeMapState extends State<NativeMap> {
     target: LatLng(20, 0),
     zoom: 1.5,
   );
-  String get _identity => '${widget.style}-${widget.cluster}-$_reload';
+  String get _identity =>
+      '${widget.style}-${widget.cluster}-${widget.hillshade}-$_reload';
   void reload() {
     setState(() {
       _drop();
@@ -791,7 +805,9 @@ class _NativeMapState extends State<NativeMap> {
   @override
   void didUpdateWidget(covariant NativeMap old) {
     super.didUpdateWidget(old);
-    if (old.style != widget.style || old.cluster != widget.cluster) {
+    if (old.style != widget.style ||
+        old.cluster != widget.cluster ||
+        old.hillshade != widget.hillshade) {
       _drop();
     } else {
       _update();
@@ -829,29 +845,33 @@ class _NativeMapState extends State<NativeMap> {
     final imageScale = MediaQuery.devicePixelRatioOf(context);
     try {
       // MapLibre Native supports raster DEM hillshading, but not 3D terrain.
-      await c.addSource(
-        'beacon-elevation',
-        const RasterDemSourceProperties(
-          tiles: [
-            'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png',
-          ],
-          tileSize: 256,
-          encoding: 'terrarium',
-          maxzoom: 15,
-          attribution: '<a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md">Tilezen Joerd</a>',
-        ),
-      );
-      await c.addHillshadeLayer(
-        'beacon-elevation',
-        'beacon-hillshade',
-        HillshadeLayerProperties(
-          hillshadeExaggeration: 0.3,
-          hillshadeShadowColor: widget.style == 'dark' ? '#09090b' : '#566477',
-          hillshadeHighlightColor: widget.style == 'dark'
-              ? '#424250'
-              : '#ffffff',
-        ),
-      );
+      if (widget.hillshade) {
+        await c.addSource(
+          'beacon-elevation',
+          const RasterDemSourceProperties(
+            tiles: [
+              'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png',
+            ],
+            tileSize: 256,
+            encoding: 'terrarium',
+            maxzoom: 15,
+            attribution: '<a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md">Tilezen Joerd</a>',
+          ),
+        );
+        await c.addHillshadeLayer(
+          'beacon-elevation',
+          'beacon-hillshade',
+          HillshadeLayerProperties(
+            hillshadeExaggeration: 0.3,
+            hillshadeShadowColor: widget.style == 'dark'
+                ? '#09090b'
+                : '#566477',
+            hillshadeHighlightColor: widget.style == 'dark'
+                ? '#424250'
+                : '#ffffff',
+          ),
+        );
+      }
       await c.addGeoJsonSource('beacon-borders', widget.borders);
       await c.addFillLayer(
         'beacon-borders',

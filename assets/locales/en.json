@@ -1180,6 +1180,9 @@
     "liveMap": {
       "clusteringOff": "Off while Live Map is on",
       "neighborLinesOff": "All lines are off while Live Map is on"
+    },
+    "mapTerrain": {
+      "title": "Terrain"
     }
   }
 }
