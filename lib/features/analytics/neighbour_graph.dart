@@ -27,7 +27,7 @@ Future<List<Map<String, dynamic>>?> loadNeighbourNodes(
     if (pages++ > 0) await (pacer ?? pagePacer).wait();
     if (isCurrent?.call() == false) return null;
     final response = await withPageCursorFallback(
-      {...region, 'neighbors': 'true', 'limit': 500, ...next},
+      {...region, 'neighbors': 'true', 'limit': 2000, ...next},
       (p) => retryTransient(
         () => api.getCached('/nodes', p),
         isCurrent: isCurrent,

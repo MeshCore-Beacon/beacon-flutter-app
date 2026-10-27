@@ -42,7 +42,8 @@ void main() {
     expect(seen[1]['pageCursor'], pc);
     expect(seen[1]['iatas'], 'AAA');
     expect(seen[1]['neighbors'], 'true');
-    expect(seen[1]['limit'], '500');
+    expect(seen[0]['limit'], '2000');
+    expect(seen[1]['limit'], '2000');
     api.close();
   });
   test('pages by cursor alone on a server without nextPageCursor', () async {

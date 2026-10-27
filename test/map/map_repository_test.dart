@@ -8,11 +8,11 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 void main() {
-  test('map uses server-supported 200-node batches', () async {
+  test('map asks for 2000-node pages', () async {
     final api = ApiClient(
       Uri.parse('https://example.org'),
       client: MockClient((r) async {
-        expect(r.url.queryParameters['limit'], '200');
+        expect(r.url.queryParameters['limit'], '2000');
         return http.Response('{"items":[],"hasMore":false}', 200);
       }),
     );
@@ -154,6 +154,33 @@ void main() {
     final pages = await loadMapNodes(api, {}, pacer: unpaced()).toList();
     expect(requests, 400);
     expect(pages.last, hasLength(80000));
+    api.close();
+  });
+  test('a server that clamps pages to 200 still loads every node', () async {
+    var requests = 0;
+    final limits = <String?>{};
+    final api = ApiClient(
+      Uri.parse('https://example.org'),
+      client: MockClient((r) async {
+        final n = ++requests;
+        limits.add(r.url.queryParameters['limit']);
+        // an older server caps limit at 200 and keeps paging
+        return http.Response(
+          jsonEncode({
+            'items': [
+              for (var i = 0; i < 200; i++) {'id': 'n$n-$i'},
+            ],
+            'hasMore': n < 391,
+            'nextCursor': 'c$n',
+          }),
+          200,
+        );
+      }),
+    );
+    final pages = await loadMapNodes(api, {}, pacer: unpaced()).toList();
+    expect(limits, {'2000'});
+    expect(requests, 391);
+    expect(pages.last, hasLength(78200));
     api.close();
   });
   test(

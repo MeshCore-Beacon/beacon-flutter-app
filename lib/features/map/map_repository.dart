@@ -4,7 +4,7 @@ import '../../core/api.dart';
 import '../../core/json.dart';
 import '../../core/page_pacer.dart';
 
-// A million nodes, over 10x the largest mesh: only a server that never stops paging gets here.
+// A million nodes even at an older server's 200 per page: only a never-ending server gets here.
 const mapNodePageCap = 5000;
 
 Stream<List<Map<String, dynamic>>> loadMapNodes(
@@ -28,7 +28,8 @@ Stream<List<Map<String, dynamic>>> loadMapNodes(
     if (isCurrent?.call() == false) return;
     // Keeps the same cursors and visible nodes during a server cooldown.
     final response = await withPageCursorFallback(
-      {...region, 'neighbors': true, 'limit': 200, ...next},
+      // older servers clamp this to 200 and keep paging, so asking for more is always safe
+      {...region, 'neighbors': true, 'limit': 2000, ...next},
       (p) => retryTransient(
         () => api.getCached('/nodes', p),
         isCurrent: isCurrent,
