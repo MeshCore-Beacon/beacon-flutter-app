@@ -440,13 +440,13 @@ void main() {
     },
   );
 
-  testWidgets('routes request every selected IATA', (tester) async {
-    final requested = <String>[];
+  testWidgets('routes request every selected IATA in one call', (tester) async {
+    final requested = <Map<String, String>>[];
     final api = ApiClient(
       Uri.parse('https://test.invalid'),
       client: MockClient((r) async {
         if (r.url.path.endsWith('/routes')) {
-          requested.add(r.url.queryParameters['iata']!);
+          requested.add(r.url.queryParameters);
         }
         return http.Response('[]', 200);
       }),
@@ -464,7 +464,9 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(requested, ['YVR', 'YYJ']);
+    expect(requested, [
+      {'iatas': 'YVR,YYJ', 'limit': '50'},
+    ]);
   });
   testWidgets('old instance response cannot replace new directory', (
     tester,

@@ -309,8 +309,13 @@ void main() {
       Uri.parse('https://test.invalid'),
       client: MockClient((r) async {
         if (!r.url.path.endsWith('/routes')) return http.Response('[]', 200);
-        final iata = r.url.queryParameters['iata']!;
+        final q = r.url.queryParameters;
+        final iata = q['iatas'] ?? q['iata']!;
         requested.add(iata);
+        // A server before 2.1 ignores iatas, so the region goes per IATA.
+        if (iata == 'AAA,BBB') {
+          return http.Response('[{"id":1,"iata":"ZZZ","lastSeen":1}]', 200);
+        }
         if (iata == 'AAA') return first.future;
         return http.Response('{"items":[],"hasMore":false}', 200);
       }),
@@ -331,6 +336,6 @@ void main() {
     await tester.pump();
     first.complete(http.Response('{"items":[],"hasMore":false}', 200));
     await tester.pumpAndSettle();
-    expect(requested, ['AAA', 'CCC']);
+    expect(requested, ['AAA,BBB', 'AAA', 'CCC']);
   });
 }
