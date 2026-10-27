@@ -39,7 +39,13 @@ Future<List<Map<String, dynamic>>?> loadNeighbourNodes(
       found[textOf(n['id'])] = n;
     }
     next = nextPageParams(object(response));
-    if (next.isEmpty || !seen.add(jsonEncode(next))) break;
+    if (next.isEmpty) break;
+    // Stopping here would draw part of the mesh as if it were all of it.
+    if (!seen.add(jsonEncode(next))) {
+      throw StateError(
+        'The server returned an invalid neighbour graph page cursor.',
+      );
+    }
   } while (true);
   return found.values.toList();
 }

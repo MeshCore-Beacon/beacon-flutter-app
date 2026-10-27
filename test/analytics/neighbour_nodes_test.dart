@@ -168,6 +168,29 @@ void main() {
     api.close();
   });
 
+  test('a repeated cursor errors instead of a partial graph', () async {
+    var calls = 0;
+    final api = ApiClient(
+      Uri.parse('https://example.org'),
+      client: MockClient((r) async {
+        calls++;
+        return http.Response(
+          jsonEncode({
+            'items': [
+              {'id': 'n$calls'},
+            ],
+            'hasMore': true,
+            'nextCursor': 'same',
+          }),
+          200,
+        );
+      }),
+    );
+    await expectLater(loadNeighbourNodes(api, {}), throwsStateError);
+    expect(calls, 2);
+    api.close();
+  });
+
   test('an invalid pageCursor falls back to cursor alone', () async {
     final seen = <Map<String, String>>[];
     final api = ApiClient(

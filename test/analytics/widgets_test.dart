@@ -248,6 +248,46 @@ void main() {
     expect(graphRequests, 2);
   });
 
+  testWidgets(
+    'neighbour graph shows an error when its server repeats a cursor',
+    (tester) async {
+      final api = ApiClient(
+        Uri.parse('https://example.test'),
+        client: MockClient(
+          (r) async => http.Response(
+            jsonEncode({
+              'items': [
+                {'id': 'node-1', 'knownNeighborCount': 0, 'neighborIds': []},
+              ],
+              'hasMore': true,
+              'nextCursor': 'same',
+            }),
+            200,
+          ),
+        ),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AnalyticsScreen(
+              api: api,
+              region: const {
+                'iatas': ['YVR'],
+              },
+              initialTab: 'Neighbour Graph',
+              onOpen: (_, _) {},
+            ),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.textContaining('Unable to load graph'), findsOneWidget);
+      expect(find.textContaining('cursor'), findsOneWidget);
+      expect(find.text('Retry'), findsOneWidget);
+      expect(find.byTooltip('Refresh graph'), findsNothing);
+    },
+  );
+
   testWidgets('observer busy chart is hidden when airtime was not reported', (
     tester,
   ) async {
