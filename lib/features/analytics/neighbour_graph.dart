@@ -11,6 +11,9 @@ import 'charts.dart';
 import 'network_canvas.dart';
 import 'transforms.dart';
 
+// A million nodes even at an older server's 200 per page: only a never-ending server gets here.
+const graphNodePageCap = 5000;
+
 /// Every node in [region] with neighbour ids, page by page; null once superseded.
 Future<List<Map<String, dynamic>>?> loadNeighbourNodes(
   ApiClient api,
@@ -40,6 +43,11 @@ Future<List<Map<String, dynamic>>?> loadNeighbourNodes(
     }
     next = nextPageParams(object(response));
     if (next.isEmpty) break;
+    if (pages >= graphNodePageCap) {
+      throw StateError(
+        'The server sent more than $graphNodePageCap graph pages; the graph is incomplete.',
+      );
+    }
     // Stopping here would draw part of the mesh as if it were all of it.
     if (!seen.add(jsonEncode(next))) {
       throw StateError(

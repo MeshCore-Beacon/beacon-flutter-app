@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:beacon/core/api.dart';
+import 'package:beacon/core/page_pacer.dart';
 import 'package:beacon/features/analytics/neighbour_graph.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -223,5 +224,35 @@ void main() {
     expect(seen[2]['cursor'], '5');
     expect(nodes!.map((n) => n['id']), ['a', 'b']);
     api.close();
+  });
+  test('a server that never stops paging errors at the bound', () async {
+    var requests = 0;
+    final api = ApiClient(
+      Uri.parse('https://example.org'),
+      client: MockClient((r) async {
+        requests++;
+        return http.Response(
+          jsonEncode({
+            'items': [
+              {'id': 'n$requests'},
+            ],
+            'hasMore': true,
+            'nextCursor': requests,
+          }),
+          200,
+        );
+      }),
+    );
+    await expectLater(
+      loadNeighbourNodes(api, {}, pacer: PagePacer(interval: Duration.zero)),
+      throwsA(
+        isA<StateError>().having(
+          (e) => e.message,
+          'message',
+          contains('incomplete'),
+        ),
+      ),
+    );
+    expect(requests, graphNodePageCap);
   });
 }
