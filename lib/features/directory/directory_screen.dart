@@ -109,6 +109,7 @@ class _DirectoryScreenState extends State<DirectoryScreen>
   String searchField = 'name';
   String sortBy = 'recent';
   bool descending = true;
+  bool nodesServerSorted = false;
   Object? error;
   bool loading = false;
   bool backgroundRefresh = false;
@@ -328,6 +329,7 @@ class _DirectoryScreenState extends State<DirectoryScreen>
         filters['scope']?.isNotEmpty == true) {
       q['scope'] = filters['scope'];
     }
+    if (widget.kind == 'nodes') q.addAll(nodeOrder());
     if (widget.kind == 'routes') {
       q.remove('iatas');
       q.remove('region');
@@ -337,6 +339,17 @@ class _DirectoryScreenState extends State<DirectoryScreen>
       }
     }
     return q;
+  }
+
+  /// Server order for the node sort choice; newest first is the server's default.
+  Json nodeOrder() {
+    final sort = const {
+      'name': 'name',
+      'knownNeighborCount': 'neighbors',
+    }[sortBy];
+    return sort == null
+        ? {}
+        : {'sort': sort, 'order': descending ? 'desc' : 'asc'};
   }
 
   void maybeLoadObservers() {
@@ -634,6 +647,17 @@ class _DirectoryScreenState extends State<DirectoryScreen>
           cursor = routeCursors.isEmpty ? {} : {'more': true};
         } else if (!live) {
           cursor = nextDirectoryCursor(widget.kind, response, 50);
+          if (widget.kind == 'nodes') {
+            final order = nodeOrder();
+            // Older servers ignore sort and leave it off the page, so the device sorts.
+            nodesServerSorted =
+                order.isNotEmpty &&
+                response is Map &&
+                response['sort'] == order['sort'] &&
+                response['order'] == order['order'];
+            // A sorted list pages by pageCursor alone; a cursor with it is a 400.
+            if (nodesServerSorted) cursor.remove('cursor');
+          }
         }
         error = partial;
         loading = false;
@@ -798,7 +822,7 @@ class _DirectoryScreenState extends State<DirectoryScreen>
         );
       });
     }
-    if (sortBy != 'recent') {
+    if (sortBy != 'recent' && !(widget.kind == 'nodes' && nodesServerSorted)) {
       result.sort((a, b) {
         if (widget.kind == 'channels') {
           final aPublic = textOf(a['name']).toLowerCase() == 'public';
@@ -1014,6 +1038,7 @@ class _DirectoryScreenState extends State<DirectoryScreen>
                 ),
                 icon: const Icon(Icons.sort, size: 20),
                 onSelected: (v) {
+                  final order = jsonEncode(nodeOrder());
                   setState(() {
                     if (v == 'reverse') {
                       descending = !descending;
@@ -1022,7 +1047,11 @@ class _DirectoryScreenState extends State<DirectoryScreen>
                       descending = widget.kind == 'observers' && v == 'recent';
                     }
                   });
-                  if (widget.kind == 'observers') load();
+                  if (widget.kind == 'observers' ||
+                      (widget.kind == 'nodes' &&
+                          jsonEncode(nodeOrder()) != order)) {
+                    load();
+                  }
                 },
                 itemBuilder: (_) => [
                   PopupMenuItem(
@@ -1147,7 +1176,9 @@ class _DirectoryScreenState extends State<DirectoryScreen>
                         ? OutlinedButton(
                             onPressed: loading ? null : () => load(more: true),
                             child: DirectoryText(
-                              widget.kind == 'observers'
+                              widget.kind == 'observers' ||
+                                      (widget.kind == 'nodes' &&
+                                          nodesServerSorted)
                                   ? 'Load more'
                                   : 'Load older',
                             ),
