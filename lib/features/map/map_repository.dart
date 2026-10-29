@@ -30,10 +30,7 @@ Stream<List<Map<String, dynamic>>> loadMapNodes(
     final response = await withPageCursorFallback(
       // older servers clamp this to 200 and keep paging, so asking for more is always safe
       {...region, 'neighbors': true, 'limit': 2000, ...next},
-      (p) => retryTransient(
-        () => api.getCached('/nodes', p),
-        isCurrent: isCurrent,
-      ),
+      (p) => api.getCached('/nodes', p, isCurrent),
       isCurrent: isCurrent,
     );
     if (response == null || isCurrent?.call() == false) return;

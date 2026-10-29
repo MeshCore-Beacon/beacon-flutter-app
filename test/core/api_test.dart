@@ -44,6 +44,7 @@ void main() {
     var calls = 0;
     final api = ApiClient(
       Uri.parse('https://test'),
+      transientRetries: 0,
       client: MockClient((r) async {
         calls++;
         return http.Response(
@@ -119,6 +120,7 @@ void main() {
     final api = ApiClient(
       Uri.parse('https://host'),
       maxResponseBytes: 1024,
+      transientRetries: 0,
       client: MockClient(
         (request) async => http.Response(
           '{"error":{"message":"slow down"}}',
@@ -201,6 +203,7 @@ void main() {
   ApiClient busy(List<int> calls, int status, Map<String, String> headers) =>
       ApiClient(
         Uri.parse('https://test'),
+        transientRetries: 0,
         client: MockClient((r) async {
           calls.add(status);
           return http.Response(
@@ -466,4 +469,89 @@ void main() {
       expect(n, 1);
     },
   );
+
+  group('ApiClient waits out a busy server', () {
+    ApiClient scripted(
+      List<http.Response> answers,
+      List<Duration> waits, {
+      int retries = 3,
+      List<Uri>? seen,
+    }) {
+      var clock = DateTime(2026);
+      return ApiClient(
+        Uri.parse('https://test'),
+        now: () => clock,
+        wait: (d) async {
+          waits.add(d);
+          clock = clock.add(d);
+        },
+        transientRetries: retries,
+        client: MockClient((r) async {
+          seen?.add(r.url);
+          return answers.removeAt(0);
+        }),
+      );
+    }
+
+    http.Response busy(int status, [String? after]) => http.Response(
+      '{"error":{"message":"busy"}}',
+      status,
+      headers: {'retry-after': ?after},
+    );
+    http.Response ok() => http.Response('{"items":[]}', 200);
+
+    test('a 503 with Retry-After is retried after the wait', () async {
+      final waits = <Duration>[];
+      final api = scripted([busy(503, '10'), ok()], waits);
+      expect(await api.get('/packets'), {'items': []});
+      expect(waits, [const Duration(seconds: 10)]);
+    });
+    test('a 429 waits out the cooldown it set, then retries', () async {
+      final waits = <Duration>[];
+      final seen = <Uri>[];
+      final api = scripted([busy(429, '1'), ok()], waits, seen: seen);
+      expect(await api.get('/packets', {'limit': 5}), {'items': []});
+      expect(waits, [const Duration(seconds: 1)]);
+      expect(seen, hasLength(2));
+    });
+    test('reference reads retry too', () async {
+      final waits = <Duration>[];
+      final api = scripted([busy(503, '30'), ok()], waits);
+      expect(await api.getCached('/iatas'), {'items': []});
+      expect(waits, [const Duration(seconds: 30)]);
+    });
+    test('gives up after three retries', () async {
+      final waits = <Duration>[];
+      final api = scripted(List.generate(4, (_) => busy(503, '10')), waits);
+      await expectLater(
+        api.get('/packets'),
+        throwsA(isA<ApiException>().having((e) => e.status, 'status', 503)),
+      );
+      expect(waits, hasLength(3));
+    });
+    test('a 503 without Retry-After and other errors are final', () async {
+      for (final answer in [busy(503), busy(404), busy(500)]) {
+        final waits = <Duration>[];
+        final api = scripted([answer], waits);
+        await expectLater(api.get('/packets'), throwsA(isA<ApiException>()));
+        expect(waits, isEmpty);
+      }
+    });
+    test('stops without another request once superseded', () async {
+      final waits = <Duration>[];
+      final seen = <Uri>[];
+      var current = true;
+      final api = scripted([busy(503, '10'), ok()], waits, seen: seen);
+      final result = api.get('/packets', const {}, () => current);
+      current = false;
+      expect(await result, isNull);
+      expect(seen, hasLength(1));
+    });
+    test('transientRetries 0 throws the first busy answer', () async {
+      final waits = <Duration>[];
+      final api = scripted([busy(503, '10')], waits, retries: 0);
+      await expectLater(api.get('/info'), throwsA(isA<ApiException>()));
+      expect(waits, isEmpty);
+    });
+  });
 }

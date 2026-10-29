@@ -18,10 +18,7 @@ retryingGet(
 }) =>
     (path, [params = const {}]) => withPageCursorFallback(
       params,
-      (p) => retryTransient(
-        () => (fresh ? api.get : api.getCached)(path, p),
-        isCurrent: isCurrent,
-      ),
+      (p) => (fresh ? api.get : api.getCached)(path, p, isCurrent),
       isCurrent: isCurrent,
     );
 

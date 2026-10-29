@@ -172,10 +172,10 @@ class _PacketScreenState extends State<PacketScreen> {
       final response = object(
         await withPageCursorFallback(
           params,
-          (p) => retryTransient(
-            () =>
-                (older ? widget.api.getCached : widget.api.get)('/packets', p),
-            isCurrent: () => mounted && request == generation,
+          (p) => (older ? widget.api.getCached : widget.api.get)(
+            '/packets',
+            p,
+            () => mounted && request == generation,
           ),
           isCurrent: () => mounted && request == generation,
         ),

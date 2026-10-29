@@ -62,6 +62,8 @@ class _PacketDetailScreenState extends State<PacketDetailScreen>
       final response = object(
         await (fresh ? widget.api.get : widget.api.getCached)(
           '/packets/${Uri.encodeComponent(widget.hash)}',
+          const {},
+          () => mounted && current == generation,
         ),
       );
       if (mounted && current == generation) {

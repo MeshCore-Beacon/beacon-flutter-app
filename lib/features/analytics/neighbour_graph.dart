@@ -31,10 +31,7 @@ Future<List<Map<String, dynamic>>?> loadNeighbourNodes(
     if (isCurrent?.call() == false) return null;
     final response = await withPageCursorFallback(
       {...region, 'neighbors': 'true', 'limit': 2000, ...next},
-      (p) => retryTransient(
-        () => api.getCached('/nodes', p),
-        isCurrent: isCurrent,
-      ),
+      (p) => api.getCached('/nodes', p, isCurrent),
       isCurrent: isCurrent,
     );
     if (response == null || isCurrent?.call() == false) return null;

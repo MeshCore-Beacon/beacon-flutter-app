@@ -115,9 +115,16 @@ class ApiClient {
     http.Client? client,
     DateTime Function()? now,
     this.maxResponseBytes = 16 * 1024 * 1024,
+    Future<void> Function(Duration)? wait,
+    this.transientRetries = 3,
   }) : _client = client ?? http.Client(),
-       _now = now ?? DateTime.now;
+       _now = now ?? DateTime.now,
+       _wait = wait ?? _sleep;
   final int maxResponseBytes;
+
+  /// How often a read waits out a 429 or a 503 with Retry-After, like web's queries.
+  final int transientRetries;
+  final Future<void> Function(Duration) _wait;
   final DateTime Function() _now;
   final _cache = <String, _CachedResponse>{};
   final _pending = <String, Future<dynamic>>{};
@@ -161,10 +168,27 @@ class ApiClient {
     return value == null ? null : jsonDecode(value.body);
   }
 
+  /// Like [get], for paths whose answers may be reused within their TTL.
   Future<dynamic> getCached(
     String path, [
     Map<String, dynamic> params = const {},
-  ]) async {
+    bool Function()? isCurrent,
+  ]) => _waitingOut(() => _cachedOrRead(path, params), isCurrent);
+
+  Future<dynamic> _waitingOut(
+    Future<dynamic> Function() read,
+    bool Function()? isCurrent,
+  ) => retryTransient(
+    read,
+    isCurrent: isCurrent,
+    retries: transientRetries,
+    wait: _wait,
+  );
+
+  Future<dynamic> _cachedOrRead(
+    String path,
+    Map<String, dynamic> params,
+  ) async {
     if (_closed) throw const ApiException('Connection changed.');
     final key = _key(path, params);
     final cached = _cache.remove(key);
@@ -307,8 +331,14 @@ class ApiClient {
     }
   }
 
-  Future<dynamic> get(String path, [Map<String, dynamic> params = const {}]) =>
-      _reference(path) ? getCached(path, params) : _readAndStore(path, params);
+  /// Waits out a busy server and retries; null once [isCurrent] turns false during a wait.
+  Future<dynamic> get(
+    String path, [
+    Map<String, dynamic> params = const {},
+    bool Function()? isCurrent,
+  ]) => _reference(path)
+      ? getCached(path, params, isCurrent)
+      : _waitingOut(() => _readAndStore(path, params), isCurrent);
 
   Future<dynamic> _sharedGet(String path, Map<String, dynamic> params) async {
     if (_closed) throw const ApiException('Connection changed.');
