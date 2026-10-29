@@ -1302,6 +1302,9 @@
       "pairingPrompt": "Terminez la demande d’association Bluetooth Android. Le code reste dans Android.",
       "pairingFailed": "L’association n’a pas abouti. Vérifiez la notification Android, puis réessayez Associer.",
       "pairingHint": "Si le compagnon exige un code Bluetooth, choisissez d’abord Associer."
+    },
+    "mapTerrain": {
+      "title": "Relief"
     }
   }
 }

@@ -165,6 +165,7 @@ class _StatsQueryState extends State<StatsQuery> {
         (fresh ? widget.api.get : widget.api.getCached)(
           widget.path,
           widget.params,
+          () => mounted && token == generation,
         ).then(
           (value) {
             if (token == generation) lastStatus = null;

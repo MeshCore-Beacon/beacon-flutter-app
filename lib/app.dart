@@ -947,15 +947,17 @@ class _RegionSheetState extends State<RegionSheet> {
       ]);
       final list = rows(responses[0]);
       // Member codes for every region, so rows can match on a code; one that
-      // fails just doesn't match by code.
+      // fails just doesn't match by code. Newer servers list them already.
       await Future.wait(
         list.map((r) async {
           try {
-            final data = object(
-              await widget.api.getCached(
-                '/regions/${Uri.encodeComponent(textOf(r['id']))}',
-              ),
-            );
+            final data = r['iatas'] is List
+                ? r
+                : object(
+                    await widget.api.getCached(
+                      '/regions/${Uri.encodeComponent(textOf(r['id']))}',
+                    ),
+                  );
             members[textOf(
               r['slug'],
             )] = (data['iatas'] is List ? data['iatas'] as List : const [])

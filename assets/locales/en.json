@@ -1259,6 +1259,9 @@
       "pairingPrompt": "Complete the Android Bluetooth pairing prompt. The PIN stays with Android.",
       "pairingFailed": "Pairing was not completed. Check the Android pairing notification, then try Pair again.",
       "pairingHint": "For a companion with a Bluetooth PIN, choose Pair first."
+    },
+    "mapTerrain": {
+      "title": "Terrain"
     }
   }
 }

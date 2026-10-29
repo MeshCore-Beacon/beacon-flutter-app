@@ -2,14 +2,16 @@ import 'dart:convert';
 
 import '../../core/api.dart';
 import '../../core/json.dart';
+import '../../core/page_pacer.dart';
 
-// 50k nodes at 200 per page; bounds a server that never stops paging.
-const mapNodePageCap = 250;
+// A million nodes even at an older server's 200 per page: only a never-ending server gets here.
+const mapNodePageCap = 5000;
 
 Stream<List<Map<String, dynamic>>> loadMapNodes(
   ApiClient api,
   Map<String, dynamic> region, {
   bool Function()? isCurrent,
+  PagePacer? pacer,
 }) async* {
   final iatas = region['iatas'];
   if (iatas is List && iatas.isEmpty || iatas == '') {
@@ -21,14 +23,14 @@ Stream<List<Map<String, dynamic>>> loadMapNodes(
   Map<String, Object> next = {};
   var pages = 0;
   do {
+    // later pages share the app-wide page budget, so a big region can't trip the rate limit
+    if (pages > 0) await (pacer ?? pagePacer).wait();
     if (isCurrent?.call() == false) return;
     // Keeps the same cursors and visible nodes during a server cooldown.
     final response = await withPageCursorFallback(
-      {...region, 'neighbors': true, 'limit': 200, ...next},
-      (p) => retryTransient(
-        () => api.getCached('/nodes', p),
-        isCurrent: isCurrent,
-      ),
+      // older servers clamp this to 200 and keep paging, so asking for more is always safe
+      {...region, 'neighbors': true, 'limit': 2000, ...next},
+      (p) => api.getCached('/nodes', p, isCurrent),
       isCurrent: isCurrent,
     );
     if (response == null || isCurrent?.call() == false) return;
@@ -37,7 +39,13 @@ Stream<List<Map<String, dynamic>>> loadMapNodes(
     }
     yield collected.values.toList();
     final page = object(response);
-    if (page['hasMore'] != true || ++pages >= mapNodePageCap) break;
+    if (page['hasMore'] != true) break;
+    // Stopping here drops nodes, so the screen must show an error, not a smaller map.
+    if (++pages >= mapNodePageCap) {
+      throw StateError(
+        'The server sent more than $mapNodePageCap map pages; the map is incomplete.',
+      );
+    }
     next = nextPageParams(page);
     if (next.isEmpty || !seen.add(jsonEncode(next))) {
       throw StateError('The server returned an invalid map page cursor.');

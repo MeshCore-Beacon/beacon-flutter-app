@@ -1,17 +1,18 @@
 import 'dart:convert';
 
 import 'package:beacon/core/api.dart';
+import 'package:beacon/core/page_pacer.dart';
 import 'package:beacon/features/map/map_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 void main() {
-  test('map uses server-supported 200-node batches', () async {
+  test('map asks for 2000-node pages', () async {
     final api = ApiClient(
       Uri.parse('https://example.org'),
       client: MockClient((r) async {
-        expect(r.url.queryParameters['limit'], '200');
+        expect(r.url.queryParameters['limit'], '2000');
         return http.Response('{"items":[],"hasMore":false}', 200);
       }),
     );
@@ -130,7 +131,87 @@ void main() {
       api.close();
     },
   );
-  test('stops paging after the page cap', () async {
+  // No pacing delay, so the long paging tests stay fast.
+  PagePacer unpaced() => PagePacer(interval: Duration.zero);
+  test('loads every node of a mesh far past 50,000 nodes', () async {
+    var requests = 0;
+    final api = ApiClient(
+      Uri.parse('https://example.org'),
+      client: MockClient((r) async {
+        final n = ++requests;
+        return http.Response(
+          jsonEncode({
+            'items': [
+              for (var i = 0; i < 200; i++) {'id': 'n$n-$i'},
+            ],
+            'hasMore': n < 400,
+            'nextCursor': 'c$n',
+          }),
+          200,
+        );
+      }),
+    );
+    final pages = await loadMapNodes(api, {}, pacer: unpaced()).toList();
+    expect(requests, 400);
+    expect(pages.last, hasLength(80000));
+    api.close();
+  });
+  test('a server that clamps pages to 200 still loads every node', () async {
+    var requests = 0;
+    final limits = <String?>{};
+    final api = ApiClient(
+      Uri.parse('https://example.org'),
+      client: MockClient((r) async {
+        final n = ++requests;
+        limits.add(r.url.queryParameters['limit']);
+        // an older server caps limit at 200 and keeps paging
+        return http.Response(
+          jsonEncode({
+            'items': [
+              for (var i = 0; i < 200; i++) {'id': 'n$n-$i'},
+            ],
+            'hasMore': n < 391,
+            'nextCursor': 'c$n',
+          }),
+          200,
+        );
+      }),
+    );
+    final pages = await loadMapNodes(api, {}, pacer: unpaced()).toList();
+    expect(limits, {'2000'});
+    expect(requests, 391);
+    expect(pages.last, hasLength(78200));
+    api.close();
+  });
+  test(
+    'a server looping back to an old cursor errors past 250 pages',
+    () async {
+      var requests = 0;
+      final api = ApiClient(
+        Uri.parse('https://example.org'),
+        client: MockClient((r) async {
+          requests++;
+          return http.Response(
+            jsonEncode({
+              'items': [
+                {'id': 'n$requests'},
+              ],
+              'hasMore': true,
+              'nextCursor': 'c${requests % 300}',
+            }),
+            200,
+          );
+        }),
+      );
+      await expectLater(
+        loadMapNodes(api, {}, pacer: unpaced()).drain<void>(),
+        throwsStateError,
+      );
+      expect(requests, 301);
+      api.close();
+    },
+  );
+  test('a server that never stops paging errors at the bound', () async {
     var requests = 0;
     final api = ApiClient(
       Uri.parse('https://example.org'),
@@ -141,17 +222,28 @@ void main() {
             'items': [
               {'id': 'n$requests'},
             ],
-            'hasMore': true,
+            // ends just past the bound, so a missing bound fails instead of hanging
+            'hasMore': requests <= mapNodePageCap,
             'nextCursor': 'c$requests',
           }),
           200,
         );
       }),
     );
-    // take() bounds the test if the cap is missing.
-    final pages = await loadMapNodes(api, {}).take(300).toList();
-    expect(requests, 250);
-    expect(pages.last.length, 250);
+    final pages = <List<Map<String, dynamic>>>[];
+    await expectLater(
+      loadMapNodes(api, {}, pacer: unpaced()).forEach(pages.add),
+      throwsA(
+        isA<StateError>().having(
+          (e) => e.message,
+          'message',
+          contains('incomplete'),
+        ),
+      ),
+    );
+    expect(requests, mapNodePageCap);
+    // the screen keeps every node that did arrive
+    expect(pages.last, hasLength(mapNodePageCap));
     api.close();
   });
 
@@ -323,4 +415,46 @@ void main() {
     expect(pages.last.map((n) => n['id']), ['a', 'b']);
     api.close();
   });
+  testWidgets(
+    'pages past a region-sized burst wait for the shared page budget',
+    (tester) async {
+      final start = tester.binding.clock.now();
+      final sentAt = <Duration>[];
+      final api = ApiClient(
+        Uri.parse('https://example.org'),
+        client: MockClient((r) async {
+          sentAt.add(tester.binding.clock.now().difference(start));
+          final n = sentAt.length;
+          return http.Response(
+            jsonEncode({
+              'items': [
+                {'id': '$n'},
+              ],
+              'hasMore': n < 45,
+              'nextCursor': '$n',
+            }),
+            200,
+          );
+        }),
+      );
+      final done = loadMapNodes(
+        api,
+        {},
+        pacer: PagePacer(now: tester.binding.clock.now),
+      ).drain<void>();
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      await done;
+      expect(sentAt, hasLength(45));
+      expect(sentAt.take(41), everyElement(Duration.zero));
+      expect(sentAt.skip(41), [
+        const Duration(milliseconds: 300),
+        const Duration(milliseconds: 600),
+        const Duration(milliseconds: 900),
+        const Duration(milliseconds: 1200),
+      ]);
+      api.close();
+    },
+  );
 }

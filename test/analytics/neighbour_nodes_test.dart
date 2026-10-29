@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:beacon/core/api.dart';
+import 'package:beacon/core/page_pacer.dart';
 import 'package:beacon/features/analytics/neighbour_graph.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -42,7 +43,8 @@ void main() {
     expect(seen[1]['pageCursor'], pc);
     expect(seen[1]['iatas'], 'AAA');
     expect(seen[1]['neighbors'], 'true');
-    expect(seen[1]['limit'], '500');
+    expect(seen[0]['limit'], '2000');
+    expect(seen[1]['limit'], '2000');
     api.close();
   });
   test('pages by cursor alone on a server without nextPageCursor', () async {
@@ -167,6 +169,29 @@ void main() {
     api.close();
   });
 
+  test('a repeated cursor errors instead of a partial graph', () async {
+    var calls = 0;
+    final api = ApiClient(
+      Uri.parse('https://example.org'),
+      client: MockClient((r) async {
+        calls++;
+        return http.Response(
+          jsonEncode({
+            'items': [
+              {'id': 'n$calls'},
+            ],
+            'hasMore': true,
+            'nextCursor': 'same',
+          }),
+          200,
+        );
+      }),
+    );
+    await expectLater(loadNeighbourNodes(api, {}), throwsStateError);
+    expect(calls, 2);
+    api.close();
+  });
+
   test('an invalid pageCursor falls back to cursor alone', () async {
     final seen = <Map<String, String>>[];
     final api = ApiClient(
@@ -199,5 +224,35 @@ void main() {
     expect(seen[2]['cursor'], '5');
     expect(nodes!.map((n) => n['id']), ['a', 'b']);
     api.close();
+  });
+  test('a server that never stops paging errors at the bound', () async {
+    var requests = 0;
+    final api = ApiClient(
+      Uri.parse('https://example.org'),
+      client: MockClient((r) async {
+        requests++;
+        return http.Response(
+          jsonEncode({
+            'items': [
+              {'id': 'n$requests'},
+            ],
+            'hasMore': true,
+            'nextCursor': requests,
+          }),
+          200,
+        );
+      }),
+    );
+    await expectLater(
+      loadNeighbourNodes(api, {}, pacer: PagePacer(interval: Duration.zero)),
+      throwsA(
+        isA<StateError>().having(
+          (e) => e.message,
+          'message',
+          contains('incomplete'),
+        ),
+      ),
+    );
+    expect(requests, graphNodePageCap);
   });
 }

@@ -1259,6 +1259,9 @@
       "pairingPrompt": "Slutför Androids Bluetooth-parkoppling. PIN-koden stannar i Android.",
       "pairingFailed": "Parkopplingen slutfördes inte. Kontrollera Androids avisering och välj Parkoppla igen.",
       "pairingHint": "Välj Parkoppla först om följeslagaren kräver en Bluetooth-PIN."
+    },
+    "mapTerrain": {
+      "title": "Terräng"
     }
   }
 }

@@ -10,13 +10,24 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-ApiClient fakeApi() => ApiClient(
+ApiClient fakeApi({bool listsIatas = false, List<String>? paths}) => ApiClient(
   Uri.parse('https://beacon.example.com/api/v1'),
   client: MockClient((r) async {
+    paths?.add(r.url.path);
     final body = switch (r.url.path) {
       final p when p.endsWith('/regions') => [
-        {'id': 1, 'slug': 'golm', 'name': 'Great Ontario Lake Mesh'},
-        {'id': 2, 'slug': 'ottawa', 'name': 'Ottawa-Quebec Corridor'},
+        {
+          'id': 1,
+          'slug': 'golm',
+          'name': 'Great Ontario Lake Mesh',
+          if (listsIatas) 'iatas': ['YHM', 'YYZ'],
+        },
+        {
+          'id': 2,
+          'slug': 'ottawa',
+          'name': 'Ottawa-Quebec Corridor',
+          if (listsIatas) 'iatas': ['YOW'],
+        },
       ],
       final p when p.endsWith('/regions/1') => {
         'iatas': ['YYZ', 'YHM'],
@@ -40,8 +51,9 @@ void main() {
   Future<(RegionSelection, Json)?> open(
     WidgetTester tester,
     RegionSelection initial,
-    Future<void> Function() interact,
-  ) async {
+    Future<void> Function() interact, {
+    ApiClient? api,
+  }) async {
     (RegionSelection, Json)? result;
     await tester.pumpWidget(
       MaterialApp(
@@ -54,7 +66,7 @@ void main() {
                     context: context,
                     isScrollControlled: true,
                     builder: (_) =>
-                        RegionSheet(api: fakeApi(), initial: initial),
+                        RegionSheet(api: api ?? fakeApi(), initial: initial),
                   ),
               child: const Text('open'),
             ),
@@ -112,5 +124,17 @@ void main() {
       expect(find.text('YHM'), findsOneWidget);
       expect(find.text('Ottawa-Quebec Corridor'), findsNothing);
     });
+  });
+
+  testWidgets('a server that lists member codes needs no call per region', (
+    tester,
+  ) async {
+    final paths = <String>[];
+    final result = await open(tester, RegionSelection.all, () async {
+      await tester.tap(find.text('Great Ontario Lake Mesh'));
+      await tester.pump();
+    }, api: fakeApi(listsIatas: true, paths: paths));
+    expect(result!.$2, {'iatas': 'YHM,YYZ'});
+    expect(paths.where((p) => p.contains('/regions/')), isEmpty);
   });
 }

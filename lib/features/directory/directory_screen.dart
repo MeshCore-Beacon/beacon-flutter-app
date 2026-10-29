@@ -59,6 +59,16 @@ int compareRouteResults(Json a, Json b) {
       : (number(b['lastSeen']) ?? 0).compareTo(number(a['lastSeen']) ?? 0);
 }
 
+/// Newest first, as /routes pages them: lastSeen, then id.
+int compareRouteRecency(Json a, Json b) {
+  final seen = (number(b['lastSeen']) ?? 0).compareTo(
+    number(a['lastSeen']) ?? 0,
+  );
+  return seen != 0
+      ? seen
+      : (number(b['id']) ?? 0).compareTo(number(a['id']) ?? 0);
+}
+
 class DirectoryScreen extends StatefulWidget {
   const DirectoryScreen({
     super.key,
@@ -82,6 +92,7 @@ class _DirectoryScreenState extends State<DirectoryScreen>
   List<Json> items = [];
   Json cursor = {};
   Json routeCursors = {};
+  bool routesIgnoreIatas = false;
   final filters = <String, String>{};
   final search = TextEditingController();
   final from = TextEditingController(), to = TextEditingController();
@@ -98,6 +109,7 @@ class _DirectoryScreenState extends State<DirectoryScreen>
   String searchField = 'name';
   String sortBy = 'recent';
   bool descending = true;
+  bool nodesServerSorted = false;
   Object? error;
   bool loading = false;
   bool backgroundRefresh = false;
@@ -167,6 +179,9 @@ class _DirectoryScreenState extends State<DirectoryScreen>
           (search.text.trim().isNotEmpty &&
               data.containsKey('name') &&
               data['name'] != current['name']) ||
+          (textOf(filters['scope']).isNotEmpty &&
+              data.containsKey('defaultScope') &&
+              data['defaultScope'] != filters['scope']) ||
           filters.keys.any(
             (key) => data.containsKey(key) && data[key] != current[key],
           );
@@ -235,6 +250,7 @@ class _DirectoryScreenState extends State<DirectoryScreen>
       if (old.kind != widget.kind) {
         resetSort();
       }
+      if (old.api != widget.api) routesIgnoreIatas = false;
       generation++;
       refreshPending = false;
       debounce?.cancel();
@@ -309,10 +325,11 @@ class _DirectoryScreenState extends State<DirectoryScreen>
     if (widget.kind == 'observers' && search.text.trim().isNotEmpty) {
       q['name'] = search.text.trim();
     }
-    if ({'traces', 'observers'}.contains(widget.kind) &&
+    if ({'nodes', 'traces', 'observers'}.contains(widget.kind) &&
         filters['scope']?.isNotEmpty == true) {
       q['scope'] = filters['scope'];
     }
+    if (widget.kind == 'nodes') q.addAll(nodeOrder());
     if (widget.kind == 'routes') {
       q.remove('iatas');
       q.remove('region');
@@ -322,6 +339,17 @@ class _DirectoryScreenState extends State<DirectoryScreen>
       }
     }
     return q;
+  }
+
+  /// Server order for the node sort choice; newest first is the server's default.
+  Json nodeOrder() {
+    final sort = const {
+      'name': 'name',
+      'knownNeighborCount': 'neighbors',
+    }[sortBy];
+    return sort == null
+        ? {}
+        : {'sort': sort, 'order': descending ? 'desc' : 'asc'};
   }
 
   void maybeLoadObservers() {
@@ -536,30 +564,55 @@ class _DirectoryScreenState extends State<DirectoryScreen>
             ? filters['iata']!
             : textOf(widget.region['iatas']);
         final areas = selected.isEmpty ? [''] : selected.split(',');
+        final codes = {
+          for (final area in areas)
+            if (area.trim().isNotEmpty) area.trim().toUpperCase(),
+        };
+        final grouped = codes.length > 1 && codes.length <= 100;
+        final group = codes.join(',');
+        final get = retryingGet(
+          widget.api,
+          fresh: more || live || fresh,
+          isCurrent: current,
+        );
         final next = <String, dynamic>{};
         final combined = <Json>[];
-        for (final area in areas) {
-          if (more && !routeCursors.containsKey(area)) continue;
-          final page =
-              await retryingGet(
-                widget.api,
-                fresh: more || live || fresh,
-                isCurrent: current,
-              )('/routes', {
-                ...query(),
-                'iata': area,
-                if (more) ...object(routeCursors[area]),
-              });
+        // Pages loaded as a group leave no per-IATA cursors, so each IATA starts over.
+        final resume = more && !(grouped && routeCursors.containsKey(group));
+        if (grouped && !routesIgnoreIatas) {
+          // No iata, so a server before 2.1 answers with every IATA's routes.
+          final page = await get('/routes', {
+            ...(query()..remove('iata')),
+            'iatas': group,
+            if (more) ...object(routeCursors[group]),
+          });
           if (!current()) return;
-          combined.addAll(rows(page));
-          final c = nextDirectoryCursor('routes', page, 50);
-          if (c.isNotEmpty) next[area] = c;
+          final batch = rows(page);
+          if (batch.every(
+            (r) => codes.contains(textOf(r['iata']).toUpperCase()),
+          )) {
+            combined.addAll(batch);
+            final c = nextDirectoryCursor('routes', page, 50);
+            if (c.isNotEmpty) next[group] = c;
+          } else {
+            // Another IATA's route: this server ignores iatas.
+            routesIgnoreIatas = true;
+          }
         }
-        combined.sort(
-          (a, b) => (number(b['lastSeen']) ?? 0).compareTo(
-            number(a['lastSeen']) ?? 0,
-          ),
-        );
+        if (!grouped || routesIgnoreIatas) {
+          for (final area in areas) {
+            if (resume && !routeCursors.containsKey(area)) continue;
+            final page = await get('/routes', {
+              ...query(),
+              'iata': area,
+              if (resume) ...object(routeCursors[area]),
+            });
+            if (!current()) return;
+            combined.addAll(rows(page));
+            final c = nextDirectoryCursor('routes', page, 50);
+            if (c.isNotEmpty) next[area] = c;
+          }
+        }
         response = {'items': combined, '_routeCursors': next};
       } else {
         response = await retryingGet(
@@ -585,11 +638,26 @@ class _DirectoryScreenState extends State<DirectoryScreen>
                 ),
               ]
             : batch;
+        // Another IATA's older page or a live row can land anywhere in the list.
+        if (widget.kind == 'routes' && !routeSearch) {
+          items.sort(compareRouteRecency);
+        }
         if (!live && widget.kind == 'routes') {
           routeCursors = object(object(response)['_routeCursors']);
           cursor = routeCursors.isEmpty ? {} : {'more': true};
         } else if (!live) {
           cursor = nextDirectoryCursor(widget.kind, response, 50);
+          if (widget.kind == 'nodes') {
+            final order = nodeOrder();
+            // Older servers ignore sort and leave it off the page, so the device sorts.
+            nodesServerSorted =
+                order.isNotEmpty &&
+                response is Map &&
+                response['sort'] == order['sort'] &&
+                response['order'] == order['order'];
+            // A sorted list pages by pageCursor alone; a cursor with it is a 400.
+            if (nodesServerSorted) cursor.remove('cursor');
+          }
         }
         error = partial;
         loading = false;
@@ -715,7 +783,6 @@ class _DirectoryScreenState extends State<DirectoryScreen>
     final result = items.where((r) {
       final scope = filters['scope'];
       if (scope?.isNotEmpty == true && widget.kind != 'traces') {
-        if (widget.kind == 'nodes' && r['defaultScope'] != scope) return false;
         if (widget.kind == 'observers' &&
             !(r['scopes'] is List && (r['scopes'] as List).contains(scope))) {
           return false;
@@ -755,7 +822,7 @@ class _DirectoryScreenState extends State<DirectoryScreen>
         );
       });
     }
-    if (sortBy != 'recent') {
+    if (sortBy != 'recent' && !(widget.kind == 'nodes' && nodesServerSorted)) {
       result.sort((a, b) {
         if (widget.kind == 'channels') {
           final aPublic = textOf(a['name']).toLowerCase() == 'public';
@@ -971,6 +1038,7 @@ class _DirectoryScreenState extends State<DirectoryScreen>
                 ),
                 icon: const Icon(Icons.sort, size: 20),
                 onSelected: (v) {
+                  final order = jsonEncode(nodeOrder());
                   setState(() {
                     if (v == 'reverse') {
                       descending = !descending;
@@ -979,7 +1047,11 @@ class _DirectoryScreenState extends State<DirectoryScreen>
                       descending = widget.kind == 'observers' && v == 'recent';
                     }
                   });
-                  if (widget.kind == 'observers') load();
+                  if (widget.kind == 'observers' ||
+                      (widget.kind == 'nodes' &&
+                          jsonEncode(nodeOrder()) != order)) {
+                    load();
+                  }
                 },
                 itemBuilder: (_) => [
                   PopupMenuItem(
@@ -1104,7 +1176,9 @@ class _DirectoryScreenState extends State<DirectoryScreen>
                         ? OutlinedButton(
                             onPressed: loading ? null : () => load(more: true),
                             child: DirectoryText(
-                              widget.kind == 'observers'
+                              widget.kind == 'observers' ||
+                                      (widget.kind == 'nodes' &&
+                                          nodesServerSorted)
                                   ? 'Load more'
                                   : 'Load older',
                             ),
