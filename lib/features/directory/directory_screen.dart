@@ -110,6 +110,7 @@ class _DirectoryScreenState extends State<DirectoryScreen>
   String sortBy = 'recent';
   bool descending = true;
   bool nodesServerSorted = false;
+  bool nodesCarryLastSeen = false;
   Object? error;
   bool loading = false;
   bool backgroundRefresh = false;
@@ -250,7 +251,10 @@ class _DirectoryScreenState extends State<DirectoryScreen>
       if (old.kind != widget.kind) {
         resetSort();
       }
-      if (old.api != widget.api) routesIgnoreIatas = false;
+      if (old.api != widget.api) {
+        routesIgnoreIatas = false;
+        nodesCarryLastSeen = false;
+      }
       generation++;
       refreshPending = false;
       debounce?.cancel();
@@ -343,8 +347,15 @@ class _DirectoryScreenState extends State<DirectoryScreen>
 
   /// Server order for the node sort choice; newest first is the server's default.
   Json nodeOrder() {
+    if (sortBy == 'recent') {
+      // Servers that leave lastSeen off node rows reject this sort with a 400.
+      return !descending && nodesCarryLastSeen
+          ? {'sort': 'lastSeen', 'order': 'asc'}
+          : {};
+    }
     final sort = const {
       'name': 'name',
+      'nodeTypeName': 'type',
       'knownNeighborCount': 'neighbors',
     }[sortBy];
     return sort == null
@@ -657,6 +668,8 @@ class _DirectoryScreenState extends State<DirectoryScreen>
                 response['order'] == order['order'];
             // A sorted list pages by pageCursor alone; a cursor with it is a 400.
             if (nodesServerSorted) cursor.remove('cursor');
+            nodesCarryLastSeen =
+                nodesCarryLastSeen || batch.any((r) => r['lastSeen'] != null);
           }
         }
         error = partial;
@@ -1031,11 +1044,11 @@ class _DirectoryScreenState extends State<DirectoryScreen>
                   ],
                 ),
               PopupMenuButton<String>(
-                tooltip: tr(
-                  widget.kind == 'observers'
-                      ? 'Sort observers'
-                      : 'Sort loaded rows',
-                ),
+                tooltip: switch (widget.kind) {
+                  'nodes' => trKey('nodeList.sort'),
+                  'observers' => tr('Sort observers'),
+                  _ => tr('Sort loaded rows'),
+                },
                 icon: const Icon(Icons.sort, size: 20),
                 onSelected: (v) {
                   final order = jsonEncode(nodeOrder());
@@ -1044,7 +1057,7 @@ class _DirectoryScreenState extends State<DirectoryScreen>
                       descending = !descending;
                     } else {
                       sortBy = v;
-                      descending = widget.kind == 'observers' && v == 'recent';
+                      descending = v == 'recent';
                     }
                   });
                   if (widget.kind == 'observers' ||
@@ -1066,11 +1079,16 @@ class _DirectoryScreenState extends State<DirectoryScreen>
                     value: widget.kind == 'observers' ? 'displayName' : 'name',
                     child: const DirectoryText('Name'),
                   ),
-                  if (widget.kind == 'nodes')
-                    const PopupMenuItem(
+                  if (widget.kind == 'nodes') ...const [
+                    PopupMenuItem(
+                      value: 'nodeTypeName',
+                      child: DirectoryText('Type'),
+                    ),
+                    PopupMenuItem(
                       value: 'knownNeighborCount',
                       child: DirectoryText('Neighbors'),
                     ),
+                  ],
                   if (widget.kind == 'routes')
                     const PopupMenuItem(
                       value: 'hopCount',

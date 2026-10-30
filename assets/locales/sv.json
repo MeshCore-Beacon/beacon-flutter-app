@@ -1183,6 +1183,9 @@
     },
     "mapTerrain": {
       "title": "Terräng"
+    },
+    "nodeList": {
+      "sort": "Sortera noder"
     }
   }
 }

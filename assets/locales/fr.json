@@ -1226,6 +1226,9 @@
     },
     "mapTerrain": {
       "title": "Relief"
+    },
+    "nodeList": {
+      "sort": "Trier les nœuds"
     }
   }
 }

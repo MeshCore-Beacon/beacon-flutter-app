@@ -48,6 +48,13 @@ void main() {
   double top(WidgetTester tester, String text) =>
       tester.getTopLeft(find.text(text)).dy;
 
+  Future<void> choose(WidgetTester tester, String label) async {
+    await tester.tap(find.byIcon(Icons.sort));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(label).last);
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('nodes ask the server for name order and keep its order', (
     tester,
   ) async {
@@ -107,22 +114,83 @@ void main() {
         if (q['order'] != null) 'order': q['order'],
       },
     );
-    Future<void> choose(String label) async {
-      await tester.tap(find.byIcon(Icons.sort));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text(label).last);
-      await tester.pumpAndSettle();
-    }
-
-    await choose('Neighbors');
+    await choose(tester, 'Neighbors');
     expect(requests.last['sort'], 'neighbors');
     expect(requests.last['order'], 'asc');
-    await choose('Reverse order');
+    await choose(tester, 'Reverse order');
     expect(requests.last['sort'], 'neighbors');
     expect(requests.last['order'], 'desc');
-    await choose('Newest first');
+    await choose(tester, 'Newest first');
     expect(requests.last.containsKey('sort'), false);
     expect(requests.last.containsKey('order'), false);
+  });
+
+  testWidgets('type asks the server, and the device sorts if it is ignored', (
+    tester,
+  ) async {
+    final requests = await pump(
+      tester,
+      (_) => {
+        'items': [
+          {...node('a', 'Alpha', 1), 'nodeTypeName': 'repeater'},
+          {...node('b', 'Bravo', 2), 'nodeTypeName': 'companion'},
+        ],
+        'hasMore': false,
+      },
+    );
+    expect(top(tester, 'Alpha'), lessThan(top(tester, 'Bravo')));
+    await choose(tester, 'Type');
+    expect(requests.last['sort'], 'type');
+    expect(requests.last['order'], 'asc');
+    expect(top(tester, 'Bravo'), lessThan(top(tester, 'Alpha')));
+  });
+
+  testWidgets('reversing newest first asks for oldest heard first', (
+    tester,
+  ) async {
+    final requests = await pump(
+      tester,
+      (q) => {
+        'items': q['order'] == 'asc' && q['sort'] == 'lastSeen'
+            ? [node('o', 'Old', 1), node('n', 'New', 2)]
+            : [node('n', 'New', 2), node('o', 'Old', 1)],
+        'hasMore': false,
+        'sort': q['sort'] ?? 'lastSeen',
+        'order': q['order'] ?? 'desc',
+      },
+    );
+    await choose(tester, 'Newest first');
+    expect(requests.last.containsKey('sort'), false);
+    expect(top(tester, 'New'), lessThan(top(tester, 'Old')));
+    await choose(tester, 'Reverse order');
+    expect(requests.last['sort'], 'lastSeen');
+    expect(requests.last['order'], 'asc');
+    expect(top(tester, 'Old'), lessThan(top(tester, 'New')));
+    await choose(tester, 'Reverse order');
+    expect(top(tester, 'New'), lessThan(top(tester, 'Old')));
+  });
+
+  testWidgets('a server without lastSeen gets no oldest-first request', (
+    tester,
+  ) async {
+    final requests = await pump(
+      tester,
+      (_) => {
+        'items': [
+          {'id': 'a', 'name': 'Alpha'},
+        ],
+        'hasMore': false,
+      },
+    );
+    await choose(tester, 'Newest first');
+    final sent = requests.length;
+    await choose(tester, 'Reverse order');
+    expect(requests.length, sent);
+  });
+
+  testWidgets('the sort menu is labelled for nodes', (tester) async {
+    await pump(tester, (_) => {'items': [], 'hasMore': false});
+    expect(find.byTooltip('Sort nodes'), findsOneWidget);
   });
 
   testWidgets('a page without sort falls back to sorting on the device', (
