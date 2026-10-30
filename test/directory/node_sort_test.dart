@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:beacon/core/api.dart';
@@ -17,8 +18,10 @@ void main() {
 
   Future<List<Map<String, String>>> pump(
     WidgetTester tester,
-    Json Function(Map<String, String> query) page, {
+    // A Json body, or an http.Response to send as is.
+    FutureOr<Object> Function(Map<String, String> query) page, {
     Json region = const {},
+    Stream<Json>? events,
   }) async {
     final requests = <Map<String, String>>[];
     final api = ApiClient(
@@ -26,7 +29,10 @@ void main() {
       client: MockClient((r) async {
         if (!r.url.path.endsWith('/nodes')) return http.Response('[]', 200);
         requests.add(r.url.queryParameters);
-        return http.Response(jsonEncode(page(r.url.queryParameters)), 200);
+        final body = await page(r.url.queryParameters);
+        return body is http.Response
+            ? body
+            : http.Response(jsonEncode(body), 200);
       }),
     );
     await tester.pumpWidget(
@@ -36,6 +42,7 @@ void main() {
             kind: 'nodes',
             api: api,
             region: region,
+            events: events,
             onOpen: (_, _) {},
           ),
         ),
@@ -47,6 +54,29 @@ void main() {
 
   double top(WidgetTester tester, String text) =>
       tester.getTopLeft(find.text(text)).dy;
+
+  Future<void> scrollToEnd(WidgetTester tester) async {
+    final scroll = tester.state<ScrollableState>(
+      find.descendant(
+        of: find.byType(ListView),
+        matching: find.byType(Scrollable),
+      ),
+    );
+    scroll.position.jumpTo(scroll.position.maxScrollExtent);
+    await tester.pump();
+  }
+
+  // 50 rows from [start] in name order, as a server-sorted page.
+  Json namePage(int start, {String? next}) => {
+    'items': [
+      for (var i = start; i < start + 50; i++)
+        node('n$i', 'Node ${i.toString().padLeft(3, '0')}', i),
+    ],
+    'hasMore': next != null,
+    'nextPageCursor': ?next,
+    'sort': 'name',
+    'order': 'asc',
+  };
 
   Future<void> choose(WidgetTester tester, String label) async {
     await tester.tap(find.byIcon(Icons.sort));
@@ -94,12 +124,143 @@ void main() {
               'order': 'asc',
             },
     );
-    await tester.tap(find.text('Load more'));
-    await tester.pumpAndSettle();
+    // A short first page fills the screen without a scroll or a button.
+    expect(requests.length, 2);
+    expect(find.text('Load more'), findsNothing);
     expect(requests.last['pageCursor'], 'v2:name:a');
     expect(requests.last.containsKey('cursor'), false);
     expect(requests.last['sort'], 'name');
     expect(top(tester, 'Alpha'), lessThan(top(tester, 'Bravo')));
+  });
+
+  testWidgets('nodes load the next page as the list nears its end', (
+    tester,
+  ) async {
+    final requests = await pump(
+      tester,
+      (q) => switch (q['pageCursor']) {
+        null => namePage(0, next: 'p50'),
+        'p50' => namePage(50, next: 'p100'),
+        _ => namePage(100),
+      },
+    );
+    expect(requests.length, 1);
+    expect(find.text('Load more'), findsNothing);
+    expect(find.text('Load older'), findsNothing);
+    for (var i = 0; i < 3; i++) {
+      await scrollToEnd(tester);
+      await tester.pumpAndSettle();
+    }
+    expect(requests.map((q) => q['pageCursor']), [null, 'p50', 'p100']);
+    expect(requests.every((q) => q['limit'] == '50'), true);
+    expect(requests.every((q) => !q.containsKey('cursor')), true);
+    expect(find.text('150 nodes'), findsOneWidget);
+
+    // A new order starts again from the top.
+    await choose(tester, 'Reverse order');
+    final scroll = tester.state<ScrollableState>(
+      find.descendant(
+        of: find.byType(ListView),
+        matching: find.byType(Scrollable),
+      ),
+    );
+    expect(scroll.position.pixels, 0);
+  });
+
+  testWidgets('a failed next page keeps the rows and retries that page', (
+    tester,
+  ) async {
+    var failures = 0;
+    final requests = await pump(
+      tester,
+      (q) => switch (q['pageCursor']) {
+        null => namePage(0, next: 'p50'),
+        _ when failures++ == 0 => http.Response(
+          '{"error":{"message":"Try again"}}',
+          500,
+        ),
+        _ => namePage(50),
+      },
+    );
+    await scrollToEnd(tester);
+    await tester.pumpAndSettle();
+    expect(find.text('Try again'), findsOneWidget);
+    expect(find.text('Node 049'), findsOneWidget);
+    await tester.tap(find.text('Retry'));
+    await tester.pumpAndSettle();
+    expect(requests.map((q) => q['pageCursor']), [null, 'p50', 'p50']);
+    await scrollToEnd(tester);
+    expect(find.text('100 nodes'), findsOneWidget);
+  });
+
+  testWidgets('a repeated page cursor stops the scroll paging', (tester) async {
+    final requests = await pump(
+      tester,
+      (_) => {
+        'items': [node('a', 'Alpha', 1)],
+        'hasMore': true,
+        'nextPageCursor': 'same',
+      },
+    );
+    expect(requests.length, 2);
+    expect(find.text('1 node'), findsOneWidget);
+  });
+
+  testWidgets('scroll paging waits for a live refresh and keeps its pages', (
+    tester,
+  ) async {
+    final events = StreamController<Json>.broadcast();
+    final live = Completer<Json>();
+    var firstPages = 0;
+    final requests = await pump(tester, events: events.stream, (q) {
+      return switch (q['pageCursor']) {
+        null when ++firstPages == 2 => live.future,
+        null => namePage(0, next: 'p50'),
+        'p50' => namePage(50, next: 'p100'),
+        'p100' => namePage(100, next: 'p150'),
+        _ => {
+          'items': [node('last', 'Node last', 0)],
+          'hasMore': false,
+          'sort': 'name',
+          'order': 'asc',
+        },
+      };
+    });
+    await scrollToEnd(tester);
+    await tester.pumpAndSettle();
+    expect(requests.last['pageCursor'], 'p50');
+
+    // A node outside the list asks for a live refresh of page one.
+    void heard() => events.add({
+      'type': 'event',
+      'event': 'nodeUpdate',
+      'data': {'nodeId': 'elsewhere'},
+    });
+    heard();
+    await tester.pump(const Duration(seconds: 1));
+    expect(firstPages, 2);
+    await scrollToEnd(tester);
+    expect(requests.last.containsKey('pageCursor'), false);
+    live.complete(namePage(0, next: 'p50'));
+    await tester.pumpAndSettle();
+    expect(requests.last['pageCursor'], 'p100');
+
+    // The next refresh waits out its 30 s throttle; scrolling does not.
+    heard();
+    await tester.pump();
+    await scrollToEnd(tester);
+    await tester.pumpAndSettle();
+    expect(requests.last['pageCursor'], 'p150');
+    expect(
+      requests
+          .where((q) => q['pageCursor'] != null)
+          .map((q) => q['pageCursor']),
+      ['p50', 'p100', 'p150'],
+    );
+    await scrollToEnd(tester);
+    expect(find.text('151 nodes'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    await events.close();
   });
 
   testWidgets('sort choices reload in the matching server order', (

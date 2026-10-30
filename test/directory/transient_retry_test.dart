@@ -281,16 +281,13 @@ void main() {
       );
       await tester.pumpWidget(directory(api));
       await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(
-        find.text('Load older'),
-        500,
-        scrollable: find
-            .byWidgetPredicate(
-              (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
-            )
-            .first,
+      final scroll = tester.state<ScrollableState>(
+        find.descendant(
+          of: find.byType(ListView),
+          matching: find.byType(Scrollable),
+        ),
       );
-      await tester.tap(find.text('Load older'));
+      scroll.position.jumpTo(scroll.position.maxScrollExtent);
       await tester.pumpAndSettle();
       expect(seen.length, 3);
       expect(seen[1]['pageCursor'], 'v1:950:n49');

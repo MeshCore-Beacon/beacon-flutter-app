@@ -98,14 +98,14 @@ class _DirectoryScreenState extends State<DirectoryScreen>
   final from = TextEditingController(), to = TextEditingController();
   List<String> scopes = [], brokers = [], types = [];
   Map<String, double> activityCounts = {};
-  final observerScroll = ScrollController();
+  final pageScroll = ScrollController();
   Json observerQuery = {};
   String? observerEffectiveSort;
   int observerSortRestarts = 0;
   double? observerMaximum;
   bool observerUnavailable = false;
-  bool observerMoreError = false;
-  final observerCursors = <String>{};
+  bool moreError = false;
+  final seenCursors = <String>{};
   String searchField = 'name';
   String sortBy = 'recent';
   bool descending = true;
@@ -113,19 +113,22 @@ class _DirectoryScreenState extends State<DirectoryScreen>
   bool nodesCarryLastSeen = false;
   Object? error;
   bool loading = false;
+  // Unlike [loading], also true while a resume reload keeps the old rows up.
+  bool fetching = false;
   bool backgroundRefresh = false;
   bool refreshPending = false;
   bool showOtherChannels = false;
   int generation = 0;
   int optionsGeneration = 0;
   Timer? debounce;
+  Timer? refreshTimer;
   DateTime? lastUncertainRefresh;
   StreamSubscription<Json>? subscription;
   @override
   void initState() {
     super.initState();
     resetSort();
-    observerScroll.addListener(maybeLoadObservers);
+    pageScroll.addListener(maybeLoadMore);
     WidgetsBinding.instance.addObserver(this);
     bind();
     load();
@@ -221,21 +224,27 @@ class _DirectoryScreenState extends State<DirectoryScreen>
   }
 
   void flushRefresh() {
-    if (!mounted || !refreshPending || loading || debounce?.isActive == true) {
+    if (!mounted ||
+        !refreshPending ||
+        loading ||
+        fetching ||
+        debounce?.isActive == true ||
+        refreshTimer?.isActive == true) {
       return;
     }
     final now = DateTime.now();
     final last = lastUncertainRefresh;
     if (last != null && now.difference(last) < const Duration(seconds: 30)) {
       final remaining = const Duration(seconds: 30) - now.difference(last);
-      debounce = Timer(remaining, () {
-        debounce = null;
+      refreshTimer = Timer(remaining, () {
+        refreshTimer = null;
         flushRefresh();
       });
       return;
     }
-    debounce = Timer(const Duration(milliseconds: 800), () {
-      if (!mounted || loading) return;
+    refreshTimer = Timer(const Duration(milliseconds: 800), () {
+      // A load or search started meanwhile; its end flushes again.
+      if (!mounted || loading || fetching || debounce?.isActive == true) return;
       refreshPending = false;
       lastUncertainRefresh = DateTime.now();
       load(live: true);
@@ -256,8 +265,10 @@ class _DirectoryScreenState extends State<DirectoryScreen>
         nodesCarryLastSeen = false;
       }
       generation++;
+      fetching = false;
       refreshPending = false;
       debounce?.cancel();
+      refreshTimer?.cancel();
       items = [];
       cursor = {};
       showOtherChannels = false;
@@ -278,9 +289,10 @@ class _DirectoryScreenState extends State<DirectoryScreen>
   void dispose() {
     generation++;
     debounce?.cancel();
+    refreshTimer?.cancel();
     subscription?.cancel();
     WidgetsBinding.instance.removeObserver(this);
-    observerScroll.dispose();
+    pageScroll.dispose();
     search.dispose();
     from.dispose();
     to.dispose();
@@ -363,17 +375,21 @@ class _DirectoryScreenState extends State<DirectoryScreen>
         : {'sort': sort, 'order': descending ? 'desc' : 'asc'};
   }
 
-  void maybeLoadObservers() {
-    if (widget.kind != 'observers' ||
+  bool get scrollPaged => const {'nodes', 'observers'}.contains(widget.kind);
+
+  /// Loads the next page once the list nears its end, unless a load is running.
+  void maybeLoadMore() {
+    if (!scrollPaged ||
         !mounted ||
         loading ||
+        fetching ||
         error != null ||
         debounce?.isActive == true ||
         cursor.isEmpty ||
-        !observerScroll.hasClients) {
+        !pageScroll.hasClients) {
       return;
     }
-    if (observerScroll.position.extentAfter < 300) load(more: true);
+    if (pageScroll.position.extentAfter < 300) load(more: true);
   }
 
   Future<void> loadObservers({bool more = false}) async {
@@ -386,19 +402,19 @@ class _DirectoryScreenState extends State<DirectoryScreen>
       loading = true;
       backgroundRefresh = false;
       error = null;
-      observerMoreError = more;
+      moreError = more;
       if (!more) {
         items = [];
         cursor = {};
         observerQuery = {};
         observerEffectiveSort = null;
-        observerCursors.clear();
+        seenCursors.clear();
         activityCounts = {};
         observerMaximum = null;
         observerUnavailable = false;
       }
     });
-    if (!more && observerScroll.hasClients) observerScroll.jumpTo(0);
+    if (!more && pageScroll.hasClients) pageScroll.jumpTo(0);
     try {
       if (emptyRegion) {
         setState(() {
@@ -427,7 +443,7 @@ class _DirectoryScreenState extends State<DirectoryScreen>
       if (more && response['effectiveSort'] != observerEffectiveSort) {
         if (observerSortRestarts++ >= 1) {
           cursor = {};
-          observerMoreError = false;
+          moreError = false;
           throw const ApiException(
             'Traffic ordering changed again. Refresh to reload the list.',
           );
@@ -439,7 +455,7 @@ class _DirectoryScreenState extends State<DirectoryScreen>
       final next = response['hasMore'] == true && response['nextCursor'] != null
           ? <String, dynamic>{'cursor': response['nextCursor']}
           : <String, dynamic>{};
-      if (next.isNotEmpty && !observerCursors.add(jsonEncode(next))) {
+      if (next.isNotEmpty && !seenCursors.add(jsonEncode(next))) {
         next.clear();
       }
       setState(() {
@@ -468,10 +484,10 @@ class _DirectoryScreenState extends State<DirectoryScreen>
                 .map((v) => '$v')
                 .toList();
         loading = false;
-        observerMoreError = false;
+        moreError = false;
       });
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) maybeLoadObservers();
+        if (mounted) maybeLoadMore();
       });
     } catch (e) {
       if (!mounted || g != generation) return;
@@ -502,6 +518,7 @@ class _DirectoryScreenState extends State<DirectoryScreen>
       return loadObservers(more: more);
     }
     final g = ++generation;
+    fetching = true;
     bool current() => mounted && g == generation;
     final routeSearch =
         widget.kind == 'routes' &&
@@ -510,8 +527,10 @@ class _DirectoryScreenState extends State<DirectoryScreen>
     Object? partial;
     setState(() {
       loading = !(preserveLoaded && items.isNotEmpty);
-      backgroundRefresh = live || preserveLoaded;
+      // Scroll paging shows its own spinner at the end of the list.
+      backgroundRefresh = live || preserveLoaded || (more && scrollPaged);
       error = null;
+      moreError = more;
     });
     try {
       dynamic response;
@@ -668,18 +687,34 @@ class _DirectoryScreenState extends State<DirectoryScreen>
                 response['order'] == order['order'];
             // A sorted list pages by pageCursor alone; a cursor with it is a 400.
             if (nodesServerSorted) cursor.remove('cursor');
+            if (!more) seenCursors.clear();
+            // A server repeating a cursor would page forever.
+            if (cursor.isNotEmpty && !seenCursors.add(jsonEncode(cursor))) {
+              cursor = {};
+            }
             nodesCarryLastSeen =
                 nodesCarryLastSeen || batch.any((r) => r['lastSeen'] != null);
           }
         }
         error = partial;
         loading = false;
+        moreError = false;
         types = items
             .map((r) => textOf(r['observerType']))
             .where((e) => e.isNotEmpty)
             .toSet()
             .toList();
       });
+      if (scrollPaged) {
+        // A new query starts at the top; a resume keeps the reader's place.
+        if (!more && !live && !preserveLoaded && pageScroll.hasClients) {
+          pageScroll.jumpTo(0);
+        }
+        // Keep loading until a short page fills the screen.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) maybeLoadMore();
+        });
+      }
     } catch (e) {
       if (mounted && g == generation) {
         setState(() {
@@ -690,7 +725,10 @@ class _DirectoryScreenState extends State<DirectoryScreen>
         });
       }
     } finally {
-      if (mounted && g == generation) flushRefresh();
+      if (mounted && g == generation) {
+        fetching = false;
+        flushRefresh();
+      }
     }
   }
 
@@ -1158,16 +1196,13 @@ class _DirectoryScreenState extends State<DirectoryScreen>
         if (error != null)
           failure(
             error!,
-            () => load(
-              fresh: true,
-              more: widget.kind == 'observers' && observerMoreError,
-            ),
+            () => load(fresh: true, more: scrollPaged && moreError),
           ),
         Expanded(
           child: RefreshIndicator(
             onRefresh: () => load(fresh: true),
             child: ListView.builder(
-              controller: widget.kind == 'observers' ? observerScroll : null,
+              controller: scrollPaged ? pageScroll : null,
               physics: const AlwaysScrollableScrollPhysics(),
               itemCount: shown.length + 1,
               itemBuilder: (context, index) {
@@ -1190,13 +1225,22 @@ class _DirectoryScreenState extends State<DirectoryScreen>
                   }
                   return Padding(
                     padding: const EdgeInsets.all(20),
-                    child: cursor.isNotEmpty
+                    child: cursor.isNotEmpty && widget.kind == 'nodes'
+                        ? Center(
+                            child: SizedBox.square(
+                              dimension: 18,
+                              child: loading
+                                  ? const CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    )
+                                  : null,
+                            ),
+                          )
+                        : cursor.isNotEmpty
                         ? OutlinedButton(
                             onPressed: loading ? null : () => load(more: true),
                             child: DirectoryText(
-                              widget.kind == 'observers' ||
-                                      (widget.kind == 'nodes' &&
-                                          nodesServerSorted)
+                              widget.kind == 'observers'
                                   ? 'Load more'
                                   : 'Load older',
                             ),
