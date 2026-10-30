@@ -354,6 +354,76 @@ void main() {
     expect(find.byTooltip('Sort nodes'), findsOneWidget);
   });
 
+  testWidgets('node cards show when each node was last heard', (tester) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await pump(
+      tester,
+      (_) => {
+        'items': [
+          node('a', 'Alpha', now - 5 * 60 * 1000),
+          {'id': 'b', 'name': 'Bravo'},
+        ],
+        'hasMore': false,
+      },
+    );
+    expect(find.text('5m ago'), findsOneWidget);
+    // Bravo has no lastSeen, so its card shows none.
+    expect(find.textContaining('ago'), findsOneWidget);
+  });
+
+  testWidgets('a live node update marks the node heard just now', (
+    tester,
+  ) async {
+    final events = StreamController<Json>.broadcast();
+    final hourAgo = DateTime.now().millisecondsSinceEpoch - 3600 * 1000;
+    await pump(
+      tester,
+      events: events.stream,
+      (_) => {
+        'items': [node('a', 'Alpha', hourAgo)],
+        'hasMore': false,
+      },
+    );
+    expect(find.text('1h ago'), findsOneWidget);
+    events.add({
+      'type': 'event',
+      'event': 'nodeUpdate',
+      'data': {'nodeId': 'a', 'name': 'Alpha'},
+    });
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('1h ago'), findsNothing);
+    expect(find.textContaining(RegExp(r'^[01]s ago$')), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    await events.close();
+  });
+
+  testWidgets('a live update leaves last heard off for an older server', (
+    tester,
+  ) async {
+    final events = StreamController<Json>.broadcast();
+    await pump(
+      tester,
+      events: events.stream,
+      (_) => {
+        'items': [
+          {'id': 'a', 'name': 'Alpha'},
+        ],
+        'hasMore': false,
+      },
+    );
+    events.add({
+      'type': 'event',
+      'event': 'nodeUpdate',
+      'data': {'nodeId': 'a', 'name': 'Alpha'},
+    });
+    await tester.pump();
+    await tester.pump();
+    expect(find.textContaining('ago'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+    await events.close();
+  });
+
   testWidgets('a page without sort falls back to sorting on the device', (
     tester,
   ) async {

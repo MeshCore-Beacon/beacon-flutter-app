@@ -207,6 +207,11 @@ class _DirectoryScreenState extends State<DirectoryScreen>
           updated[key] = data[key];
         }
       }
+      // nodeUpdate means its advert was just heard. A server that sends no
+      // lastSeen keeps its rows without one.
+      if (nodesCarryLastSeen) {
+        updated['lastSeen'] = DateTime.now().millisecondsSinceEpoch;
+      }
       // A changed server-side region or search value can alter membership. Keep the
       // visible row current, then let the throttled refresh reconcile the filter.
       setState(() => items[index] = updated);
@@ -1319,6 +1324,10 @@ class _DirectoryScreenState extends State<DirectoryScreen>
           children: [
             Expanded(child: line(label(r), size: 12)),
             const SizedBox(width: 8),
+            if (r['lastSeen'] != null) ...[
+              line(age(r['lastSeen']), color: muted),
+              const SizedBox(width: 8),
+            ],
             if (r['isObserver'] == true)
               const Padding(
                 padding: EdgeInsets.only(right: 4),
