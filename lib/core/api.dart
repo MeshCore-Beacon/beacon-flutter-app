@@ -86,6 +86,7 @@ Future<http.Response> getLimited(
   Uri url,
   int maxBytes,
 ) async {
+  // Keep dart:io's "Dart/" UA: the analyzer's scrape block lets it in.
   final request = http.Request('GET', url);
   final response = await client.send(request);
   const tooLarge = ApiException('Server response is too large.');

@@ -62,6 +62,7 @@ class LiveConnection extends ChangeNotifier {
     final generation = ++_generation;
     _status('connecting');
     try {
+      // Keep dart:io's "Dart/" UA here too: the scrape block lets it in.
       final socket = await WebSocket.connect(uri.toString())
           .timeout(const Duration(seconds: 20));
       if (!_running || _disposed || generation != _generation) {
