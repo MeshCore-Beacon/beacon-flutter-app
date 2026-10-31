@@ -21,6 +21,9 @@ const observerFixture = <String, dynamic>{
   'batteryLevel': 4.405,
   'uptimeSeconds': 725449,
   'observationCount': 19587,
+  'statusMetadata': {
+    'stats': {'noise_floor': -112.5},
+  },
   'firstSeen': 1790969280000,
   'lastSeen': 1791109800000,
   'scopes': ['#can', '#onqc', '#yow'],
@@ -38,6 +41,9 @@ const observerFixture = <String, dynamic>{
   ],
 };
 void main() {
+  test('counts use the language\'s digit grouping', () {
+    expect(groupedCount(316959), '316,959');
+  });
   test('observer uptime is readable in days hours and minutes', () {
     expect(observerUptime(725449), '8d 9h 30m');
     expect(observerUptime(59), '0m');
@@ -55,12 +61,22 @@ void main() {
             body: SingleChildScrollView(
               child: Padding(
                 padding: EdgeInsets.all(16),
-                child: ObserverInfo(data: observerFixture),
+                child: ObserverInfo(
+                  data: observerFixture,
+                  summary: {
+                    'recordedPackets': 316959,
+                    'lastCompleteHour': 1204,
+                  },
+                ),
               ),
             ),
           ),
         ),
       );
+      expect(find.text('316,959'), findsOneWidget);
+      expect(find.text('1,204'), findsOneWidget);
+      expect(find.text('-112.5 dBm'), findsOneWidget);
+      expect(find.text('LAST PACKET'), findsOneWidget);
       expect(find.text('4.41 V'), findsOneWidget);
       expect(find.text('8d 9h 30m'), findsOneWidget);
       expect(find.text('meshcoretomqtt/1.1.0.0-622ce04'), findsOneWidget);

@@ -190,4 +190,32 @@ void main() {
     await expectLater(api.getCached('/nodes'), throwsA(isA<ApiException>()));
     other.close();
   });
+
+  test('live node patch keeps pages fetched with pageCursor', () async {
+    var calls = 0;
+    final api = ApiClient(
+      Uri.parse('https://host'),
+      client: MockClient((r) async {
+        calls++;
+        return http.Response(
+          '{"items":[{"id":"a","name":"old"}],"hasMore":false}',
+          200,
+        );
+      }),
+    );
+    final params = {
+      'neighbors': true,
+      'limit': 200,
+      'cursor': 5,
+      'pageCursor': 'v1:5000:00000000-0000-0000-0000-00000000000a',
+    };
+    await api.getCached('/nodes', params);
+    api.handleLiveEvent({
+      'event': 'nodeUpdate',
+      'data': {'nodeId': 'a', 'name': 'new'},
+    });
+    expect((await api.getCached('/nodes', params))['items'][0]['name'], 'new');
+    expect(calls, 1);
+    api.close();
+  });
 }

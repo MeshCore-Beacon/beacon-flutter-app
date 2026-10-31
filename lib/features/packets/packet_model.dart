@@ -182,6 +182,7 @@ bool matchesPacketFilters(
   if (searchField == 'Path') {
     return matchesPathSearch(packet, parsePathSearch(search));
   }
-  return search.isEmpty ||
-      textOf(packet['packetHash']).toLowerCase().contains(search.toLowerCase());
+  final hash = search.trim().toLowerCase();
+  return hash.isEmpty ||
+      textOf(packet['packetHash']).toLowerCase().contains(hash);
 }

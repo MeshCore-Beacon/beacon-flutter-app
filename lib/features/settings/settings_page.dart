@@ -119,41 +119,44 @@ class SettingsPage extends StatelessWidget {
       context: context,
       useSafeArea: true,
       isScrollControlled: true,
-      builder: (context) => FractionallySizedBox(
-        heightFactor: .75,
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: Text(
-                tr('Theme'),
-                style: Theme.of(context).textTheme.titleMedium,
+      builder: (context) => SafeArea(
+        top: false,
+        child: FractionallySizedBox(
+          heightFactor: .75,
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: Text(
+                  tr('Theme'),
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
               ),
-            ),
-            Expanded(
-              child: ListView(
-                children: [
-                  for (final theme in BeaconTheme.all)
-                    ListTile(
-                      selected: preferences.themeId == theme.id,
-                      leading: Container(
-                        width: 16,
-                        height: 16,
-                        decoration: BoxDecoration(
-                          color: theme.color('primary', '#3B82F6'),
-                          shape: BoxShape.circle,
+              Expanded(
+                child: ListView(
+                  children: [
+                    for (final theme in BeaconTheme.all)
+                      ListTile(
+                        selected: preferences.themeId == theme.id,
+                        leading: Container(
+                          width: 16,
+                          height: 16,
+                          decoration: BoxDecoration(
+                            color: theme.color('primary', '#3B82F6'),
+                            shape: BoxShape.circle,
+                          ),
                         ),
+                        title: Text(theme.name),
+                        trailing: preferences.themeId == theme.id
+                            ? const Icon(Icons.check, size: 20)
+                            : null,
+                        onTap: () => Navigator.pop(context, theme.id),
                       ),
-                      title: Text(theme.name),
-                      trailing: preferences.themeId == theme.id
-                          ? const Icon(Icons.check, size: 20)
-                          : null,
-                      onTap: () => Navigator.pop(context, theme.id),
-                    ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -164,27 +167,30 @@ class SettingsPage extends StatelessWidget {
     final value = await showModalBottomSheet<String>(
       context: context,
       useSafeArea: true,
-      builder: (context) => ListView(
-        shrinkWrap: true,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: Text(
-              tr('Language'),
-              style: Theme.of(context).textTheme.titleMedium,
+      builder: (context) => SafeArea(
+        top: false,
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Text(
+                tr('Language'),
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
             ),
-          ),
-          for (final entry in languages.entries)
-            ListTile(
-              selected: preferences.language == entry.key,
-              title: Text(entry.value),
-              trailing: preferences.language == entry.key
-                  ? const Icon(Icons.check, size: 20)
-                  : null,
-              onTap: () => Navigator.pop(context, entry.key),
-            ),
-          const SizedBox(height: 12),
-        ],
+            for (final entry in languages.entries)
+              ListTile(
+                selected: preferences.language == entry.key,
+                title: Text(entry.value),
+                trailing: preferences.language == entry.key
+                    ? const Icon(Icons.check, size: 20)
+                    : null,
+                onTap: () => Navigator.pop(context, entry.key),
+              ),
+            const SizedBox(height: 12),
+          ],
+        ),
       ),
     );
     if (value != null) await preferences.setLanguage(value);
@@ -213,8 +219,10 @@ Future<void> showServerEditor(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
-    builder: (context) =>
-        ServerEditor(preferences: preferences, server: server),
+    builder: (context) => SafeArea(
+      top: false,
+      child: ServerEditor(preferences: preferences, server: server),
+    ),
   );
 }
 

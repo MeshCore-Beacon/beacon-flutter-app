@@ -122,7 +122,8 @@ class VersionGate extends ChangeNotifier {
 
   static InfoFetcher apiFetcher(ApiClient Function(Uri)? factory) =>
       (base) async {
-        final api = factory?.call(base) ?? ApiClient(base);
+        // The gate's own timeout is shorter than any server wait, so it answers at once.
+        final api = factory?.call(base) ?? ApiClient(base, transientRetries: 0);
         try {
           return object(await api.get('/info'));
         } on ApiException catch (e) {

@@ -912,7 +912,8 @@
     },
     "charts": {
       "uniquePackets": "Paquets uniques",
-      "busy": "Occupation"
+      "busy": "Occupation",
+      "showMore": "Afficher plus"
     },
     "packetList": {
       "pathSearchInvalid": "Saisissez des hashs de saut complets de même longueur, séparés par des espaces, des virgules ou → (p. ex. 7f a4).",
@@ -1181,6 +1182,53 @@
       "start": "Début",
       "end": "Fin",
       "endAfterStart": "La fin doit être postérieure au début."
+    },
+    "meshMapper": {
+      "hardware": "Hardware",
+      "power": "Power",
+      "antenna": "Antenna",
+      "powerSource": "Power source",
+      "powerSources": {
+        "mains": "Mains",
+        "solar": "Solar",
+        "battery": "Battery",
+        "poe": "PoE"
+      },
+      "height": "Height",
+      "heightAgl": "{{value}} m AGL",
+      "heightAsl": "{{value}} m ASL",
+      "admins": "Admins",
+      "defaultScope": "Default scope",
+      "scopeState": {
+        "unknown": "Unknown",
+        "none": "None"
+      },
+      "scopeSource": {
+        "advert": "advert",
+        "reported": "reported"
+      },
+      "confirmedScopes": "Confirmed scopes",
+      "noConfirmedScopes": "None confirmed",
+      "observedPackets_one": "observed {{count}} packet",
+      "observedPackets_other": "observed {{count}} packets",
+      "observed": "observed",
+      "reported": "reported",
+      "uploaded": "uploaded",
+      "title": "MeshMapper",
+      "fromMeshMapper": "From MeshMapper",
+      "updated": "updated",
+      "carpeater": "CARpeater",
+      "carpeaterHint": "Mobile repeater in a vehicle: its position moves."
+    },
+    "liveMap": {
+      "clusteringOff": "Désactivé tant que la carte en direct est active",
+      "neighborLinesOff": "Toutes les lignes sont désactivées tant que la carte en direct est active"
+    },
+    "mapTerrain": {
+      "title": "Relief"
+    },
+    "nodeList": {
+      "sort": "Trier les nœuds"
     }
   }
 }

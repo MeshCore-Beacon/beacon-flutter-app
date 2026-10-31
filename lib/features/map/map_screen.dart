@@ -15,6 +15,7 @@ import 'map_data.dart';
 import 'map_markers.dart';
 import 'map_projection.dart';
 import 'map_repository.dart';
+import 'map_sync.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({
@@ -49,9 +50,11 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   bool _loading = true,
       _settings = false,
       _cluster = true,
-      _showBorders = false;
+      _showBorders = false,
+      _terrain = false;
   int _generation = 0;
   final _canvas = GlobalKey<_NativeMapState>();
+  final _layers = MapLayers();
   @override
   void initState() {
     super.initState();
@@ -72,6 +75,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       _cluster = p.getBool('beacon-map-clustering') ?? true;
       _mode = p.getString('beacon-map-neighbors') ?? 'selected';
       _showBorders = p.getBool('beacon-map-borders') ?? false;
+      _terrain = p.getBool('beacon-map-terrain') ?? false;
     });
     if (_showBorders) unawaited(_loadBorders());
   }
@@ -84,6 +88,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     await p.setBool('beacon-map-clustering', _cluster);
     await p.setString('beacon-map-neighbors', _mode);
     await p.setBool('beacon-map-borders', _showBorders);
+    await p.setBool('beacon-map-terrain', _terrain);
   }
 
   @override
@@ -113,6 +118,8 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         final id = textOf(d['nodeId']);
         final index = _nodes.indexWhere((n) => n['id'] == id);
         setState(() {
+          // a new list, so the map layers see the change
+          _nodes = [..._nodes];
           if (index >= 0) {
             _nodes[index] = {..._nodes[index], ...d, 'id': id};
           } else {
@@ -172,9 +179,8 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   Future<void> _load({bool replace = false}) async {
     if (_loading && _generation > 0 && !replace) return;
     final gen = ++_generation;
-    _flows.clear();
-    _flowTimer?.cancel();
-    _flowTimer = null;
+    // A refresh mid-animation would otherwise leave lit nodes frozen on.
+    _clearFlow();
     setState(() {
       if (replace) {
         _nodes = [];
@@ -193,10 +199,10 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     }
     try {
       List<Map<String, dynamic>>? latest;
-      await for (final nodes in loadMapNodes(
-        widget.api,
-        widget.region,
-        isCurrent: () => _current(gen),
+      // Each update resends every node to the map, so a paging load shows at most once a second.
+      await for (final nodes in throttleLatest(
+        loadMapNodes(widget.api, widget.region, isCurrent: () => _current(gen)),
+        const Duration(seconds: 1),
       )) {
         if (!_current(gen)) return;
         if (_nodes.length <= nodes.length) setState(() => _nodes = nodes);
@@ -311,8 +317,9 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     String label,
     Map<String, String> options,
     String current,
-    void Function(String) changed,
-  ) => Padding(
+    void Function(String) changed, {
+    Set<String> disabled = const {},
+  }) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 5),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -338,10 +345,12 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                   selected: e.key == current,
                   visualDensity: VisualDensity.compact,
                   showCheckmark: false,
-                  onSelected: (_) {
-                    setState(() => changed(e.key));
-                    _save();
-                  },
+                  onSelected: disabled.contains(e.key)
+                      ? null
+                      : (_) {
+                          setState(() => changed(e.key));
+                          _save();
+                        },
                 ),
               )
               .toList(),
@@ -352,10 +361,17 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final selected = _selectedNode;
-    final edges =
-        _mode == 'selected' && selected != null && _neighbors.isNotEmpty
-        ? focusedFeatures(selected, _neighbors)
-        : neighborFeatures(_nodes, _mode, _selected);
+    final mode = neighborMode(_mode, live: _flow);
+    final layers = _layers.build(
+      nodes: _nodes,
+      type: _type,
+      flow: _flow,
+      mode: mode,
+      selected: _selected,
+      selectedNode: selected,
+      neighbors: _neighbors,
+      borders: _showBorders ? _borders : const [],
+    );
     return Stack(
       children: [
         Positioned.fill(
@@ -363,10 +379,14 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
             key: _canvas,
             style: _style,
             cluster: _cluster,
+            hillshade: _terrain,
             liveFlow: _flow,
-            points: nodeFeatures(_nodes, type: _type),
-            lines: edges,
-            borders: collection(_showBorders ? _borders : []),
+            points: layers.points,
+            // Crossed nodes light under any type filter.
+            liveNodes: layers.live,
+            liveDotTypes: liveDotTypes(_type),
+            lines: layers.lines,
+            borders: layers.borders,
             onNode: _select,
             onReady: _frame,
             onVisibleCount: (count) {
@@ -457,12 +477,22 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                               _type,
                               (v) => _type = v,
                             ),
+                            // Live shows every node unclustered but keeps the saved choice.
                             _choices(
                               'Clustering',
                               {'on': 'On', 'off': 'Off'},
-                              _cluster ? 'on' : 'off',
+                              _cluster && !_flow ? 'on' : 'off',
                               (v) => _cluster = v == 'on',
+                              disabled: _flow ? const {'on', 'off'} : const {},
                             ),
+                            if (_flow)
+                              Text(
+                                trKey('liveMap.clusteringOff'),
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: BeaconColors.of(context).normal,
+                                ),
+                              ),
                             _choices(
                               'Neighbor Lines',
                               {
@@ -470,10 +500,19 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                                 'selected': 'Selected',
                                 'off': 'Off',
                               },
-                              _mode,
+                              mode,
                               (v) => _mode = v,
+                              disabled: _flow ? const {'on'} : const {},
                             ),
-                            if (_mode == 'selected')
+                            if (_flow)
+                              Text(
+                                trKey('liveMap.neighborLinesOff'),
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: BeaconColors.of(context).normal,
+                                ),
+                              ),
+                            if (mode == 'selected')
                               Text(
                                 '${tr('Observations')}: 1 · 20 · 150+\n${tr('fainter = heard longer ago')}',
                                 style: TextStyle(
@@ -489,6 +528,12 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                                 _showBorders = v == 'on';
                                 if (_showBorders) _loadBorders();
                               },
+                            ),
+                            _choices(
+                              trKey('mapTerrain.title'),
+                              {'on': 'On', 'off': 'Off'},
+                              _terrain ? 'on' : 'off',
+                              (v) => _terrain = v == 'on',
                             ),
                             TextButton.icon(
                               onPressed: _copyLink,
@@ -650,24 +695,47 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   }
 }
 
+const _nodeIcon = [
+  'concat',
+  'node-',
+  ['get', 'nodeTypeName'],
+  [
+    'case',
+    [
+      '==',
+      ['get', 'isObserver'],
+      true,
+    ],
+    '-observer',
+    '',
+  ],
+];
+const _knownType = [
+  'in',
+  ['get', 'nodeTypeName'],
+  ['literal', nodeTypes],
+];
+const _selectedRing = CircleLayerProperties(
+  circleRadius: 12,
+  circleColor: '#3b82f6',
+  circleOpacity: 0.2,
+  circleStrokeColor: '#3b82f6',
+  circleStrokeWidth: 2,
+);
+List<Object> _byId(String? id) => [
+  '==',
+  ['get', 'id'],
+  id ?? '',
+];
+List<Object> _selectedMarker(String? id) => ['all', _byId(id), _knownType];
+List<Object> _ofTypes(List<String> types) => [
+  'in',
+  ['get', 'nodeTypeName'],
+  ['literal', types],
+];
+
 /// Shared native map canvas. Style changes recreate the platform view so stale
 /// async layer writes cannot target a replacement style.
-// The plugin sends null defaults when updating typed properties. Omit them so
-// changing opacity does not clear marker images, label text or sizing.
-class _PaintUpdate implements LayerProperties {
-  const _PaintUpdate(this.properties);
-  final LayerProperties properties;
-  @override
-  Map<String, dynamic> toJson({bool skipNulls = true}) =>
-      properties.toJson(skipNulls: true);
-}
-
-Future<void> _setPaint(
-  MapLibreMapController controller,
-  String layer,
-  LayerProperties properties,
-) => controller.setLayerProperties(layer, _PaintUpdate(properties));
-
 class NativeMap extends StatefulWidget {
   const NativeMap({
     super.key,
@@ -677,7 +745,10 @@ class NativeMap extends StatefulWidget {
     required this.onNode,
     this.style = 'dark',
     this.cluster = false,
+    this.hillshade = false,
     this.liveFlow = false,
+    this.liveNodes,
+    this.liveDotTypes = const ['repeater', 'companion'],
     this.selected,
     this.onReady,
     this.onError,
@@ -685,10 +756,15 @@ class NativeMap extends StatefulWidget {
     this.onVisibleCount,
   });
   final Map<String, dynamic> points, lines, borders;
+  // Unfiltered nodes that live packets may light; null means [points].
+  final Map<String, dynamic>? liveNodes;
+  final List<String> liveDotTypes;
   final void Function(int)? onVisibleCount;
   final bool fitPoints;
   final String style;
   final bool cluster;
+  // Off by default: each view pulls dozens of uncached elevation tiles.
+  final bool hillshade;
   final bool liveFlow;
   final String? selected;
   final void Function(String) onNode;
@@ -702,95 +778,64 @@ class _NativeMapState extends State<NativeMap> {
   MapLibreMapController? _controller;
   bool _ready = false;
   int _epoch = 0;
-  Future<void> _writes = Future.value();
+  MapSync? _sync;
   int _reload = 0;
   bool _firstReady = true;
   CameraPosition _camera = const CameraPosition(
     target: LatLng(20, 0),
     zoom: 1.5,
   );
-  String get _identity => '${widget.style}-${widget.cluster}-$_reload';
+  String get _identity =>
+      '${widget.style}-${widget.cluster}-${widget.hillshade}-$_reload';
   void reload() {
     setState(() {
-      _epoch++;
-      _ready = false;
-      _controller = null;
+      _drop();
       _reload++;
     });
+  }
+
+  void _drop() {
+    _epoch++;
+    _ready = false;
+    _controller = null;
+    _sync?.close();
+    _sync = null;
   }
 
   @override
   void didUpdateWidget(covariant NativeMap old) {
     super.didUpdateWidget(old);
-    if (old.style != widget.style || old.cluster != widget.cluster) {
-      _epoch++;
-      _ready = false;
-      _controller = null;
+    if (old.style != widget.style ||
+        old.cluster != widget.cluster ||
+        old.hillshade != widget.hillshade) {
+      _drop();
     } else {
       _update();
       if (widget.fitPoints) fit(_locations());
     }
   }
 
-  void _update() {
-    final epoch = _epoch;
-    _writes = _writes.catchError((Object _) {}).then((_) async {
-      final c = _controller;
-      if (!_ready || c == null || !mounted || epoch != _epoch) return;
-      try {
-        await c.setGeoJsonSource('beacon-nodes', widget.points);
-        if (!mounted || epoch != _epoch) return;
-        await c.setGeoJsonSource('beacon-links', widget.lines);
-        if (!mounted || epoch != _epoch) return;
-        await c.setGeoJsonSource('beacon-borders', widget.borders);
-        if (!mounted || epoch != _epoch) return;
-        await _applyFlowStyle(c);
-        if (!mounted || epoch != _epoch) return;
-        await c.setFilter('beacon-selected', [
-          '==',
-          ['get', 'id'],
-          widget.selected ?? '',
-        ]);
-      } catch (e) {
-        if (mounted && epoch == _epoch) widget.onError?.call('Map layers: $e');
-      }
-    });
-  }
+  void _update() => unawaited(_sync?.sync());
 
-  Future<void> _applyFlowStyle(MapLibreMapController c) async {
-    await _applyNodeGlow(c);
-    await _setPaint(
-      c,
-      'beacon-clusters',
-      SymbolLayerProperties(iconOpacity: widget.liveFlow ? 0.07 : 1.0),
-    );
-    await _setPaint(
-      c,
-      'beacon-cluster-count',
-      SymbolLayerProperties(textOpacity: widget.liveFlow ? 0.0 : 1.0),
-    );
-    await _setPaint(
-      c,
-      'beacon-labels',
-      SymbolLayerProperties(textOpacity: widget.liveFlow ? 0.0 : 1.0),
-    );
-  }
-
-  Future<void> _applyNodeGlow(MapLibreMapController c) async {
-    final opacity = liveMarkerOpacity(widget.liveFlow, _nodeGlow);
-    await _setPaint(
-      c,
-      'beacon-points',
-      SymbolLayerProperties(iconOpacity: opacity),
-    );
-    await _setPaint(
-      c,
-      'beacon-path-points',
-      CircleLayerProperties(
-        circleOpacity: opacity,
-        circleStrokeOpacity: opacity,
-      ),
-    );
+  // One shared empty source, so an unchanged empty one is never resent.
+  static final _none = collection([]);
+  List<MapWrite> _writes(MapLibreMapController c) {
+    // Live swaps the nodes onto an unclustered source; the other goes empty.
+    final live = widget.liveFlow, selected = widget.selected;
+    MapWrite source(String id, Map<String, dynamic> data) =>
+        (id: id, key: data, send: () => c.setGeoJsonSource(id, data));
+    MapWrite filter(String id, List<Object> f) =>
+        (id: id, key: jsonEncode(f), send: () => c.setFilter(id, f));
+    return [
+      source('beacon-nodes', live ? _none : widget.points),
+      source('beacon-live-nodes', live ? widget.points : _none),
+      source('beacon-links', widget.lines),
+      source('beacon-borders', widget.borders),
+      filter('beacon-selected', _byId(selected)),
+      filter('beacon-live-selected', _byId(selected)),
+      filter('beacon-live-selected-marker', _selectedMarker(selected)),
+      filter('beacon-live-dots', _ofTypes(widget.liveDotTypes)),
+    ];
   }
 
   Future<void> _styleLoaded() async {
@@ -800,29 +845,33 @@ class _NativeMapState extends State<NativeMap> {
     final imageScale = MediaQuery.devicePixelRatioOf(context);
     try {
       // MapLibre Native supports raster DEM hillshading, but not 3D terrain.
-      await c.addSource(
-        'beacon-elevation',
-        const RasterDemSourceProperties(
-          tiles: [
-            'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png',
-          ],
-          tileSize: 256,
-          encoding: 'terrarium',
-          maxzoom: 15,
-          attribution: '<a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md">Tilezen Joerd</a>',
-        ),
-      );
-      await c.addHillshadeLayer(
-        'beacon-elevation',
-        'beacon-hillshade',
-        HillshadeLayerProperties(
-          hillshadeExaggeration: 0.3,
-          hillshadeShadowColor: widget.style == 'dark' ? '#09090b' : '#566477',
-          hillshadeHighlightColor: widget.style == 'dark'
-              ? '#424250'
-              : '#ffffff',
-        ),
-      );
+      if (widget.hillshade) {
+        await c.addSource(
+          'beacon-elevation',
+          const RasterDemSourceProperties(
+            tiles: [
+              'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png',
+            ],
+            tileSize: 256,
+            encoding: 'terrarium',
+            maxzoom: 15,
+            attribution: '<a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md">Tilezen Joerd</a>',
+          ),
+        );
+        await c.addHillshadeLayer(
+          'beacon-elevation',
+          'beacon-hillshade',
+          HillshadeLayerProperties(
+            hillshadeExaggeration: 0.3,
+            hillshadeShadowColor: widget.style == 'dark'
+                ? '#09090b'
+                : '#566477',
+            hillshadeHighlightColor: widget.style == 'dark'
+                ? '#424250'
+                : '#ffffff',
+          ),
+        );
+      }
       await c.addGeoJsonSource('beacon-borders', widget.borders);
       await c.addFillLayer(
         'beacon-borders',
@@ -839,6 +888,41 @@ class _NativeMapState extends State<NativeMap> {
           lineOpacity: 0.65,
         ),
         enableInteraction: false,
+      );
+      // Idle dots sit under the neighbour lines; small solid dots don't blob.
+      await c.addSource(
+        'beacon-live-nodes',
+        GeojsonSourceProperties(
+          data: widget.liveFlow ? widget.points : collection([]),
+          maxzoom: 22,
+        ),
+      );
+      await c.addCircleLayer(
+        'beacon-live-nodes',
+        'beacon-live-dots',
+        CircleLayerProperties(
+          circleRadius: const [
+            'interpolate',
+            ['linear'],
+            ['zoom'],
+            7,
+            2.5,
+            9,
+            3,
+            12,
+            4.5,
+            15,
+            6,
+          ],
+          circleColor: [
+            'match',
+            ['get', 'nodeTypeName'],
+            for (final e in nodeColors.entries) ...[e.key, e.value],
+            nodeColors['repeater']!,
+          ],
+          circleOpacity: 0.75,
+        ),
+        filter: _ofTypes(widget.liveDotTypes),
       );
       await c.addGeoJsonSource('beacon-links', widget.lines);
       await c.addLineLayer(
@@ -900,7 +984,7 @@ class _NativeMapState extends State<NativeMap> {
       await c.addSource(
         'beacon-nodes',
         GeojsonSourceProperties(
-          data: widget.points,
+          data: widget.liveFlow ? collection([]) : widget.points,
           cluster: widget.cluster,
           clusterRadius: 40,
           clusterMaxZoom: 20,
@@ -958,22 +1042,12 @@ class _NativeMapState extends State<NativeMap> {
       await c.addCircleLayer(
         'beacon-nodes',
         'beacon-selected',
-        const CircleLayerProperties(
-          circleRadius: 12,
-          circleColor: '#3b82f6',
-          circleOpacity: 0.2,
-          circleStrokeColor: '#3b82f6',
-          circleStrokeWidth: 2,
-        ),
-        filter: [
-          '==',
-          ['get', 'id'],
-          widget.selected ?? '',
-        ],
+        _selectedRing,
+        filter: _byId(widget.selected),
         enableInteraction: false,
       );
       final markerStyle = widget.style == 'dark' ? 'glitch' : 'wireframe';
-      for (final type in ['companion', 'repeater', 'room_server', 'sensor']) {
+      for (final type in nodeTypes) {
         for (final suffix in ['', '-observer']) {
           final key = '$markerStyle-$type$suffix';
           await c.addImage(
@@ -982,6 +1056,11 @@ class _NativeMapState extends State<NativeMap> {
           );
           if (!mounted || epoch != _epoch) return;
         }
+        await c.addImage(
+          'live-$type',
+          await markerImage('live-$type', scale: imageScale),
+        );
+        if (!mounted || epoch != _epoch) return;
       }
       await c.addCircleLayer(
         'beacon-nodes',
@@ -1002,38 +1081,14 @@ class _NativeMapState extends State<NativeMap> {
             '!',
             ['has', 'point_count'],
           ],
-          [
-            '!',
-            [
-              'in',
-              ['get', 'nodeTypeName'],
-              [
-                'literal',
-                ['companion', 'repeater', 'room_server', 'sensor'],
-              ],
-            ],
-          ],
+          ['!', _knownType],
         ],
       );
       await c.addSymbolLayer(
         'beacon-nodes',
         'beacon-points',
         const SymbolLayerProperties(
-          iconImage: [
-            'concat',
-            'node-',
-            ['get', 'nodeTypeName'],
-            [
-              'case',
-              [
-                '==',
-                ['get', 'isObserver'],
-                true,
-              ],
-              '-observer',
-              '',
-            ],
-          ],
+          iconImage: _nodeIcon,
           iconSize: 0.41,
           iconAllowOverlap: true,
           iconIgnorePlacement: true,
@@ -1044,14 +1099,7 @@ class _NativeMapState extends State<NativeMap> {
             '!',
             ['has', 'point_count'],
           ],
-          [
-            'in',
-            ['get', 'nodeTypeName'],
-            [
-              'literal',
-              ['companion', 'repeater', 'room_server', 'sensor'],
-            ],
-          ],
+          _knownType,
         ],
       );
       await c.addSymbolLayer(
@@ -1074,6 +1122,25 @@ class _NativeMapState extends State<NativeMap> {
         ],
         enableInteraction: false,
       );
+      // A node selected during Live keeps its full marker, whatever its type.
+      await c.addCircleLayer(
+        'beacon-live-nodes',
+        'beacon-live-selected',
+        _selectedRing,
+        filter: _byId(widget.selected),
+        enableInteraction: false,
+      );
+      await c.addSymbolLayer(
+        'beacon-live-nodes',
+        'beacon-live-selected-marker',
+        const SymbolLayerProperties(
+          iconImage: _nodeIcon,
+          iconSize: 0.41,
+          iconAllowOverlap: true,
+          iconIgnorePlacement: true,
+        ),
+        filter: _selectedMarker(widget.selected),
+      );
       await c.addGeoJsonSource('beacon-flow-trails', collection([]));
       await c.addLineLayer(
         'beacon-flow-trails',
@@ -1085,6 +1152,51 @@ class _NativeMapState extends State<NativeMap> {
           lineOpacity: ['get', 'a'],
         ),
         enableInteraction: false,
+      );
+      // Draw order can't come from feature state, so lit nodes carry a rank.
+      await c.addGeoJsonSource('beacon-live-lit', collection([]));
+      final dark = widget.style == 'dark';
+      await c.addSymbolLayer(
+        'beacon-live-lit',
+        'beacon-live-names',
+        SymbolLayerProperties(
+          textField: const ['get', 'label'],
+          textFont: const ['Noto Sans Regular'],
+          textSize: 12,
+          textColor: dark ? '#fafafa' : '#18181b',
+          textHaloColor: dark ? '#09090b' : '#ffffff',
+          textHaloWidth: 1.5,
+          textOffset: const [0, 1.5],
+          textAnchor: 'top',
+          textOpacity: const ['get', 'a'],
+          textAllowOverlap: true,
+          textIgnorePlacement: true,
+          symbolSortKey: const ['get', 'seq'],
+          symbolZOrder: 'source',
+        ),
+        filter: [
+          '!=',
+          ['get', 'label'],
+          '',
+        ],
+        enableInteraction: false,
+      );
+      await c.addSymbolLayer(
+        'beacon-live-lit',
+        'beacon-live-icons',
+        const SymbolLayerProperties(
+          iconImage: [
+            'concat',
+            'live-',
+            ['get', 'nodeTypeName'],
+          ],
+          iconSize: 0.41,
+          iconOpacity: ['get', 'a'],
+          iconAllowOverlap: true,
+          iconIgnorePlacement: true,
+          symbolSortKey: ['get', 'seq'],
+          symbolZOrder: 'source',
+        ),
       );
       await c.addGeoJsonSource('beacon-flow-dots', collection([]));
       await c.addCircleLayer(
@@ -1099,8 +1211,16 @@ class _NativeMapState extends State<NativeMap> {
         enableInteraction: false,
       );
       if (!mounted || epoch != _epoch) return;
-      _nodeGlow.clear();
       _ready = true;
+      _sync?.close();
+      _sync = MapSync(
+        () => _writes(c),
+        onError: (e) {
+          if (mounted && epoch == _epoch) {
+            widget.onError?.call('Map layers: $e');
+          }
+        },
+      );
       _update();
       if (_firstReady) {
         _firstReady = false;
@@ -1123,7 +1243,18 @@ class _NativeMapState extends State<NativeMap> {
               ]
             : const <Map<String, dynamic>>[];
       }).toList();
-  final _nodeGlow = <String, dynamic>{};
+  Object? _indexed;
+  Map<String, Map<String, dynamic>> _index = {};
+  // Rebuilt only when the node list changes, so ticks cost O(lit nodes).
+  Map<String, Map<String, dynamic>> _litIndex() {
+    final source = widget.liveNodes ?? widget.points;
+    if (!identical(source, _indexed)) {
+      _index = featureIndex(source);
+      _indexed = source;
+    }
+    return _index;
+  }
+
   bool _flowWriting = false;
   Map<String, dynamic>? _pendingFlow;
   Future<void> flow(Map<String, dynamic> data) async {
@@ -1136,13 +1267,14 @@ class _NativeMapState extends State<NativeMap> {
     }
     _flowWriting = true;
     try {
-      final glow = widget.liveFlow ? object(data['glow']) : <String, dynamic>{};
-      _nodeGlow
-        ..clear()
-        ..addAll(glow);
-      await _applyNodeGlow(c);
-      if (!mounted || epoch != _epoch) return;
       await c.setGeoJsonSource('beacon-flow-trails', object(data['trails']));
+      if (!mounted || epoch != _epoch) return;
+      await c.setGeoJsonSource(
+        'beacon-live-lit',
+        widget.liveFlow
+            ? litFeatures(object(data['lit']), _litIndex())
+            : collection([]),
+      );
       if (!mounted || epoch != _epoch) return;
       await c.setGeoJsonSource('beacon-flow-dots', object(data['dots']));
     } catch (e) {
@@ -1196,6 +1328,21 @@ class _NativeMapState extends State<NativeMap> {
     final epoch = _epoch;
     if (c == null || !_ready) return;
     try {
+      if (widget.liveFlow) {
+        final rect = nativeTapRect(
+          point,
+          Theme.of(context).platform,
+          MediaQuery.devicePixelRatioOf(context),
+        );
+        final id = await liveTapNode(
+          (layers) => c.queryRenderedFeaturesInRect(rect, layers, null),
+          location.latitude,
+          location.longitude,
+        );
+        if (!mounted || epoch != _epoch) return;
+        if (id != null) widget.onNode(id);
+        return;
+      }
       final hits = await c.queryRenderedFeatures(point, [
         'beacon-points',
         'beacon-path-points',
@@ -1251,6 +1398,21 @@ class _NativeMapState extends State<NativeMap> {
     final epoch = _epoch;
     if (!_ready || c == null || !mounted) return;
     try {
+      // Live hides most node types, so count what lies in the viewport.
+      if (widget.liveFlow) {
+        final b = await c.getVisibleRegion();
+        if (!mounted || epoch != _epoch) return;
+        widget.onVisibleCount?.call(
+          countInBounds(
+            widget.points,
+            south: b.southwest.latitude,
+            west: b.southwest.longitude,
+            north: b.northeast.latitude,
+            east: b.northeast.longitude,
+          ),
+        );
+        return;
+      }
       final size = context.size;
       if (size == null) return;
       final hits = await c.queryRenderedFeaturesInRect(
@@ -1293,9 +1455,7 @@ class _NativeMapState extends State<NativeMap> {
   );
   @override
   void dispose() {
-    _epoch++;
-    _ready = false;
-    _controller = null;
+    _drop();
     super.dispose();
   }
 }

@@ -100,7 +100,7 @@ class Preferences extends ChangeNotifier {
     notifyListeners();
   }
 
-  Map<String, dynamic> regionFor(String url) {
+  Map<String, dynamic> _savedRegion(String url) {
     try {
       return object(jsonDecode(_store.getString('beacon.region.$url') ?? '{}'));
     } catch (_) {
@@ -108,7 +108,25 @@ class Preferences extends ChangeNotifier {
     }
   }
 
-  Future<void> saveRegion(String url, Map<String, dynamic> params) async {
-    await _store.setString('beacon.region.$url', jsonEncode(params));
+  /// Query params for the server's region filter.
+  Map<String, dynamic> regionFor(String url) =>
+      _savedRegion(url)..remove('selection');
+
+  /// The picker's raw selection, saved with the params; null for saves from
+  /// before the picker kept regions.
+  Map<String, dynamic>? regionSelectionFor(String url) {
+    final saved = _savedRegion(url)['selection'];
+    return saved is Map<String, dynamic> ? saved : null;
+  }
+
+  Future<void> saveRegion(
+    String url,
+    Map<String, dynamic> params, {
+    Map<String, dynamic>? selection,
+  }) async {
+    await _store.setString(
+      'beacon.region.$url',
+      jsonEncode({...params, 'selection': ?selection}),
+    );
   }
 }

@@ -33,7 +33,7 @@ class AnalyticsScreen extends StatefulWidget {
 }
 
 class _AnalyticsScreenState extends State<AnalyticsScreen> {
-  String tab = 'Mesh', range = '7d';
+  String tab = 'Mesh', range = '7d', advertiserSort = 'flood';
   int refreshed = DateTime.now().millisecondsSinceEpoch;
   Map<String, dynamic>? comparison;
   Timer? refreshTimer;
@@ -378,22 +378,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             child: RankedBars(
               labels: names,
               values: names.map((n) => areas[n]).toList(),
+              pageSize: 10,
             ),
-          ),
-          ExactValues(
-            title: 'Observations by area',
-            columns: ['Area', 'Observations', 'Share'],
-            values: names
-                .map(
-                  (n) => [
-                    n,
-                    areas[n],
-                    areas.values.fold<double>(0, (a, b) => a + b) == 0
-                        ? '0%'
-                        : '${(areas[n]! / areas.values.fold<double>(0, (a, b) => a + b) * 100).toStringAsFixed(1)}%',
-                  ],
-                )
-                .toList(),
           ),
         ],
       );
@@ -487,22 +473,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               ),
             ),
           ],
-          ExactValues(
-            title: 'Hourly signal values',
-            columns: ['UTC hour', 'Observations', 'Mean SNR', 'Mean RSSI'],
-            values: rows(o['hourly'])
-                .map(
-                  (r) => [
-                    (epoch(r['hour'], isUtc: true) ?? DateTime.utc(1970))
-                        .toIso8601String()
-                        .substring(0, 16),
-                    r['receptions'],
-                    r['snrAverage'],
-                    r['rssiAverage'],
-                  ],
-                )
-                .toList(),
-          ),
         ],
       );
     }),
@@ -517,8 +487,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       final maxLength = lengths.keys
           .fold<int>(0, (a, b) => a > b ? a : b)
           .clamp(0, 63);
-      final receptions = number(o['receptions']) ?? 0;
-
       return Column(
         children: [
           AnalyticsCard(
@@ -575,73 +543,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             ),
           ),
           AnalyticsCard(
-            title: 'Path format counts',
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: DataTable(
-                headingRowHeight: 30,
-                dataRowMinHeight: 28,
-                dataRowMaxHeight: 38,
-                columnSpacing: 18,
-                horizontalMargin: 4,
-                columns: ['Category', 'Receptions', 'Share']
-                    .map(
-                      (label) => DataColumn(
-                        label: Text(
-                          tr(label),
-                          style: const TextStyle(fontSize: 10),
-                        ),
-                      ),
-                    )
-                    .toList(),
-                rows: [
-                  for (final entry in [
-                    ('Hash paths', number(o['hashed']) ?? 0),
-                    ('Empty', number(o['empty']) ?? 0),
-                    ('Trace', number(o['trace']) ?? 0),
-                    ('Unclassified', number(o['unclassified']) ?? 0),
-                  ])
-                    DataRow(
-                      cells:
-                          [
-                                tr(entry.$1),
-                                entry.$2.toInt().toString(),
-                                receptions <= 0
-                                    ? '0.0%'
-                                    : '${(entry.$2 / receptions * 100).toStringAsFixed(1)}%',
-                              ]
-                              .map(
-                                (value) => DataCell(
-                                  Text(
-                                    value,
-                                    style: const TextStyle(
-                                      fontFamily: 'JetBrainsMono',
-                                      fontSize: 10,
-                                    ),
-                                  ),
-                                ),
-                              )
-                              .toList(),
-                    ),
-                ],
-              ),
-            ),
-          ),
-          ExactValues(
-            title: 'Observed hash width counts',
-            columns: ['Bytes per hash', 'Receptions'],
-            values: rows(o['hashWidths'])
-                .map((r) => [r['bytes'], r['receptions']])
-                .toList(),
-          ),
-          ExactValues(
-            title: 'Received path length counts',
-            columns: ['Path entries', 'Receptions'],
-            values: rows(o['pathLengths'])
-                .map((r) => [r['entries'], r['receptions']])
-                .toList(),
-          ),
-          AnalyticsCard(
             title: 'Hash-path observations over time',
             child: TimeChart(
               stacked: true,
@@ -667,37 +568,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             child: TimeChart(
               series: {'Entries': windowedPoints(o, 'maxEntries')},
             ),
-          ),
-          ExactValues(
-            title: 'Hourly path counts',
-            columns: [
-              'UTC hour',
-              'Observations',
-              '1-byte',
-              '2-byte',
-              '3-byte',
-              'Empty',
-              'Trace',
-              'Unclassified',
-              'Most path entries',
-            ],
-            values: rows(o['hourly'])
-                .map(
-                  (r) => [
-                    (epoch(r['hour'], isUtc: true) ?? DateTime.utc(1970))
-                        .toIso8601String()
-                        .substring(0, 16),
-                    r['receptions'],
-                    r['oneByte'],
-                    r['twoByte'],
-                    r['threeByte'],
-                    r['empty'],
-                    r['trace'],
-                    r['unclassified'],
-                    r['maxEntries'],
-                  ],
-                )
-                .toList(),
           ),
         ],
       );
@@ -808,24 +678,55 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                         'senderName',
                         'messageCount',
                       ),
-                      query('/stats/top-advertisers', (d) {
-                        final r = rows(d);
-                        final days =
-                            ((number(rolled['until']) ?? refreshed) -
-                                ((refreshed - rangeHours[range]! * 3600000) ~/
-                                    3600000 *
-                                    3600000)) /
-                            86400000;
-                        return AnalyticsCard(
-                          title: tr('Top advertisers · {{range}}')
-                              .replaceAll('{{range}}', range),
-                          child: AdvertiserList(
-                            nodes: r,
-                            days: days,
-                            onOpen: widget.onOpen,
-                          ),
-                        );
-                      }, params: {...window, 'limit': 20}),
+                      AnalyticsCard(
+                        title: tr('Top advertisers · {{range}}')
+                            .replaceAll('{{range}}', range),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Wrap(
+                              spacing: 4,
+                              children: {'flood': 'Flood', 'direct': 'Direct'}
+                                  .entries
+                                  .map(
+                                    (e) => ChoiceChip(
+                                      label: Text(
+                                        tr(e.value),
+                                        style: const TextStyle(fontSize: 11),
+                                      ),
+                                      selected: e.key == advertiserSort,
+                                      visualDensity: VisualDensity.compact,
+                                      showCheckmark: false,
+                                      onSelected: (_) => setState(
+                                        () => advertiserSort = e.key,
+                                      ),
+                                    ),
+                                  )
+                                  .toList(),
+                            ),
+                            const SizedBox(height: 4),
+                            query(
+                              '/stats/top-advertisers',
+                              (d) => AdvertiserList(
+                                nodes: rows(d),
+                                days:
+                                    ((number(rolled['until']) ?? refreshed) -
+                                        ((refreshed -
+                                                rangeHours[range]! * 3600000) ~/
+                                            3600000 *
+                                            3600000)) /
+                                    86400000,
+                                onOpen: widget.onOpen,
+                              ),
+                              params: {
+                                ...window,
+                                'limit': 20,
+                                'sort': advertiserSort,
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
                     ],
                     'Clock Drift' => [
                       Padding(
@@ -995,20 +896,6 @@ class _ScopeContentsState extends State<_ScopeContents> {
               },
             ),
           ),
-        ExactValues(
-          title: 'Scope counts',
-          columns: ['Scope', 'Packets', 'Observers', 'Nodes'],
-          values: data
-              .map(
-                (r) => [
-                  r['name'],
-                  widget.packetKnown ? r['packetCount'] : null,
-                  r['observerCount'],
-                  r['nodeCount'],
-                ],
-              )
-              .toList(),
-        ),
       ],
     );
   }

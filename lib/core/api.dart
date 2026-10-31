@@ -17,6 +17,68 @@ class ApiException implements Exception {
   String toString() => message;
 }
 
+/// Query params for the next page of /packets, /nodes or /observers: both cursors when the
+/// server sent both, so a server that ignores pageCursor still advances. Empty when done.
+Map<String, Object> nextPageParams(Map<String, dynamic> page) {
+  if (page['hasMore'] != true) return {};
+  final Object? cursor = page['nextCursor'];
+  final pageCursor = page['nextPageCursor'];
+  return {
+    'cursor': ?cursor,
+    if (pageCursor is String && pageCursor.isNotEmpty) 'pageCursor': pageCursor,
+  };
+}
+
+/// A 429, or a 503 that said when to come back.
+bool isTransient(Object error) =>
+    error is ApiException &&
+    (error.status == 429 || (error.status == 503 && error.retryAfter != null));
+
+Future<void> _sleep(Duration d) => Future<void>.delayed(d);
+
+/// Runs [request] again after a transient error, waiting its retryAfter (10 s if absent),
+/// at most [retries] times; rethrows anything else. Returns null once [isCurrent] turns false.
+Future<T?> retryTransient<T>(
+  Future<T> Function() request, {
+  bool Function()? isCurrent,
+  int retries = 3,
+  Future<void> Function(Duration) wait = _sleep,
+}) async {
+  for (var attempt = 0; ; attempt++) {
+    try {
+      return await request();
+    } catch (error) {
+      if (!isTransient(error) || attempt >= retries) rethrow;
+      await wait(
+        (error as ApiException).retryAfter ?? const Duration(seconds: 10),
+      );
+      if (isCurrent != null && !isCurrent()) return null;
+    }
+  }
+}
+
+/// Runs [request] with [params]; a 400 "invalid pageCursor" is retried once with the
+/// legacy cursor alone. Without a cursor, dropping it would restart at page 1.
+/// Returns null once [isCurrent] turns false.
+Future<T?> withPageCursorFallback<T>(
+  Map<String, dynamic> params,
+  Future<T?> Function(Map<String, dynamic> params) request, {
+  bool Function()? isCurrent,
+}) async {
+  try {
+    return await request(params);
+  } on ApiException catch (e) {
+    if (e.status != 400 ||
+        e.message != 'invalid pageCursor' ||
+        params['pageCursor'] == null ||
+        params['cursor'] == null) {
+      rethrow;
+    }
+    if (isCurrent != null && !isCurrent()) return null;
+    return request({...params}..remove('pageCursor'));
+  }
+}
+
 /// Reads a GET body, giving up once it passes [maxBytes] so a hostile
 /// server can't exhaust memory.
 Future<http.Response> getLimited(
@@ -24,6 +86,7 @@ Future<http.Response> getLimited(
   Uri url,
   int maxBytes,
 ) async {
+  // Keep dart:io's "Dart/" UA: the analyzer's scrape block lets it in.
   final request = http.Request('GET', url);
   final response = await client.send(request);
   const tooLarge = ApiException('Server response is too large.');
@@ -53,9 +116,16 @@ class ApiClient {
     http.Client? client,
     DateTime Function()? now,
     this.maxResponseBytes = 16 * 1024 * 1024,
+    Future<void> Function(Duration)? wait,
+    this.transientRetries = 3,
   }) : _client = client ?? http.Client(),
-       _now = now ?? DateTime.now;
+       _now = now ?? DateTime.now,
+       _wait = wait ?? _sleep;
   final int maxResponseBytes;
+
+  /// How often a read waits out a 429 or a 503 with Retry-After, like web's queries.
+  final int transientRetries;
+  final Future<void> Function(Duration) _wait;
   final DateTime Function() _now;
   final _cache = <String, _CachedResponse>{};
   final _pending = <String, Future<dynamic>>{};
@@ -99,10 +169,27 @@ class ApiClient {
     return value == null ? null : jsonDecode(value.body);
   }
 
+  /// Like [get], for paths whose answers may be reused within their TTL.
   Future<dynamic> getCached(
     String path, [
     Map<String, dynamic> params = const {},
-  ]) async {
+    bool Function()? isCurrent,
+  ]) => _waitingOut(() => _cachedOrRead(path, params), isCurrent);
+
+  Future<dynamic> _waitingOut(
+    Future<dynamic> Function() read,
+    bool Function()? isCurrent,
+  ) => retryTransient(
+    read,
+    isCurrent: isCurrent,
+    retries: transientRetries,
+    wait: _wait,
+  );
+
+  Future<dynamic> _cachedOrRead(
+    String path,
+    Map<String, dynamic> params,
+  ) async {
     if (_closed) throw const ApiException('Connection changed.');
     final key = _key(path, params);
     final cached = _cache.remove(key);
@@ -196,7 +283,14 @@ class ApiClient {
       final params = Uri.parse(entry.key).queryParameters;
       // Filter membership can change. Such queries need authoritative results.
       if (params.keys.any(
-        (k) => !{'iatas', 'region', 'neighbors', 'limit', 'cursor'}.contains(k),
+        (k) => !{
+          'iatas',
+          'region',
+          'neighbors',
+          'limit',
+          'cursor',
+          'pageCursor',
+        }.contains(k),
       )) {
         _cacheBytes -= _cache.remove(entry.key)!.body.length;
         _cacheTokens.remove(entry.key);
@@ -238,8 +332,14 @@ class ApiClient {
     }
   }
 
-  Future<dynamic> get(String path, [Map<String, dynamic> params = const {}]) =>
-      _reference(path) ? getCached(path, params) : _readAndStore(path, params);
+  /// Waits out a busy server and retries; null once [isCurrent] turns false during a wait.
+  Future<dynamic> get(
+    String path, [
+    Map<String, dynamic> params = const {},
+    bool Function()? isCurrent,
+  ]) => _reference(path)
+      ? getCached(path, params, isCurrent)
+      : _waitingOut(() => _readAndStore(path, params), isCurrent);
 
   Future<dynamic> _sharedGet(String path, Map<String, dynamic> params) async {
     if (_closed) throw const ApiException('Connection changed.');
@@ -295,20 +395,16 @@ class ApiClient {
       }
       if (response.statusCode < 200 || response.statusCode >= 300) {
         Duration? delay;
+        final header = response.headers['retry-after'];
         if (response.statusCode == 429) {
-          final retry = response.headers['retry-after'] ?? '10';
-          final seconds = int.tryParse(retry);
-          DateTime? date;
-          if (seconds == null) {
-            try {
-              date = HttpDate.parse(retry);
-            } catch (_) {}
-          }
-          delay = Duration(
-            seconds: (seconds ?? date?.difference(_now()).inSeconds ?? 10)
-                .clamp(1, 300),
-          );
+          delay = _retryAfter(header) ?? const Duration(seconds: 10);
           _limitedUntil = _now().add(delay);
+        } else if (response.statusCode == 503) {
+          // A busy 503 is per request, so it must not block other screens.
+          // Like web, a 503 whose Retry-After can't be read is final.
+          final wait = _retryAfter(header, unparsable: null);
+          const most = Duration(seconds: 30);
+          delay = wait == null || wait < most ? wait : most;
         }
         throw ApiException(
           textOf(
@@ -339,6 +435,28 @@ class ApiClient {
       );
     }
   }
+
+  Duration? _retryAfter(
+    String? header, {
+    Duration? unparsable = const Duration(seconds: 10),
+  }) {
+    if (header == null) return null;
+    final seconds =
+        int.tryParse(header) ??
+        (() {
+          try {
+            return HttpDate.parse(header).difference(_now()).inSeconds;
+          } catch (_) {
+            return null;
+          }
+        })();
+    if (seconds == null) return unparsable;
+    return Duration(seconds: seconds.clamp(1, 300));
+  }
+
+  /// A short-lived ticket that lets this app open /ws on servers requiring an Origin.
+  Future<String> wsTicket() async =>
+      textOf(object(await get('/ws-ticket'))['ticket']);
 
   void close() {
     _closed = true;

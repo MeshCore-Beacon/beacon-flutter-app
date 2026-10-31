@@ -31,9 +31,6 @@ class RuntimeConfig {
   }
 
   String get banner => textOf(values['VITE_BANNER']);
-  String get name => textOf(values['VITE_APP_NAME'], 'BEACON').isEmpty
-      ? 'BEACON'
-      : textOf(values['VITE_APP_NAME']);
   List<String> get tabs {
     final disabled = textOf(values['VITE_DISABLED_TABS'])
         .toLowerCase()

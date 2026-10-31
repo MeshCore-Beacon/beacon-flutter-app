@@ -8,8 +8,10 @@ import '../../core/api.dart';
 import '../../core/json.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
+import '../analytics/charts.dart';
 import '../analytics/observer_charts.dart';
 import 'directory_widgets.dart';
+import 'meshmapper_section.dart';
 import 'observation_row.dart';
 import 'observer_info.dart';
 import 'paging.dart';
@@ -146,9 +148,11 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
       final value = widget.kind == 'route'
           ? object(jsonDecode(widget.id))
           : object(
-              await (fresh ? widget.api.get : widget.api.getCached)(
-                '/${widget.kind}s/${Uri.encodeComponent(widget.id)}',
-              ),
+              await retryingGet(
+                widget.api,
+                fresh: fresh,
+                isCurrent: () => mounted && g == generation,
+              )('/${widget.kind}s/${Uri.encodeComponent(widget.id)}'),
             );
       if (!mounted || g != generation) return;
       setState(() {
@@ -188,9 +192,11 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
 
   Future<void> loadNeighbors(int g, {bool fresh = false}) async {
     try {
-      final n = await (fresh ? widget.api.get : widget.api.getCached)(
-        '/nodes/${Uri.encodeComponent(widget.id)}/neighbors',
-      );
+      final n = await retryingGet(
+        widget.api,
+        fresh: fresh,
+        isCurrent: () => mounted && g == generation,
+      )('/nodes/${Uri.encodeComponent(widget.id)}/neighbors');
       if (mounted && g == generation) {
         setState(() {
           neighbors = rows(n);
@@ -264,9 +270,12 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
       final response =
           widget.kind == 'channel' && emptyDirectoryRegion(widget.region)
           ? []
-          : await (more || live || fresh
-                ? widget.api.get
-                : widget.api.getCached)(path, params);
+          : await retryingGet(
+              widget.api,
+              fresh: more || live || fresh,
+              isCurrent: () =>
+                  mounted && g == generation && hg == historyGeneration,
+            )(path, params);
       if (!mounted || g != generation || hg != historyGeneration) return;
       setState(() {
         history = more || live
@@ -516,6 +525,7 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
   List<Widget> nodeContent(Json d) {
     final colors = BeaconColors.of(context);
     final publicKey = textOf(d['publicKey']);
+    final meshMapper = object(d['meshmapper']);
     Widget capability(String title, dynamic value) => Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
@@ -559,6 +569,11 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
               nodeBadge(textOf(d['defaultScope']), colors.secondary),
             if (d['possiblyForeign'] == true)
               nodeBadge(tr('Possibly foreign'), colors.warning),
+            if (meshMapper['carpeater'] == true)
+              Tooltip(
+                message: trKey('meshMapper.carpeaterHint'),
+                child: nodeBadge(trKey('meshMapper.carpeater'), colors.warning),
+              ),
           ],
         ),
         const SizedBox(height: 8),
@@ -640,6 +655,8 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
           ],
         ),
       ]),
+      if (MeshMapperSection.hasContent(meshMapper))
+        MeshMapperSection(data: meshMapper),
       section('Capabilities', [
         capability('Multibyte paths', d['supportsMultibytePaths']),
         capability('Multibyte traces', d['supportsMultibyteTraces']),
@@ -736,7 +753,15 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
   }
 
   List<Widget> observerContent(Json d) => [
-    ObserverInfo(data: d),
+    StatsQuery(
+      api: widget.api,
+      path: '/observers/${Uri.encodeComponent(widget.id)}/activity',
+      params: observerActivityParams(range),
+      pollInterval: const Duration(minutes: 1),
+      builder: (activity) =>
+          ObserverInfo(data: d, summary: object(object(activity)['summary'])),
+      fallback: (_) => ObserverInfo(data: d),
+    ),
     link('Compare observers', 'analytics', 'compare:${widget.id}'),
     section('Activity & telemetry', [
       Text(tr('Window'), style: Theme.of(context).textTheme.bodySmall),
@@ -859,7 +884,8 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
   ];
 
   List<Widget> channelMessages() => [
-    if (history.isEmpty && !loadingHistory)
+    // A failed load is not an empty scope; the failure row says so.
+    if (history.isEmpty && !loadingHistory && historyError == null)
       const Padding(
         padding: EdgeInsets.all(20),
         child: DirectoryText('No messages in this scope.'),

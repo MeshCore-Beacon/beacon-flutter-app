@@ -35,8 +35,10 @@ class _PacketScreenState extends State<PacketScreen> {
   StreamSubscription<Json>? sub;
   Timer? clock;
   Timer? refreshTimer;
+  Timer? searchDebounce;
+  String? hashPrefix;
   bool loading = false, hasMore = true;
-  dynamic cursor;
+  Map<String, Object>? nextPage;
   String? error;
   String mode = 'Hash';
   Set<int> types = {};
@@ -119,7 +121,7 @@ class _PacketScreenState extends State<PacketScreen> {
       expandedHash = null;
       refreshPending = false;
       pending = [];
-      cursor = null;
+      nextPage = null;
       loading = false;
       load();
     }
@@ -135,6 +137,7 @@ class _PacketScreenState extends State<PacketScreen> {
     sub?.cancel();
     clock?.cancel();
     refreshTimer?.cancel();
+    searchDebounce?.cancel();
     scroll.dispose();
     search.dispose();
     super.dispose();
@@ -156,15 +159,26 @@ class _PacketScreenState extends State<PacketScreen> {
       error = null;
     });
     try {
+      final params = {
+        ...widget.region,
+        'limit': 100,
+        if (types.isNotEmpty) 'payloadTypes': types.join(','),
+        if (routes.isNotEmpty) 'routeTypes': routes.join(','),
+        if (selectedScopes.isNotEmpty) 'scopes': selectedScopes.join(','),
+        if (hashPrefix != null) 'hashPrefix': hashPrefix,
+        if (older) ...?nextPage,
+      };
+      // Waits out a busy server with the same params; loaded rows stay.
       final response = object(
-        await (older ? widget.api.getCached : widget.api.get)('/packets', {
-          ...widget.region,
-          'limit': 100,
-          if (types.isNotEmpty) 'payloadTypes': types.join(','),
-          if (routes.isNotEmpty) 'routeTypes': routes.join(','),
-          if (selectedScopes.isNotEmpty) 'scopes': selectedScopes.join(','),
-          if (older) 'cursor': cursor,
-        }),
+        await withPageCursorFallback(
+          params,
+          (p) => (older ? widget.api.getCached : widget.api.get)(
+            '/packets',
+            p,
+            () => mounted && request == generation,
+          ),
+          isCurrent: () => mounted && request == generation,
+        ),
       );
       if (!mounted || request != generation) return;
       setState(() {
@@ -179,9 +193,10 @@ class _PacketScreenState extends State<PacketScreen> {
                 .add(id);
           }
         }
-        if (older || cursor == null) {
-          cursor = response['nextCursor'];
-          hasMore = response['hasMore'] == true;
+        if (older || nextPage?.isNotEmpty != true) {
+          nextPage = nextPageParams(response);
+          // Like web, no usable cursor means no older page.
+          hasMore = nextPage!.isNotEmpty;
         }
       });
     } catch (e) {
@@ -219,10 +234,34 @@ class _PacketScreenState extends State<PacketScreen> {
     expandedHash = null;
     refreshPending = false;
     pending = [];
-    cursor = null;
+    nextPage = null;
     hasMore = true;
     loading = false;
     load();
+  }
+
+  // The server searches stored packets by hash prefix; shorter or non-hex
+  // text stays a client-side filter over loaded and live rows.
+  String? get serverHashPrefix {
+    final text = search.text.trim().toLowerCase();
+    return mode == 'Hash' && RegExp(r'^[0-9a-f]{4,16}$').hasMatch(text)
+        ? text
+        : null;
+  }
+
+  void searchChanged({bool immediate = false}) {
+    searchDebounce?.cancel();
+    void apply() {
+      if (!mounted || serverHashPrefix == hashPrefix) return;
+      hashPrefix = serverHashPrefix;
+      filtersChanged();
+    }
+
+    if (immediate) {
+      apply();
+    } else {
+      searchDebounce = Timer(const Duration(milliseconds: 300), apply);
+    }
   }
 
   void resumeLive() {
@@ -257,87 +296,92 @@ class _PacketScreenState extends State<PacketScreen> {
       isScrollControlled: true,
       useSafeArea: true,
       builder: (context) => StatefulBuilder(
-        builder: (context, update) => SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      tr('Filters'),
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    const Spacer(),
-                    TextButton(
-                      onPressed: () {
-                        update(() {
-                          types = {};
-                          routes = {};
-                          selectedScopes = {};
-                          selectedObservers = {};
-                          search.clear();
-                          mode = 'Hash';
-                        });
-                        filtersChanged();
-                      },
-                      child: Text(tr('Clear all')),
-                    ),
-                  ],
-                ),
-                FilterDropdown<int>(
-                  label: 'Payload type',
-                  options: payloadNames,
-                  selected: types,
-                  onChanged: (value) {
-                    update(() => types = value);
-                    filtersChanged();
-                  },
-                ),
-                FilterDropdown<int>(
-                  label: 'Route type',
-                  options: const {
-                    0: 'TRANSPORT_FLOOD',
-                    1: 'FLOOD',
-                    2: 'DIRECT',
-                    3: 'TRANSPORT_DIRECT',
-                  },
-                  selected: routes,
-                  onChanged: (value) {
-                    update(() => routes = value);
-                    filtersChanged();
-                  },
-                ),
-                FilterDropdown<String>(
-                  label: 'Observers',
-                  options: Map.fromEntries(
-                    observerNames.entries.toList()
-                      ..sort((a, b) => a.value.compareTo(b.value)),
+        builder: (context, update) => SafeArea(
+          top: false,
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        tr('Filters'),
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: () {
+                          update(() {
+                            types = {};
+                            routes = {};
+                            selectedScopes = {};
+                            selectedObservers = {};
+                            search.clear();
+                            mode = 'Hash';
+                          });
+                          searchDebounce?.cancel();
+                          hashPrefix = null;
+                          filtersChanged();
+                        },
+                        child: Text(tr('Clear all')),
+                      ),
+                    ],
                   ),
-                  selected: selectedObservers,
-                  onChanged: (value) {
-                    update(() => selectedObservers = value);
-                    setState(() {});
-                  },
-                ),
-                if (scopes.isNotEmpty)
-                  FilterDropdown<String>(
-                    label: 'Scope',
-                    options: {for (final name in scopes) name: name},
-                    selected: selectedScopes,
+                  FilterDropdown<int>(
+                    label: 'Payload type',
+                    options: payloadNames,
+                    selected: types,
                     onChanged: (value) {
-                      update(() => selectedScopes = value);
+                      update(() => types = value);
                       filtersChanged();
                     },
                   ),
-                const SizedBox(height: 20),
-                FilledButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: Text(tr('Done')),
-                ),
-              ],
+                  FilterDropdown<int>(
+                    label: 'Route type',
+                    options: const {
+                      0: 'TRANSPORT_FLOOD',
+                      1: 'FLOOD',
+                      2: 'DIRECT',
+                      3: 'TRANSPORT_DIRECT',
+                    },
+                    selected: routes,
+                    onChanged: (value) {
+                      update(() => routes = value);
+                      filtersChanged();
+                    },
+                  ),
+                  FilterDropdown<String>(
+                    label: 'Observers',
+                    options: Map.fromEntries(
+                      observerNames.entries.toList()
+                        ..sort((a, b) => a.value.compareTo(b.value)),
+                    ),
+                    selected: selectedObservers,
+                    onChanged: (value) {
+                      update(() => selectedObservers = value);
+                      setState(() {});
+                    },
+                  ),
+                  if (scopes.isNotEmpty)
+                    FilterDropdown<String>(
+                      label: 'Scope',
+                      options: {for (final name in scopes) name: name},
+                      selected: selectedScopes,
+                      onChanged: (value) {
+                        update(() => selectedScopes = value);
+                        filtersChanged();
+                      },
+                    ),
+                  const SizedBox(height: 20),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: Text(tr('Done')),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -376,7 +420,10 @@ class _PacketScreenState extends State<PacketScreen> {
                       ),
                     ),
                 ],
-                onChanged: (v) => setState(() => mode = v!),
+                onChanged: (v) {
+                  setState(() => mode = v!);
+                  searchChanged(immediate: true);
+                },
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -397,10 +444,14 @@ class _PacketScreenState extends State<PacketScreen> {
                             onPressed: () {
                               search.clear();
                               setState(() {});
+                              searchChanged(immediate: true);
                             },
                           ),
                   ),
-                  onChanged: (_) => setState(() {}),
+                  onChanged: (_) {
+                    setState(() {});
+                    searchChanged();
+                  },
                 ),
               ),
               IconButton(
@@ -472,7 +523,8 @@ class _PacketScreenState extends State<PacketScreen> {
                     padding: const EdgeInsets.all(16),
                     child: Column(
                       children: [
-                        if (data.isEmpty && !loading)
+                        // A failed load is not an empty result; the error above says so.
+                        if (data.isEmpty && !loading && error == null)
                           Text(tr('No packets match the current filters.')),
                         if (hasMore)
                           OutlinedButton(

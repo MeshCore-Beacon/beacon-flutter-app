@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:beacon/core/api.dart';
 import 'package:beacon/core/live.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -109,17 +110,140 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 100));
     expect(live.attempts, 2);
     now = now.add(const Duration(seconds: 31));
-    final dropped = Completer<void>();
-    live.addListener(() {
-      if (live.status == 'connecting' && !dropped.isCompleted) {
-        dropped.complete();
-      }
-    });
     await sockets[2].close();
-    await dropped.future.timeout(const Duration(seconds: 5));
+    // The healthy link's drop hides behind the reconnect grace, so watch the backoff instead.
+    for (var i = 0; i < 100 && live.attempts != 1; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
     expect(live.attempts, 1);
     live.dispose();
     await server.close(force: true);
     await subscribed.close();
+  });
+  test(
+    'sends a ticket when it gets one and connects without otherwise',
+    () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final tickets = <String?>[];
+      final sockets = <WebSocket>[];
+      server.listen((request) async {
+        tickets.add(request.headers.value('x-beacon-ticket'));
+        final socket = await WebSocketTransformer.upgrade(request);
+        sockets.add(socket);
+        socket.add(jsonEncode({'v': 1, 'type': 'hello'}));
+        socket.listen((raw) {
+          if ((jsonDecode(raw as String) as Map)['type'] == 'subscribe') {
+            socket.add(jsonEncode({'v': 1, 'type': 'subscribed'}));
+          }
+        });
+      });
+      Future<void> connectWith(Future<String> Function() ticket) async {
+        final live = LiveConnection(
+          Uri.parse('ws://127.0.0.1:${server.port}/ws'),
+          {'iatas': 'YOW'},
+          ticket: ticket,
+        );
+        final ready = Completer<void>();
+        live.addListener(() {
+          if (live.status == 'live' && !ready.isCompleted) ready.complete();
+        });
+        live.start();
+        await ready.future.timeout(const Duration(seconds: 5));
+        live.dispose();
+      }
+
+      await connectWith(() async => 'abc');
+      await connectWith(
+        () async => throw const ApiException('Not found', status: 404),
+      );
+      expect(tickets, ['abc', null]);
+      for (final socket in sockets) {
+        await socket.close();
+      }
+      await server.close(force: true);
+    },
+  );
+  group('reconnect grace', () {
+    late HttpServer server;
+    late List<WebSocket> sockets;
+    late int subscribes;
+    setUp(() async {
+      server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      sockets = [];
+      subscribes = 0;
+      server.listen((request) async {
+        final socket = await WebSocketTransformer.upgrade(request);
+        sockets.add(socket);
+        socket.add(jsonEncode({'v': 1, 'type': 'hello'}));
+        socket.listen((raw) {
+          if ((jsonDecode(raw as String) as Map)['type'] == 'subscribe') {
+            subscribes++;
+            socket.add(jsonEncode({'v': 1, 'type': 'subscribed'}));
+          }
+        });
+      });
+    });
+    tearDown(() async {
+      for (final socket in sockets) {
+        await socket.close();
+      }
+      await server.close(force: true);
+    });
+
+    Future<void> until(bool Function() done) async {
+      for (var i = 0; i < 100 && !done(); i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
+      expect(done(), true);
+    }
+
+    // Returns the connection, live, with its clock and later statuses recorded.
+    Future<(LiveConnection, List<String>, void Function(Duration))> live({
+      Duration grace = const Duration(seconds: 3),
+    }) async {
+      var clock = DateTime(2026);
+      final live = LiveConnection(
+        Uri.parse('ws://127.0.0.1:${server.port}/ws'),
+        {'iatas': 'YOW'},
+        now: () => clock,
+        reconnectGrace: grace,
+      );
+      final seen = <String>[];
+      live.addListener(() => seen.add(live.status));
+      live.start();
+      await until(() => live.status == 'live');
+      seen.clear();
+      return (live, seen, (Duration d) => clock = clock.add(d));
+    }
+
+    test('a quick reconnect after a healthy link keeps showing live', () async {
+      final (connection, seen, advance) = await live();
+      advance(const Duration(minutes: 1));
+      await sockets.first.close();
+      await until(() => subscribes == 2);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(seen.where((s) => s != 'live'), isEmpty);
+      expect(connection.status, 'live');
+      connection.dispose();
+    });
+
+    test('a reconnect that outlasts the grace shows connecting', () async {
+      final (connection, seen, advance) = await live(
+        grace: const Duration(milliseconds: 100),
+      );
+      advance(const Duration(minutes: 1));
+      await sockets.first.close();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(connection.status, 'live');
+      await until(() => connection.status == 'connecting');
+      connection.dispose();
+    });
+
+    test('a drop soon after subscribing shows connecting at once', () async {
+      final (connection, seen, _) = await live();
+      await sockets.first.close();
+      await until(() => seen.contains('connecting'));
+      connection.dispose();
+    });
   });
 }

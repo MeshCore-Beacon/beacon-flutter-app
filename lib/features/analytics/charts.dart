@@ -116,12 +116,17 @@ class StatsQuery extends StatefulWidget {
     this.params = const {},
     required this.builder,
     this.pollInterval,
+    this.fallback,
   });
   final ApiClient api;
   final String path;
   final Map<String, dynamic> params;
   final Widget Function(dynamic) builder;
   final Duration? pollInterval;
+
+  /// Shown instead of the spinner and error, for content that stays useful
+  /// without this query.
+  final WidgetBuilder? fallback;
   @override
   State<StatsQuery> createState() => _StatsQueryState();
 }
@@ -160,6 +165,7 @@ class _StatsQueryState extends State<StatsQuery> {
         (fresh ? widget.api.get : widget.api.getCached)(
           widget.path,
           widget.params,
+          () => mounted && token == generation,
         ).then(
           (value) {
             if (token == generation) lastStatus = null;
@@ -191,12 +197,14 @@ class _StatsQueryState extends State<StatsQuery> {
       if (s.connectionState != ConnectionState.done) {
         final cached = widget.api.peekCache(widget.path, widget.params);
         if (cached != null) return widget.builder(cached);
+        if (widget.fallback case final fallback?) return fallback(context);
         return const Padding(
           padding: EdgeInsets.all(30),
           child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
         );
       }
       if (s.hasError) {
+        if (widget.fallback case final fallback?) return fallback(context);
         return Padding(
           padding: const EdgeInsets.all(12),
           child: Column(
@@ -450,20 +458,35 @@ class _TimeChartState extends State<TimeChart> {
   }
 }
 
-class RankedBars extends StatelessWidget {
+class RankedBars extends StatefulWidget {
   const RankedBars({
     super.key,
     required this.labels,
     required this.values,
     this.onTap,
     this.unit = '',
+    this.pageSize,
   });
   final List<String> labels;
   final List<double?> values;
   final void Function(int)? onTap;
   final String unit;
+
+  /// When set, shows this many rows at first and reveals the same number
+  /// more each time "Show more" is tapped.
+  final int? pageSize;
+  @override
+  State<RankedBars> createState() => _RankedBarsState();
+}
+
+class _RankedBarsState extends State<RankedBars> {
+  late int shown = widget.pageSize ?? widget.labels.length;
   @override
   Widget build(BuildContext context) {
+    final labels = widget.labels, values = widget.values, onTap = widget.onTap;
+    final count = widget.pageSize == null
+        ? labels.length
+        : shown.clamp(0, labels.length);
     if (labels.isEmpty) {
       return const Padding(
         padding: EdgeInsets.all(20),
@@ -476,9 +499,9 @@ class RankedBars extends StatelessWidget {
     );
     return Column(
       children: [
-        for (var i = 0; i < labels.length; i++)
+        for (var i = 0; i < count; i++)
           InkWell(
-            onTap: onTap == null ? null : () => onTap!(i),
+            onTap: onTap == null ? null : () => onTap(i),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
               child: Column(
@@ -498,7 +521,7 @@ class RankedBars extends StatelessWidget {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        '${countLabel(values[i])}$unit',
+                        '${countLabel(values[i])}${widget.unit}',
                         style: const TextStyle(
                           fontFamily: 'JetBrainsMono',
                           fontSize: 11,
@@ -521,6 +544,14 @@ class RankedBars extends StatelessWidget {
                   ),
                 ],
               ),
+            ),
+          ),
+        if (count < labels.length)
+          TextButton(
+            onPressed: () => setState(() => shown = count + widget.pageSize!),
+            child: Text(
+              '${tr('Show more')} (${labels.length - count})',
+              style: const TextStyle(fontFamily: 'JetBrainsMono', fontSize: 11),
             ),
           ),
       ],
@@ -828,64 +859,6 @@ class StackedRows extends StatelessWidget {
       ],
     );
   }
-}
-
-class ExactValues extends StatelessWidget {
-  const ExactValues({
-    super.key,
-    required this.title,
-    required this.columns,
-    required this.values,
-  });
-  final String title;
-  final List<String> columns;
-  final List<List<dynamic>> values;
-  @override
-  Widget build(BuildContext context) => ExpansionTile(
-    tilePadding: EdgeInsets.zero,
-    title: Text(
-      tr(title),
-      style: const TextStyle(fontSize: 11, fontFamily: 'JetBrainsMono'),
-    ),
-    children: [
-      SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: DataTable(
-          headingRowHeight: 30,
-          dataRowMinHeight: 28,
-          dataRowMaxHeight: 38,
-          columnSpacing: 18,
-          horizontalMargin: 4,
-          columns: columns
-              .map(
-                (h) => DataColumn(
-                  label: Text(tr(h), style: const TextStyle(fontSize: 10)),
-                ),
-              )
-              .toList(),
-          rows: values
-              .map(
-                (r) => DataRow(
-                  cells: r
-                      .map(
-                        (v) => DataCell(
-                          Text(
-                            v == null ? tr('Unavailable') : '$v',
-                            style: const TextStyle(
-                              fontFamily: 'JetBrainsMono',
-                              fontSize: 10,
-                            ),
-                          ),
-                        ),
-                      )
-                      .toList(),
-                ),
-              )
-              .toList(),
-        ),
-      ),
-    ],
-  );
 }
 
 class MetricGrid extends StatelessWidget {

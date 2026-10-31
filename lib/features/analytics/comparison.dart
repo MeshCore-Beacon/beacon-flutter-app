@@ -258,24 +258,6 @@ class _ComparisonPanelState extends State<ComparisonPanel> {
                       'Only B': [number(o['onlyB'])],
                     },
                   ),
-                  ExactValues(
-                    title: 'Flood packet comparison',
-                    columns: ['Heard by', 'Packets', '% of union'],
-                    values: [
-                      for (final e in {
-                        'Only A': 'onlyA',
-                        'Both': 'both',
-                        'Only B': 'onlyB',
-                      }.entries)
-                        [
-                          tr(e.key),
-                          o[e.value],
-                          total == null || total == 0
-                              ? '0%'
-                              : '${((number(o[e.value]) ?? 0) / total * 100).toStringAsFixed(1)}%',
-                        ],
-                    ],
-                  ),
                 ],
               );
             },

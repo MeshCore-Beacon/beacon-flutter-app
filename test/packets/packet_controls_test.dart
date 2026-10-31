@@ -290,4 +290,89 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await events.close();
   });
+  testWidgets('hash search asks the server for 4+ hex chars', (tester) async {
+    final requests = <Uri>[];
+    final events = StreamController<Map<String, dynamic>>.broadcast();
+    final api = ApiClient(
+      Uri.parse('https://test.invalid'),
+      client: MockClient((r) async {
+        requests.add(r.url);
+        final prefix = r.url.queryParameters['hashPrefix'];
+        return http.Response(
+          jsonEncode({
+            'items': [
+              prefix == null
+                  ? {'packetHash': 'ffff0000aaaa', 'payloadType': 4}
+                  : {'packetHash': 'abcd1234beef', 'payloadType': 4},
+            ],
+            'hasMore': false,
+          }),
+          200,
+        );
+      }),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: PacketScreen(
+            api: api,
+            region: const {'iatas': 'YVR'},
+            onOpen: (_, _) {},
+            events: events.stream,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('FFFF0000'), findsOneWidget);
+    Iterable<String?> prefixes() =>
+        requests.map((u) => u.queryParameters['hashPrefix']);
+
+    await tester.enterText(find.byType(TextField), 'abc');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.enterText(find.byType(TextField), 'xyz1');
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(prefixes().whereType<String>(), isEmpty);
+
+    await tester.enterText(find.byType(TextField), 'ABCD');
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.enterText(find.byType(TextField), ' ABCD12 ');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(prefixes().whereType<String>(), ['abcd12']);
+    expect(requests.last.queryParameters['iatas'], 'YVR');
+    expect(find.text('ABCD1234'), findsOneWidget);
+    expect(find.text('FFFF0000'), findsNothing);
+
+    for (final hash in ['abcd12ff', 'eeee0000']) {
+      events.add({
+        'event': 'packetObservation',
+        'data': {
+          'packetHash': hash,
+          'packet': {'payloadType': 4},
+          'observation': {'observerId': 'o', 'iata': 'YVR', 'heardAt': 9},
+        },
+      });
+    }
+    await tester.pumpAndSettle();
+    expect(find.text('ABCD12FF'), findsOneWidget);
+    expect(find.text('EEEE0000'), findsNothing);
+
+    await tester.tap(find.byIcon(Icons.close));
+    await tester.pumpAndSettle();
+    expect(requests.last.queryParameters.containsKey('hashPrefix'), isFalse);
+    expect(find.text('FFFF0000'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), 'abcd12');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(requests.last.queryParameters['hashPrefix'], 'abcd12');
+    await tester.tap(find.text('Hash'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Path').last);
+    await tester.pumpAndSettle();
+    expect(requests.last.queryParameters.containsKey('hashPrefix'), isFalse);
+    await tester.pumpWidget(const SizedBox());
+    await events.close();
+  });
 }

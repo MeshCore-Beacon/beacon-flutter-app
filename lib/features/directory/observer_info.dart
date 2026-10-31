@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 
 import '../../core/json.dart';
 import '../../core/strings.dart';
@@ -16,9 +17,15 @@ String observerUptime(num seconds) {
   ].join(' ');
 }
 
+String groupedCount(num value) =>
+    NumberFormat.decimalPattern(language).format(value);
+
 class ObserverInfo extends StatelessWidget {
-  const ObserverInfo({super.key, required this.data});
+  const ObserverInfo({super.key, required this.data, this.summary});
   final Json data;
+
+  /// `summary` from `/observers/{id}/activity`, for the window picked below.
+  final Json? summary;
 
   @override
   Widget build(BuildContext context) {
@@ -93,14 +100,38 @@ class ObserverInfo extends StatelessWidget {
     );
     final status = textOf(data['status'], 'Unknown');
     final statusColor = status == 'online' ? beacon.success : beacon.muted;
+    final latest = summary?['latestRecordedAt'];
+    final stats = object(object(data['statusMetadata'])['stats']);
+    String count(dynamic value) => switch (number(value)) {
+      final num n => groupedCount(n),
+      null => '—',
+    };
     final metrics = <(String, String)>[
-      if (data['observationCount'] != null)
-        ('Observations', '${data['observationCount']}'),
-      ('Last seen', age(data['lastSeen'])),
-      if (number(data['batteryLevel']) case final num value)
-        ('Battery', '${value.toStringAsFixed(2)} V'),
-      if (number(data['uptimeSeconds']) case final num value)
-        ('Uptime', observerUptime(value)),
+      ('Packets heard', count(summary?['recordedPackets'])),
+      ('Packets last hour', count(summary?['lastCompleteHour'])),
+      ('Last packet', latest == null ? '—' : age(latest)),
+      (
+        'Battery',
+        switch (number(data['batteryLevel'])) {
+          final num value => '${value.toStringAsFixed(2)} V',
+          null => '—',
+        },
+      ),
+      (
+        'Uptime',
+        switch (number(data['uptimeSeconds'])) {
+          final num value => observerUptime(value),
+          null => '—',
+        },
+      ),
+      (
+        'Noise floor',
+        switch (number(stats['noise_floor'])) {
+          final num value when value.isFinite =>
+            '${NumberFormat('0.#', language).format(value)} dBm',
+          _ => '—',
+        },
+      ),
     ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

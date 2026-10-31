@@ -6,6 +6,20 @@ import '../../core/strings.dart';
 import 'charts.dart';
 import 'transforms.dart';
 
+/// Query for `/observers/{id}/activity`; the detail tiles reuse the charts'
+/// params so both share one request.
+Map<String, dynamic> observerActivityParams(String range) {
+  final hours = rangeHours[range] ?? 24;
+  return {
+    'range': '${hours}h',
+    'interval': hours == 24
+        ? '15m'
+        : hours == 168
+        ? '1h'
+        : '6h',
+  };
+}
+
 class ObserverCharts extends StatelessWidget {
   const ObserverCharts({
     super.key,
@@ -18,12 +32,8 @@ class ObserverCharts extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final params = observerActivityParams(range);
     final hours = rangeHours[range] ?? 24,
-        activityInterval = hours == 24
-            ? '15m'
-            : hours == 168
-            ? '1h'
-            : '6h',
         intervalMs = hours == 24
             ? 900000
             : hours == 168
@@ -39,7 +49,7 @@ class ObserverCharts extends StatelessWidget {
       api: api,
       path: '/observers/$id/activity',
       pollInterval: const Duration(minutes: 1),
-      params: {'range': '${hours}h', 'interval': activityInterval},
+      params: params,
       builder: (d) {
         final o = object(d),
             end =
@@ -86,7 +96,7 @@ class ObserverCharts extends StatelessWidget {
           children: [
             AnalyticsCard(
               title: tr('Packets heard per {{interval}}')
-                  .replaceAll('{{interval}}', activityInterval),
+                  .replaceAll('{{interval}}', '${params['interval']}'),
               child: TimeChart(
                 showSingleSeriesToggle: false,
                 series: {'Receptions': activitySeries('observations')},

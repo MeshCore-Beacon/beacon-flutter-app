@@ -1,12 +1,59 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import '../../core/api.dart';
 import '../../core/json.dart';
+import '../../core/page_pacer.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
 import 'charts.dart';
 import 'network_canvas.dart';
 import 'transforms.dart';
+
+// A million nodes even at an older server's 200 per page: only a never-ending server gets here.
+const graphNodePageCap = 5000;
+
+/// Every node in [region] with neighbour ids, page by page; null once superseded.
+Future<List<Map<String, dynamic>>?> loadNeighbourNodes(
+  ApiClient api,
+  Map<String, dynamic> region, {
+  bool Function()? isCurrent,
+  PagePacer? pacer,
+}) async {
+  final found = <String, Map<String, dynamic>>{};
+  final seen = <String>{};
+  Map<String, Object> next = {};
+  var pages = 0;
+  do {
+    // later pages share the app-wide page budget, so a big region can't trip the rate limit
+    if (pages++ > 0) await (pacer ?? pagePacer).wait();
+    if (isCurrent?.call() == false) return null;
+    final response = await withPageCursorFallback(
+      {...region, 'neighbors': 'true', 'limit': 2000, ...next},
+      (p) => api.getCached('/nodes', p, isCurrent),
+      isCurrent: isCurrent,
+    );
+    if (response == null || isCurrent?.call() == false) return null;
+    for (final n in rows(response)) {
+      found[textOf(n['id'])] = n;
+    }
+    next = nextPageParams(object(response));
+    if (next.isEmpty) break;
+    if (pages >= graphNodePageCap) {
+      throw StateError(
+        'The server sent more than $graphNodePageCap graph pages; the graph is incomplete.',
+      );
+    }
+    // Stopping here would draw part of the mesh as if it were all of it.
+    if (!seen.add(jsonEncode(next))) {
+      throw StateError(
+        'The server returned an invalid neighbour graph page cursor.',
+      );
+    }
+  } while (true);
+  return found.values.toList();
+}
 
 class NeighbourGraph extends StatefulWidget {
   const NeighbourGraph({
@@ -68,26 +115,13 @@ class _NeighbourGraphState extends State<NeighbourGraph>
       return;
     }
     try {
-      final found = <String, Map<String, dynamic>>{};
-      dynamic cursor;
-      final cursors = <String>{};
-      do {
-        final response = await widget.api.getCached('/nodes', {
-          ...widget.region,
-          'neighbors': 'true',
-          'limit': 500,
-          'cursor': ?cursor,
-        });
-        if (!mounted || token != generation) return;
-        for (final n in rows(response)) {
-          found[textOf(n['id'])] = n;
-        }
-        final o = object(response);
-        if (o['hasMore'] == false) break;
-        cursor = o['nextCursor'];
-        if (cursor == null || !cursors.add('$cursor')) break;
-      } while (true);
-      final ranked = found.values.toList()
+      final found = await loadNeighbourNodes(
+        widget.api,
+        widget.region,
+        isCurrent: () => mounted && token == generation,
+      );
+      if (found == null || !mounted || token != generation) return;
+      final ranked = found
         ..sort((a, b) {
           final c = (number(b['knownNeighborCount']) ?? 0).compareTo(
             number(a['knownNeighborCount']) ?? 0,

@@ -76,3 +76,8 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // WindowCompat.enableEdgeToEdge (MainActivity)
+    implementation("androidx.core:core:1.18.0")
+}
