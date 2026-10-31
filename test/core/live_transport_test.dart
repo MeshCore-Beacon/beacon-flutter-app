@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:beacon/core/api.dart';
 import 'package:beacon/core/live.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -122,4 +123,47 @@ void main() {
     await server.close(force: true);
     await subscribed.close();
   });
+  test(
+    'sends a ticket when it gets one and connects without otherwise',
+    () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final tickets = <String?>[];
+      final sockets = <WebSocket>[];
+      server.listen((request) async {
+        tickets.add(request.headers.value('x-beacon-ticket'));
+        final socket = await WebSocketTransformer.upgrade(request);
+        sockets.add(socket);
+        socket.add(jsonEncode({'v': 1, 'type': 'hello'}));
+        socket.listen((raw) {
+          if ((jsonDecode(raw as String) as Map)['type'] == 'subscribe') {
+            socket.add(jsonEncode({'v': 1, 'type': 'subscribed'}));
+          }
+        });
+      });
+      Future<void> connectWith(Future<String> Function() ticket) async {
+        final live = LiveConnection(
+          Uri.parse('ws://127.0.0.1:${server.port}/ws'),
+          {'iatas': 'YOW'},
+          ticket: ticket,
+        );
+        final ready = Completer<void>();
+        live.addListener(() {
+          if (live.status == 'live' && !ready.isCompleted) ready.complete();
+        });
+        live.start();
+        await ready.future.timeout(const Duration(seconds: 5));
+        live.dispose();
+      }
+
+      await connectWith(() async => 'abc');
+      await connectWith(
+        () async => throw const ApiException('Not found', status: 404),
+      );
+      expect(tickets, ['abc', null]);
+      for (final socket in sockets) {
+        await socket.close();
+      }
+      await server.close(force: true);
+    },
+  );
 }

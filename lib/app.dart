@@ -444,7 +444,7 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
       widget.preferences.regionSelectionFor(instance.url),
       region,
     );
-    live = LiveConnection(instance.wsUri, region);
+    live = LiveConnection(instance.wsUri, region, ticket: api.wsTicket);
     liveEvents = live.events.listen(api.handleLiveEvent);
     if (widget.connectLive) live.start();
     WidgetsBinding.instance.addObserver(this);
@@ -562,7 +562,11 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
     live.dispose();
     selection = picked.$1;
     region = picked.$2;
-    live = LiveConnection(widget.preferences.active!.wsUri, region);
+    live = LiveConnection(
+      widget.preferences.active!.wsUri,
+      region,
+      ticket: api.wsTicket,
+    );
     liveEvents = live.events.listen(api.handleLiveEvent);
     if (widget.connectLive) live.start();
     await widget.preferences.saveRegion(

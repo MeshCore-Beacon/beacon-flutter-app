@@ -454,6 +454,10 @@ class ApiClient {
     return Duration(seconds: seconds.clamp(1, 300));
   }
 
+  /// A short-lived ticket that lets this app open /ws on servers requiring an Origin.
+  Future<String> wsTicket() async =>
+      textOf(object(await get('/ws-ticket'))['ticket']);
+
   void close() {
     _closed = true;
     invalidateCache();

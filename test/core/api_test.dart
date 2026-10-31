@@ -554,4 +554,21 @@ void main() {
       expect(waits, isEmpty);
     });
   });
+  test('wsTicket fetches a fresh ticket every time', () async {
+    var calls = 0;
+    final api = ApiClient(
+      Uri.parse('https://host'),
+      client: MockClient((request) async {
+        calls++;
+        expect(request.url.path, '/api/v1/ws-ticket');
+        return http.Response(
+          jsonEncode({'ticket': 't$calls', 'expiresAt': 1}),
+          200,
+          headers: {'cache-control': 'no-store'},
+        );
+      }),
+    );
+    expect(await api.wsTicket(), 't1');
+    expect(await api.wsTicket(), 't2');
+  });
 }

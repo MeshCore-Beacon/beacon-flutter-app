@@ -22,9 +22,12 @@ Json? decodeLiveEvent(String source) {
 }
 
 class LiveConnection extends ChangeNotifier {
-  LiveConnection(this.uri, this.region, {DateTime Function()? now})
+  LiveConnection(this.uri, this.region, {DateTime Function()? now, this.ticket})
     : _now = now ?? DateTime.now;
   final DateTime Function() _now;
+
+  /// Fetches a /ws ticket before each connect; null, or a failure, connects without one.
+  final Future<String> Function()? ticket;
   final Uri uri;
   final Map<String, dynamic> region;
   final _events = StreamController<Json>.broadcast();
@@ -47,6 +50,18 @@ class LiveConnection extends ChangeNotifier {
     notifyListeners();
   }
 
+  // A server older than tickets answers 404; it needs none, so connect without one.
+  Future<String?> _ticket() async {
+    final fetch = ticket;
+    if (fetch == null) return null;
+    try {
+      final value = await fetch().timeout(const Duration(seconds: 10));
+      return value.isEmpty ? null : value;
+    } catch (_) {
+      return null;
+    }
+  }
+
   void start() {
     if (_running || _disposed) return;
     if (region['iatas'] == '' ||
@@ -62,9 +77,13 @@ class LiveConnection extends ChangeNotifier {
     final generation = ++_generation;
     _status('connecting');
     try {
+      final pass = await _ticket();
+      if (!_running || _disposed || generation != _generation) return;
       // Keep dart:io's "Dart/" UA here too: the scrape block lets it in.
-      final socket = await WebSocket.connect(uri.toString())
-          .timeout(const Duration(seconds: 20));
+      final socket = await WebSocket.connect(
+        uri.toString(),
+        headers: pass == null ? null : {'X-Beacon-Ticket': pass},
+      ).timeout(const Duration(seconds: 20));
       if (!_running || _disposed || generation != _generation) {
         await socket.close();
         return;
