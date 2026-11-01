@@ -668,8 +668,11 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
                     colorFilter: ColorFilter.mode(primary, BlendMode.srcIn),
                   ),
                   const SizedBox(width: 6),
+                  // Fixed size like the logo, so a large system font can't
+                  // squeeze the region selector out of a portrait header.
                   const Text(
                     'BEACON',
+                    textScaler: TextScaler.noScaling,
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
