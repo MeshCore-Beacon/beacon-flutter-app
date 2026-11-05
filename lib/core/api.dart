@@ -86,6 +86,7 @@ Future<http.Response> getLimited(
   Uri url,
   int maxBytes,
 ) async {
+  // Keep dart:io's "Dart/" UA: the analyzer's scrape block lets it in.
   final request = http.Request('GET', url);
   final response = await client.send(request);
   const tooLarge = ApiException('Server response is too large.');
@@ -452,6 +453,10 @@ class ApiClient {
     if (seconds == null) return unparsable;
     return Duration(seconds: seconds.clamp(1, 300));
   }
+
+  /// A short-lived ticket that lets this app open /ws on servers requiring an Origin.
+  Future<String> wsTicket() async =>
+      textOf(object(await get('/ws-ticket'))['ticket']);
 
   void close() {
     _closed = true;

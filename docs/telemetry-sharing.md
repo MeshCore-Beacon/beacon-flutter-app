@@ -365,7 +365,9 @@ The optional telemetry layer is reviewed separately from the core backend,
 basic Atlas and Topology candidate. It uses automatic signed enrollment and the
 existing HTTPS reports contract, with the optional Beacon proxy in front of a
 separate intake database. A mobile polling client does not replace that intake.
-The headless Collector remains an alternate for unattended sessions.
+The shared intake is retained for Flutter submissions. The legacy Canadaverse Pi
+polling worker is disabled; do not restart it as part of an app or server update.
+A separately operated headless client remains an alternate protocol client.
 
 The collection screen and optional notification stats now count expired saved
 reports separately from accepted reports. Expiring an older-than-24-hour report
@@ -382,3 +384,22 @@ Canadaverse remains the test destination. Native tests, signed fixture delivery
 and a working API are distinct from a completed physical radio-to-Atlas test.
 The connected-device inventory was empty during this consolidation, so BLE/Wi-Fi
 physical polling, screen-off soak and iOS qualification remain unclaimed.
+
+## Upstream 2.1.1 compatibility
+
+The collection draft includes upstream 2.1.1 with its short-lived WebSocket
+tickets, reconnect grace, server-side node ordering, last-heard display and
+incremental node-list loading. Version `2.1.1+4` retains the collection draft's
+monotonically increasing Android build number. Older servers without tickets
+remain supported by upstream's fallback behavior.
+
+The viewer's live feed stops while the app is backgrounded. The independently
+opted-in telemetry session keeps its existing BLE/Wi-Fi and Android foreground
+service lifecycle; fetching a WebSocket ticket does not enroll a collector,
+authorize radio polling or change the selected Beacon destination. Existing
+collection intervals, saved reservations, admin-password storage and report
+outbox behavior are preserved.
+
+This compatibility refresh does not qualify a physical companion or a new
+screen-off session. Keep device acceptance separate from analysis, automated
+tests and an Android debug build.

@@ -1262,6 +1262,9 @@
     },
     "mapTerrain": {
       "title": "Terrain"
+    },
+    "nodeList": {
+      "sort": "Sort nodes"
     }
   }
 }

@@ -22,9 +22,21 @@ Json? decodeLiveEvent(String source) {
 }
 
 class LiveConnection extends ChangeNotifier {
-  LiveConnection(this.uri, this.region, {DateTime Function()? now})
-    : _now = now ?? DateTime.now;
+  LiveConnection(
+    this.uri,
+    this.region, {
+    DateTime Function()? now,
+    this.ticket,
+    this.reconnectGrace = const Duration(seconds: 3),
+  }) : _now = now ?? DateTime.now;
   final DateTime Function() _now;
+
+  /// A healthy link that drops keeps showing live this long, so a server reload goes unseen.
+  final Duration reconnectGrace;
+  Timer? _grace;
+
+  /// Fetches a /ws ticket before each connect; null, or a failure, connects without one.
+  final Future<String> Function()? ticket;
   final Uri uri;
   final Map<String, dynamic> region;
   final _events = StreamController<Json>.broadcast();
@@ -43,8 +55,23 @@ class LiveConnection extends ChangeNotifier {
   DateTime _lastReceived = DateTime.now();
   void _status(String value) {
     if (_disposed) return;
+    if (_grace != null && value == 'connecting') return;
+    _grace?.cancel();
+    _grace = null;
     status = value;
     notifyListeners();
+  }
+
+  // A server older than tickets answers 404; it needs none, so connect without one.
+  Future<String?> _ticket() async {
+    final fetch = ticket;
+    if (fetch == null) return null;
+    try {
+      final value = await fetch().timeout(const Duration(seconds: 10));
+      return value.isEmpty ? null : value;
+    } catch (_) {
+      return null;
+    }
   }
 
   void start() {
@@ -62,8 +89,13 @@ class LiveConnection extends ChangeNotifier {
     final generation = ++_generation;
     _status('connecting');
     try {
-      final socket = await WebSocket.connect(uri.toString())
-          .timeout(const Duration(seconds: 20));
+      final pass = await _ticket();
+      if (!_running || _disposed || generation != _generation) return;
+      // Keep dart:io's "Dart/" UA here too: the scrape block lets it in.
+      final socket = await WebSocket.connect(
+        uri.toString(),
+        headers: pass == null ? null : {'X-Beacon-Ticket': pass},
+      ).timeout(const Duration(seconds: 20));
       if (!_running || _disposed || generation != _generation) {
         await socket.close();
         return;
@@ -143,7 +175,6 @@ class LiveConnection extends ChangeNotifier {
     _heartbeat?.cancel();
     _socket?.close();
     _socket = null;
-    _status('connecting');
     _retry?.cancel();
     // Only a connection that stayed up resets backoff; a socket dropped right
     // after subscribe would otherwise reconnect and refresh every second.
@@ -152,7 +183,14 @@ class LiveConnection extends ChangeNotifier {
     if (since != null &&
         _now().difference(since) >= const Duration(seconds: 30)) {
       _attempts = 0;
+      if (status == 'live') {
+        _grace ??= Timer(reconnectGrace, () {
+          _grace = null;
+          _status('connecting');
+        });
+      }
     }
+    _status('connecting');
     final seconds = min(30, pow(2, min(_attempts++, 5)).toInt());
     _retry = Timer(
       Duration(milliseconds: seconds * 1000 + Random().nextInt(800)),
