@@ -413,6 +413,9 @@ class TelemetrySharing {
         return;
       }
       phase = 'polling permission';
+      final savedRoutes = _state['learnedRoutes'] as Map<String, dynamic>?;
+      final willUseKnownRoute =
+          nearbyOnly || savedRoutes?['${radio.radioKey}/$key'] == true;
       final permitRequest = <String, dynamic>{
         'schema': 1,
         'requestId': _permitIds.putIfAbsent(key, _newSampleId),
@@ -423,7 +426,7 @@ class TelemetrySharing {
         'intervalHours': hours,
         'commandBudget': 3,
         'routeMode': nearbyOnly ? 'nearby' : 'discovery',
-        'hops': contact.hops ?? -1,
+        'hops': willUseKnownRoute ? (contact.hops ?? -1) : -1,
         'issuedAt': now.millisecondsSinceEpoch,
       };
       final permitBytes = utf8.encode(jsonEncode(permitRequest));

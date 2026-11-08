@@ -370,12 +370,13 @@ void main() {
 
   test('signed delivery retry reuses exact payload and never polls again', () async {
     FlutterSecureStorage.setMockInitialValues({});
-    final fake = FakeRadio();
+    final fake = FakeRadio()..learned = true;
     await fake.open();
     addTearDown(fake.close);
     final radio = await fake.connect();
     var now = DateTime.utc(2026, 10, 20);
     final reports = <Map<String, dynamic>>[];
+    var permissionRequests = 0;
     Map<String, dynamic>? submitted;
     final api = MockClient((request) async {
       final body = jsonDecode(request.body) as Map<String, dynamic>;
@@ -437,6 +438,7 @@ void main() {
           ),
           true,
         );
+        expect(permit['hops'], permissionRequests++ == 0 ? -1 : 1);
         final issued = now.millisecondsSinceEpoch;
         return http.Response(
           jsonEncode({
