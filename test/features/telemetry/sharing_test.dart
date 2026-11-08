@@ -21,6 +21,7 @@ class FakeRadio {
   List<int> signed = [];
   int uptime = 100, queue = 0;
   bool learned = false;
+  bool direct = false;
   void Function(int)? onCommand;
 
   Future<void> open() async {
@@ -43,7 +44,11 @@ class FakeRadio {
             final b = Uint8List(148)..[0] = 3;
             b.setRange(1, 33, keyBytes(target));
             b[33] = 2;
-            b[35] = learned ? 1 : 255;
+            b[35] = direct
+                ? 0
+                : learned
+                ? 1
+                : 255;
             b[36] = 0;
             b.setRange(100, 104, utf8.encode('Test'));
             return b;
@@ -93,7 +98,7 @@ class FakeRadio {
               learned = true;
               // Push arrives BEFORE SEND. The client must retain it.
               send([0x85, 1, ...keyBytes(target).take(6)]);
-              send([6, 1, 3, 4, 5, 6, 0, 0, 0, 0]);
+              send([6, direct ? 0 : 1, 3, 4, 5, 6, 0, 0, 0, 0]);
             case 50:
               final type = command[33];
               final body = type == 1
@@ -127,9 +132,164 @@ class FakeRadio {
   int get rf => commands.where((code) => code == 26 || code == 50).length;
 }
 
+http.Response? enrollmentFixture(
+  http.Request request,
+  BeaconInstance instance,
+  DateTime now,
+) {
+  final body = jsonDecode(request.body) as Map<String, dynamic>;
+  if (request.url.path.endsWith('/challenge')) {
+    final claims = {
+      'kind': 'challenge',
+      'instance': instance.url,
+      ...body,
+      'expires': now.millisecondsSinceEpoch ~/ 1000 + 120,
+      'nonce': 'test',
+    };
+    final token =
+        '${base64Url.encode(utf8.encode(jsonEncode(claims))).replaceAll('=', '')}.fixture';
+    return http.Response(
+      jsonEncode({
+        'challenge': token,
+        'instance': instance.url,
+        'message': 'BEACON-TELEMETRY-ENROLL-V1\n$token',
+      }),
+      200,
+    );
+  }
+  if (request.url.path.endsWith('/enroll')) {
+    return http.Response(
+      jsonEncode({
+        'authorization': 'session',
+        'instance': instance.url,
+        'expires':
+            now.add(const Duration(days: 30)).millisecondsSinceEpoch ~/ 1000,
+      }),
+      200,
+    );
+  }
+  return null;
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   final instance = BeaconInstance.create('Test', 'https://telemetry.example');
+
+  for (final outcome in [
+    'standby',
+    'unavailable',
+    'expired',
+    'wrong-node',
+    'allowed',
+    'paused',
+  ]) {
+    test('nearby collection honors a $outcome permit before RF', () async {
+      FlutterSecureStorage.setMockInitialValues({});
+      final fake = FakeRadio()..direct = true;
+      await fake.open();
+      addTearDown(fake.close);
+      final radio = await fake.connect();
+      var now = DateTime.utc(2026, 11, 8);
+      var permits = 0;
+      final client = MockClient((request) async {
+        final enrollment = enrollmentFixture(request, instance, now);
+        if (enrollment != null) return enrollment;
+        if (request.url.path.endsWith('/polls/permit')) {
+          permits++;
+          expect(fake.rf, 0);
+          if (outcome == 'unavailable') return http.Response('{}', 503);
+          final wrapper = jsonDecode(request.body) as Map<String, dynamic>;
+          final body = jsonDecode(
+            utf8.decode(base64Decode(wrapper['payload'] as String)),
+          ) as Map<String, dynamic>;
+          expect(body['routeMode'], 'nearby');
+          expect(body['commandBudget'], 3);
+          return http.Response(
+            jsonEncode({
+              ...body,
+              'allowed': outcome != 'standby',
+              'retryAfterSeconds': 60,
+              'issuedAt': now.millisecondsSinceEpoch,
+              'expiresAt': now
+                  .add(Duration(minutes: outcome == 'expired' ? -1 : 5))
+                  .millisecondsSinceEpoch,
+              'nextAllowedAt': now
+                  .add(const Duration(hours: 6))
+                  .millisecondsSinceEpoch,
+              if (outcome == 'wrong-node') 'nodeKey': '00' * 32,
+            }),
+            200,
+          );
+        }
+        return http.Response('{"accepted":true}', 202);
+      });
+      final sharing = TelemetrySharing(
+        instance,
+        radio,
+        [PollTarget((await radio.contacts()).single)],
+        6,
+        client: client,
+        now: () => now,
+      );
+      if (outcome == 'paused') {
+        var commands = 0;
+        fake.onCommand = (code) {
+          if (code == 50 && ++commands == 2) sharing.pause();
+        };
+      }
+      addTearDown(sharing.stop);
+      await sharing.start();
+      await sharing.step();
+      now = now.add(const Duration(seconds: 20));
+      fake.uptime += 20;
+      await sharing.step();
+      expect(permits, 1);
+      expect(fake.rf, outcome == 'allowed' || outcome == 'paused' ? 3 : 0);
+      expect(fake.commands, isNot(contains(13)));
+      if (outcome == 'paused') {
+        expect(sharing.accepted, 0);
+        expect(sharing.queued, 1);
+        expect(sharing.status, contains('saved'));
+      }
+      if (outcome == 'allowed') {
+        expect(sharing.accepted, 1);
+        await sharing.step();
+        expect(fake.rf, 3);
+      }
+    });
+  }
+  test(
+    'nearby mode skips an unknown route without calling permits or RF',
+    () async {
+      FlutterSecureStorage.setMockInitialValues({});
+      final fake = FakeRadio();
+      await fake.open();
+      addTearDown(fake.close);
+      final radio = await fake.connect();
+      var now = DateTime.utc(2026, 11, 8);
+      final client = MockClient((request) async {
+        final reply = enrollmentFixture(request, instance, now);
+        expect(reply, isNotNull);
+        return reply!;
+      });
+      final sharing = TelemetrySharing(
+        instance,
+        radio,
+        [PollTarget((await radio.contacts()).single)],
+        1,
+        client: client,
+        now: () => now,
+      );
+      addTearDown(sharing.stop);
+      await sharing.start();
+      await sharing.step();
+      now = now.add(const Duration(seconds: 20));
+      fake.uptime += 20;
+      await sharing.step();
+      expect(fake.rf, 0);
+      expect(sharing.status, contains('known direct or one-hop route'));
+    },
+  );
 
   test('corrupt saved policy stays fail-closed and is never reset', () async {
     FlutterSecureStorage.setMockInitialValues({
@@ -257,6 +417,38 @@ void main() {
           200,
         );
       }
+      if (request.url.path.endsWith('/polls/permit')) {
+        final payload = base64Decode(body['payload'] as String);
+        final permit = jsonDecode(utf8.decode(payload)) as Map<String, dynamic>;
+        final signature = body['signature'] as String;
+        expect(
+          await Ed25519().verify(
+            [...utf8.encode('BEACON-POLL-PERMIT-V1\n'), ...payload],
+            signature: Signature(
+              [
+                for (var i = 0; i < signature.length; i += 2)
+                  int.parse(signature.substring(i, i + 2), radix: 16),
+              ],
+              publicKey: SimplePublicKey(
+                keyBytes(permit['collectorKey'] as String),
+                type: KeyPairType.ed25519,
+              ),
+            ),
+          ),
+          true,
+        );
+        final issued = now.millisecondsSinceEpoch;
+        return http.Response(
+          jsonEncode({
+            ...permit,
+            'allowed': true,
+            'issuedAt': issued,
+            'expiresAt': issued + 300000,
+            'nextAllowedAt': issued + const Duration(hours: 6).inMilliseconds,
+          }),
+          200,
+        );
+      }
       reports.add(body);
       final payload = base64Decode(body['payload'] as String);
       submitted = jsonDecode(utf8.decode(payload)) as Map<String, dynamic>;
@@ -294,6 +486,7 @@ void main() {
       ],
       6,
       client: api,
+      nearbyOnly: false,
       now: () => now,
     );
     addTearDown(sharing.stop);

@@ -1258,7 +1258,11 @@
       "pair": "Parkoppla",
       "pairingPrompt": "Slutför Androids Bluetooth-parkoppling. PIN-koden stannar i Android.",
       "pairingFailed": "Parkopplingen slutfördes inte. Kontrollera Androids avisering och välj Parkoppla igen.",
-      "pairingHint": "Välj Parkoppla först om följeslagaren kräver en Bluetooth-PIN."
+      "pairingHint": "Välj Parkoppla först om följeslagaren kräver en Bluetooth-PIN.",
+      "nearby": "Direkt / ett hopp",
+      "discovery": "Tillåt upptäckt",
+      "nearbyHelp": "Använder endast kända rutter. Okända rutter hoppas över; svar kan fortfarande spridas med flood.",
+      "discoveryHelp": "Upptäckt kan spridas längre än gränsen för inlärda rutter. Gemensamt pollningstillstånd krävs fortfarande."
     },
     "mapTerrain": {
       "title": "Terräng"

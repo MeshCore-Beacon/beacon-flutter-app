@@ -152,11 +152,18 @@ separate service regardless of which client collects measurements.
   Changing or deleting app storage can defeat client controls. These limits are
   cooperative safeguards, not enforcement against modified clients.
 
-The existing gateway's per-radio/target quota runs *after* RF. It is not a global
-poll lease. Before wider participation, add server-issued pre-RF leases/budgets
-shared by app and Collector, with explicit expiry, outage behavior and no
-fail-open flooding. A lease still cannot prevent an independently modified radio
-from transmitting. Local congestion checks remain necessary with leases.
+The client now requires an instance-bound pre-RF permit shared by enrolled clients.
+Denied, unavailable, expired or mismatched permits send no RF. Failed attempts
+consume their 1–72-hour interval; local reservations and congestion checks remain.
+The default **Direct / one hop** mode preserves known routes and skips unknown or
+visibly ambiguous routes. **Allow discovery** retains flood discovery explicitly;
+repeater replies may still flood in either mode. Separate Beacon instances and
+older clients do not share this authority automatically.
+
+See the [coordination and observer-adapter contract](https://github.com/MeshCore-Beacon/beacon-docs/blob/codex/release-telemetry-20261021/docs/telemetry-coordination.md).
+Ordinary BLE/Wi-Fi collection never exports the companion private key. Shared
+reply recovery uses a separate guest identity in an enrolled observer adapter;
+the phone reuses already accepted shared readings through the permit service.
 
 ## Signed HTTPS contract (experimental v1)
 
@@ -403,3 +410,11 @@ outbox behavior are preserved.
 This compatibility refresh does not qualify a physical companion or a new
 screen-off session. Keep device acceptance separate from analysis, automated
 tests and an Android debug build.
+
+## Coordination refresh
+
+Version `2.1.1+5` adds mandatory pre-RF permits and default nearby routing while
+retaining existing outboxes, environmental channel 2, background choices and
+notification controls. An old or unavailable coordinator causes a waiting state,
+not an independent polling fallback. Physical qualification remains separate
+from native tests and the debug APK.

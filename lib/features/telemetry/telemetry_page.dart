@@ -39,6 +39,7 @@ class _TelemetryPageState extends State<TelemetryPage>
   bool _bleMode = true;
   Future<void>? _stopping;
   bool _busy = false, _consent = false, _environment = false;
+  bool _nearbyOnly = true;
   int _generation = 0;
   String _status = '', _search = '';
 
@@ -274,6 +275,7 @@ class _TelemetryPageState extends State<TelemetryPage>
       ],
       hours,
       environment: _environment,
+      nearbyOnly: _nearbyOnly,
     );
     try {
       await widget.session.start(
@@ -857,6 +859,30 @@ class _TelemetryPageState extends State<TelemetryPage>
                 ),
               ]),
               _panel(tr('Polling settings'), [
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    ChoiceChip(
+                      label: Text(tr('Direct / one hop')),
+                      selected: _nearbyOnly,
+                      onSelected: (_) => setState(() => _nearbyOnly = true),
+                    ),
+                    ChoiceChip(
+                      label: Text(tr('Allow discovery')),
+                      selected: !_nearbyOnly,
+                      onSelected: (_) => setState(() => _nearbyOnly = false),
+                    ),
+                  ],
+                ),
+                Text(
+                  tr(
+                    _nearbyOnly
+                        ? 'Uses known routes only. Unknown routes are skipped; replies may still flood.'
+                        : 'Discovery can flood beyond the learned-route limit. Shared polling permission is still required.',
+                  ),
+                ),
+                const SizedBox(height: 12),
                 TextField(
                   controller: _hours,
                   keyboardType: TextInputType.number,

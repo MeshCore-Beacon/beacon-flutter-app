@@ -1258,7 +1258,11 @@
       "pair": "Pair",
       "pairingPrompt": "Complete the Android Bluetooth pairing prompt. The PIN stays with Android.",
       "pairingFailed": "Pairing was not completed. Check the Android pairing notification, then try Pair again.",
-      "pairingHint": "For a companion with a Bluetooth PIN, choose Pair first."
+      "pairingHint": "For a companion with a Bluetooth PIN, choose Pair first.",
+      "nearby": "Direct / one hop",
+      "discovery": "Allow discovery",
+      "nearbyHelp": "Uses known routes only. Unknown routes are skipped; replies may still flood.",
+      "discoveryHelp": "Discovery can flood beyond the learned-route limit. Shared polling permission is still required."
     },
     "mapTerrain": {
       "title": "Terrain"

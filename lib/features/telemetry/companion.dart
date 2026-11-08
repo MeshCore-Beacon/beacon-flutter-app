@@ -419,6 +419,7 @@ class Companion {
     String key,
     String password, {
     required bool requireAdmin,
+    bool requireDirect = false,
   }) async {
     final bytes = utf8.encode(password);
     if (bytes.length > 15 || bytes.contains(0)) {
@@ -430,7 +431,14 @@ class Companion {
     final allowed = await exchange<bool>(
       [26, ...keyBytes(key), ...bytes],
       (frame) {
-        if (frame[0] == 6 && frame.length >= 10) sent = true;
+        if (frame[0] == 6 && frame.length >= 10) {
+          sent = true;
+          if (requireDirect && frame[1] != 0) {
+            throw const FormatException(
+              'Companion unexpectedly flooded a nearby request',
+            );
+          }
+        }
         if ((frame[0] == 0x85 || frame[0] == 0x86) &&
             frame.length >= 8 &&
             hexBytes(frame.sublist(2, 8)) == prefix) {
@@ -447,7 +455,11 @@ class Companion {
     }
   }
 
-  Future<List<int>> binary(String key, int type) async {
+  Future<List<int>> binary(
+    String key,
+    int type, {
+    bool requireDirect = false,
+  }) async {
     String? tag;
     final early = <String, List<int>>{};
     return exchange(
@@ -459,6 +471,11 @@ class Companion {
       ],
       (frame) {
         if (frame[0] == 6 && frame.length >= 10) {
+          if (requireDirect && frame[1] != 0) {
+            throw const FormatException(
+              'Companion unexpectedly flooded a nearby request',
+            );
+          }
           tag = hexBytes(frame.sublist(2, 6));
         }
         if (frame[0] == 0x8c && frame.length >= 6) {

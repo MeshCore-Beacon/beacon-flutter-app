@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 
 import '../../core/instance.dart';
 import 'companion.dart';
+import 'poll_permit.dart';
 import 'poll_policy.dart';
 
 /// Expiry is accounted for separately from intake acceptance. Delivery retries
@@ -81,6 +82,14 @@ class PollTarget {
   final bool requireAdmin;
 }
 
+String _newSampleId() {
+  final bytes = List<int>.generate(16, (_) => Random.secure().nextInt(256));
+  bytes[6] = (bytes[6] & 15) | 64;
+  bytes[8] = (bytes[8] & 63) | 128;
+  final id = hexBytes(bytes);
+  return '${id.substring(0, 8)}-${id.substring(8, 12)}-${id.substring(12, 16)}-${id.substring(16, 20)}-${id.substring(20)}';
+}
+
 /// A user-started session. Intake and exclusive radio ownership are prerequisites to RF.
 class TelemetrySharing {
   TelemetrySharing(
@@ -92,6 +101,7 @@ class TelemetrySharing {
     FlutterSecureStorage? storage,
     DateTime Function()? now,
     this.environment = true,
+    this.nearbyOnly = true,
   }) : _http = client ?? http.Client(),
        _storage =
            storage ??
@@ -108,6 +118,7 @@ class TelemetrySharing {
   final List<PollTarget> targets;
   final int hours;
   final bool environment;
+  final bool nearbyOnly;
   final http.Client _http;
   final FlutterSecureStorage _storage;
   final DateTime Function() _now;
@@ -135,6 +146,8 @@ class TelemetrySharing {
   ({int queue, int uptime, int tx, int rx})? _lastStats;
   DateTime? _statsAt;
   final _unavailable = <String>{};
+  final _permitRetry = <String, DateTime>{};
+  final _permitIds = <String, String>{};
   String status = 'Not sharing';
   int accepted = 0;
   int get expired => (_state['expiredReports'] as int?) ?? 0;
@@ -355,7 +368,11 @@ class TelemetrySharing {
         radio.radioKey!,
         targets
             .map((t) => t.contact.key)
-            .where((key) => !_unavailable.contains(key)),
+            .where(
+              (key) =>
+                  !_unavailable.contains(key) &&
+                  !now.isBefore(_permitRetry[key] ?? now),
+            ),
         hours,
         now,
       );
@@ -379,11 +396,61 @@ class TelemetrySharing {
         return;
       }
       var contact = contacts.where((c) => c.key == key).firstOrNull;
+      bool nearby(CompanionContact c) => nearbyRouteIsUnambiguous(
+        c.hops,
+        c.path,
+        key,
+        contacts.where((c) => c.type == 2).map((c) => c.key),
+      );
       if (contact == null || contact.type != 2 || (contact.hops ?? 0) > 3) {
         _unavailable.add(key);
         status = 'Repeater missing or learned route exceeds three hops.';
         return;
       }
+      if (nearbyOnly && !nearby(contact)) {
+        _permitRetry[key] = now.add(const Duration(minutes: 5));
+        status = 'Nearby mode needs a known direct or one-hop route. No discovery packet was sent.';
+        return;
+      }
+      phase = 'polling permission';
+      final permitRequest = <String, dynamic>{
+        'schema': 1,
+        'requestId': _permitIds.putIfAbsent(key, _newSampleId),
+        'instance': instance.url,
+        'collectorKey': _clientKey,
+        'radioKey': radio.radioKey,
+        'nodeKey': key,
+        'intervalHours': hours,
+        'commandBudget': 3,
+        'routeMode': nearbyOnly ? 'nearby' : 'discovery',
+        'hops': contact.hops ?? -1,
+        'issuedAt': now.millisecondsSinceEpoch,
+      };
+      final permitBytes = utf8.encode(jsonEncode(permitRequest));
+      final permitSignature = await _algorithm.sign([
+        ...utf8.encode('BEACON-POLL-PERMIT-V1\n'),
+        ...permitBytes,
+      ], keyPair: _key);
+      final permitReply = await _post('polls/permit', {
+        'authorization': _authorization,
+        'payload': base64Encode(permitBytes),
+        'signature': hexBytes(permitSignature.bytes),
+      });
+      _checkActive();
+      final permit = PollPermit.parse(permitReply, permitRequest, _now());
+      if (permit == null) {
+        _permitRetry[key] = _now().add(
+          Duration(seconds: permitReply['retryAfterSeconds'] as int),
+        );
+        if (permitReply['reason'] == 'permit-expired') _permitIds.remove(key);
+        status = permitReply['reason'] == 'reading-available'
+            ? 'A shared reading is already available. Repeater polling deferred.'
+            : permitReply['reason'] == 'another-collector'
+            ? 'Another collector is polling this repeater. Waiting as backup.'
+            : 'Waiting for the shared polling window. No RF request sent.';
+        return;
+      }
+      permit.check(_now());
       policy.reserve(radio.radioKey!, key, hours, now);
       final routes = _state.putIfAbsent(
         'learnedRoutes',
@@ -393,54 +460,77 @@ class TelemetrySharing {
       final preferLearned = routes[routeKey] == true;
       routes[routeKey] = false;
       await _save(); // Durable reservation precedes every possible over-the-air request.
+      _permitIds.remove(key);
       _checkActive();
       // First use floods once. A failed route is rediscovered only after the full interval.
       phase = 'route setup';
-      if (!preferLearned && contact.hops != null) {
+      if (!nearbyOnly && !preferLearned && contact.hops != null) {
         await radio.resetPath(key);
         _checkActive();
         contact = await radio.contact(key);
       }
       _checkActive();
+      permit.check(_now());
+      if (nearbyOnly) {
+        contact = await radio.contact(key);
+        if (!nearby(contact)) {
+          throw StateError('Nearby route changed; poll deferred.');
+        }
+      }
       final loginRoute = contact.hops == null ? 'flood' : 'direct';
       phase = 'repeater login';
       await radio.login(
         key,
         target.password,
         requireAdmin: target.requireAdmin,
+        requireDirect: nearbyOnly,
       );
       _checkActive();
       contact = await radio.contact(
         key,
       ); // Login can learn a route. Do not flood again if it did.
-      if ((contact.hops ?? 0) > 3) {
-        throw StateError('Learned route exceeds three hops');
+      if ((contact.hops ?? 0) > (nearbyOnly ? 1 : 3) ||
+          (nearbyOnly && !nearby(contact))) {
+        throw StateError('Learned route is outside the selected polling limit');
       }
       _checkActive();
+      permit.check(_now());
       phase = 'repeater status';
-      final values = parseStatus(await radio.binary(key, 1));
+      final values = parseStatus(
+        await radio.binary(key, 1, requireDirect: nearbyOnly),
+      );
       _checkActive();
+      final sampleReceivedAt = _now().millisecondsSinceEpoch;
       var telemetry = TelemetrySample({}, []);
       if (environment) {
         try {
-          telemetry = parseTelemetry(await radio.binary(key, 3));
+          permit.check(_now());
+          if (nearbyOnly) {
+            final environmentContact = await radio.contact(key);
+            if (!nearby(environmentContact)) {
+              throw StateError(
+                'Nearby route changed; environment poll deferred.',
+              );
+            }
+          }
+          final received = await radio.binary(
+            key,
+            3,
+            requireDirect: nearbyOnly,
+          );
+          permit.check(_now());
+          telemetry = parseTelemetry(received);
         } catch (_) {
           // Preserve a valid status sample if optional environment data is unavailable.
         }
       }
       values.addAll(telemetry.values);
-      final random = List<int>.generate(
-        16,
-        (_) => Random.secure().nextInt(256),
-      );
-      random[6] = (random[6] & 15) | 64;
-      random[8] = (random[8] & 63) | 128;
-      final id = hexBytes(random);
+      final reportContact = contact;
       final sample = {
         'schema': 1,
-        'sampleId':
-            '${id.substring(0, 8)}-${id.substring(8, 12)}-${id.substring(12, 16)}-${id.substring(16, 20)}-${id.substring(20)}',
-        'receivedAt': _now().millisecondsSinceEpoch,
+        'sampleId': _newSampleId(),
+        'permitId': permit.id,
+        'receivedAt': sampleReceivedAt,
         'instance': instance.url,
         'collectorKey': _clientKey,
         'radioKey': radio.radioKey,
@@ -451,8 +541,8 @@ class TelemetrySharing {
         'sensors': telemetry.sensors,
         'route': {
           'login': loginRoute,
-          'request': contact.hops == null ? 'flood' : 'direct',
-          'learned': loginRoute == 'flood' && contact.hops != null,
+          'request': reportContact.hops == null ? 'flood' : 'direct',
+          'learned': loginRoute == 'flood' && reportContact.hops != null,
         },
       };
       final payload = utf8.encode(jsonEncode(sample));
@@ -460,19 +550,23 @@ class TelemetrySharing {
         throw const FormatException('Oversized telemetry sample');
       }
       final signed = await _algorithm.sign(payload, keyPair: _key);
-      routes[routeKey] = contact.hops != null;
+      final encodedPayload = base64Encode(payload);
+      routes[routeKey] = reportContact.hops != null;
       (_state['outbox'] as List).add({
         'instance': instance.url,
         'radioKey': radio.radioKey,
         'at': sample['receivedAt'],
-        'payload': base64Encode(payload),
+        'payload': encodedPayload,
         'signature': hexBytes(signed.bytes),
       });
       phase = 'report persistence and delivery';
       await _save();
       if (!radio.closed && !_paused && _running) await _flush();
-      status = radio.closed
-          ? 'Status report saved; reconnect to deliver it. Optional telemetry was unavailable.'
+      final pending = (_state['outbox'] as List).any(
+        (entry) => entry['payload'] == encodedPayload,
+      );
+      status = pending
+          ? 'Report saved; delivery will resume when collection is active and connected.'
           : '${target.contact.name}: report accepted. Waiting for the next scheduled attempt.';
       if (radio.closed) _running = false;
     } catch (e) {
