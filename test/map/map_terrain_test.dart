@@ -14,11 +14,8 @@ void main() {
     tester,
   ) async {
     NativeMap map() => tester.widget<NativeMap>(find.byType(NativeMap));
-    // The switch recreates the native view; with none in tests its dispose throws.
-    void recreated() => expect(
-      '${tester.takeException()}',
-      contains('LateInitializationError'),
-    );
+    // The switch recreates the native view; since maplibre_gl 0.28 that disposes cleanly.
+    void recreated() => expect(tester.takeException(), isNull);
     Finder terrain(String label) => find.descendant(
       of: find
           .ancestor(of: find.text('Terrain'), matching: find.byType(Column))
