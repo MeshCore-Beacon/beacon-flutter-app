@@ -16,6 +16,7 @@ class RuntimeConfig {
     'Observers',
     'Routes',
     'Traces',
+    'Atlas',
     'Analytics',
   ];
   static RuntimeConfig parse(String source) {
