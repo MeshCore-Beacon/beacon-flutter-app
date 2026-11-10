@@ -692,6 +692,9 @@ class _SearchBar extends StatelessWidget {
                     key: const ValueKey('atlas-search'),
                     controller: controller,
                     onChanged: onChanged,
+                    // Otherwise the keyboard reopens on coming back from another screen.
+                    onTapOutside: (_) =>
+                        FocusManager.instance.primaryFocus?.unfocus(),
                     autocorrect: false,
                     enableSuggestions: false,
                     textInputAction: TextInputAction.search,
@@ -722,6 +725,7 @@ class _SearchBar extends StatelessWidget {
                           : InkWell(
                               onTap: () {
                                 controller.clear();
+                                FocusManager.instance.primaryFocus?.unfocus();
                                 onChanged('');
                               },
                               child: Container(

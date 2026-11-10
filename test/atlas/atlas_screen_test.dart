@@ -251,6 +251,24 @@ void main() {
     await close(tester);
   });
 
+  testWidgets('the search box gives up focus when the page is used', (
+    tester,
+  ) async {
+    await pump(tester, pins: [nodePin()]);
+    await tester.tap(find.byKey(const ValueKey('atlas-search')));
+    await tester.pump();
+    bool focused() => tester
+        .widget<EditableText>(find.byType(EditableText))
+        .focusNode
+        .hasFocus;
+    expect(focused(), isTrue);
+    await tester.tap(find.text('Heard by'));
+    await tester.pumpAndSettle();
+    expect(focused(), isFalse);
+    expect(find.text('Open packet'), findsOneWidget);
+    await close(tester);
+  });
+
   testWidgets('a public key search sends hex only', (tester) async {
     await pump(tester);
     await tester.tap(find.byKey(const ValueKey('atlas-search-field')));
