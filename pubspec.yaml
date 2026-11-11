@@ -3,7 +3,7 @@ description: "Native iOS and Android client for Beacon, the real-time MeshCore p
 # An app, not a package: never publish to pub.dev.
 publish_to: 'none'
 
-version: 2.1.1+2
+version: 2.2.0+2
 
 environment:
   sdk: ^3.13.4
@@ -17,11 +17,12 @@ dependencies:
 
   http: ^1.6.0
   shared_preferences: ^2.5.6
-  maplibre_gl: ^0.27.1
-  fl_chart: ^1.2.0
-  flutter_svg: ^2.3.0
+  maplibre_gl: ^0.28.0
+  fl_chart: ^1.3.0
+  flutter_svg: ^2.3.2
   url_launcher: ^6.3.3
   package_info_plus: ^10.2.2
+  file_picker: ^13.3.3
 
 dev_dependencies:
   flutter_test:

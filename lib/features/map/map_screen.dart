@@ -825,7 +825,7 @@ class _NativeMapState extends State<NativeMap> {
     MapWrite source(String id, Map<String, dynamic> data) =>
         (id: id, key: data, send: () => c.setGeoJsonSource(id, data));
     MapWrite filter(String id, List<Object> f) =>
-        (id: id, key: jsonEncode(f), send: () => c.setFilter(id, f));
+        (id: id, key: jsonEncode(f), send: () => c.setLayerFilter(id, f));
     return [
       source('beacon-nodes', live ? _none : widget.points),
       source('beacon-live-nodes', live ? widget.points : _none),

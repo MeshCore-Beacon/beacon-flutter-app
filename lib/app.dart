@@ -17,6 +17,7 @@ import 'core/strings.dart';
 import 'core/theme.dart';
 import 'core/version_gate.dart';
 import 'features/analytics/analytics_screen.dart';
+import 'features/atlas/atlas_screen.dart';
 import 'features/directory/directory.dart';
 import 'features/map/map_screen.dart';
 import 'features/packets/packet_detail.dart';
@@ -589,6 +590,7 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
             'Observers',
             'Routes',
             'Traces',
+            'Atlas',
             'Analytics',
           ].where(config.tabs.contains))
             ListTile(
@@ -597,6 +599,7 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
                 'Observers' => Icons.sensors,
                 'Routes' => Icons.route_outlined,
                 'Traces' => Icons.timeline,
+                'Atlas' => Icons.explore_outlined,
                 _ => Icons.bar_chart_outlined,
               }),
               trailing: const Icon(Icons.chevron_right, size: 18),
@@ -632,6 +635,8 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
         ? MapScreen(api: api, region: region, onOpen: open, events: live.events)
         : tab == 'Analytics'
         ? AnalyticsScreen(api: api, region: region, onOpen: open)
+        : tab == 'Atlas'
+        ? AtlasScreen(api: api, preferences: widget.preferences, onOpen: open)
         : DirectoryScreen(
             kind: tab.toLowerCase(),
             api: api,
