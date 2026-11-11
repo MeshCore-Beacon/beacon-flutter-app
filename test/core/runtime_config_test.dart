@@ -15,13 +15,21 @@ void main() {
       'Observers',
       'Routes',
       'Traces',
+      'Atlas',
       'Analytics',
     ]);
+  });
+  test('Atlas can be turned off like any tab', () {
+    final config = RuntimeConfig.parse(
+      'window.__BEACON_CONFIG__ = {"VITE_DISABLED_TABS":"atlas"};',
+    );
+    expect(config.tabs, isNot(contains('Atlas')));
+    expect(config.tabs, hasLength(8));
   });
   test('never executes JavaScript and falls back for malformed config', () {
     expect(
       RuntimeConfig.parse('window.__BEACON_CONFIG__ = runCode();').tabs,
-      hasLength(8),
+      hasLength(9),
     );
     expect(
       RuntimeConfig.parse('window.__BEACON_CONFIG__ = {}; bad();').banner,

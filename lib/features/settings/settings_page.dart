@@ -7,6 +7,7 @@ import '../../core/preferences.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
 import '../../core/version_gate.dart';
+import '../atlas/atlas_settings.dart';
 import '../telemetry/session.dart';
 import '../telemetry/telemetry_page.dart';
 
@@ -23,9 +24,11 @@ class SettingsPage extends StatelessWidget {
     super.key,
     required this.preferences,
     this.appVersion = VersionGate.platformVersion,
+    this.atlasFiles = const DeviceAtlasFiles(),
   });
   final Preferences preferences;
   final Future<String?> Function() appVersion;
+  final AtlasFiles atlasFiles;
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: preferences,
@@ -108,6 +111,12 @@ class SettingsPage extends StatelessWidget {
             trailing: const Icon(Icons.chevron_right, size: 20),
             onTap: () => _pickLanguage(context),
           ),
+          if (preferences.active != null) ...[
+            const SizedBox(height: 12),
+            const Divider(),
+            _heading(context, tr('Atlas')),
+            AtlasSettings(preferences: preferences, files: atlasFiles),
+          ],
           const SizedBox(height: 12),
           const Divider(),
           _heading(context, tr('About')),

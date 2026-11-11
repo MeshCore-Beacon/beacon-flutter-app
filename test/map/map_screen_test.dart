@@ -60,9 +60,9 @@ Future<void> toggleLive(WidgetTester tester, {required bool on}) async {
 }
 
 Future<void> unmount(WidgetTester tester, ApiClient api) async {
-  // With no native view MapLibre never opens its channel, so dispose throws.
+  // maplibre_gl 0.28 disposes cleanly without a native view.
   await tester.pumpWidget(const SizedBox());
-  expect('${tester.takeException()}', contains('LateInitializationError'));
+  expect(tester.takeException(), isNull);
   api.close();
 }
 

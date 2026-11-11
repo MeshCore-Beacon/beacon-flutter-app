@@ -86,6 +86,14 @@ class Preferences extends ChangeNotifier {
         }
         await _store.remove('beacon.region.$replacing');
       }
+      // The saved Atlas follows the server the same way.
+      final atlas = _store.getString('beacon.atlas.$replacing');
+      if (replacing != server.url && atlas != null) {
+        if (!_store.containsKey('beacon.atlas.${server.url}')) {
+          await _store.setString('beacon.atlas.${server.url}', atlas);
+        }
+        await _store.remove('beacon.atlas.$replacing');
+      }
     }
     servers.removeWhere((e) => e.url == server.url);
     servers.add(server);
@@ -105,6 +113,7 @@ class Preferences extends ChangeNotifier {
       _activeUrl = servers.isEmpty ? null : servers.first.url;
     }
     await _store.remove('beacon.region.$url');
+    await _store.remove('beacon.atlas.$url');
     await _persist();
   }
 
@@ -148,5 +157,24 @@ class Preferences extends ChangeNotifier {
       'beacon.region.$url',
       jsonEncode({...params, 'selection': ?selection}),
     );
+  }
+
+  /// Bumped on every Atlas save, so an open Atlas tab picks up an import.
+  final atlasRevision = ValueNotifier<int>(0);
+
+  /// The saved Atlas cards for one server, as stored.
+  String? atlasFor(String url) => _store.getString('beacon.atlas.$url');
+
+  /// False when the device refused the write.
+  Future<bool> saveAtlas(String url, String raw) async {
+    var saved = false;
+    try {
+      final write = _store.setString('beacon.atlas.$url', raw);
+      atlasRevision.value++;
+      saved = await write;
+    } catch (_) {
+      atlasRevision.value++;
+    }
+    return saved;
   }
 }
