@@ -13,6 +13,26 @@ class Preferences extends ChangeNotifier {
   String? _activeUrl;
   String themeId = 'neutral-blue';
   String language = 'en';
+  // Null means first-node enrollment has not asked yet. Never implies consent.
+  bool? get telemetryBackground =>
+      _store.getBool('beacon.telemetry.background');
+  bool get telemetryNotificationStats =>
+      _store.getBool('beacon.telemetry.notificationStats') ?? true;
+
+  Future<void> setTelemetryBackground(bool enabled) async {
+    if (!await _store.setBool('beacon.telemetry.background', enabled)) {
+      throw StateError('Could not save background collection preference');
+    }
+    notifyListeners();
+  }
+
+  Future<void> setTelemetryNotificationStats(bool enabled) async {
+    if (!await _store.setBool('beacon.telemetry.notificationStats', enabled)) {
+      throw StateError('Could not save notification preference');
+    }
+    notifyListeners();
+  }
+
   BeaconInstance? get active {
     for (final server in servers) {
       if (server.url == _activeUrl) return server;

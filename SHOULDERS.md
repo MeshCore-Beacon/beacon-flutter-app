@@ -14,6 +14,11 @@ projects that make this possible. Add new dependencies here in the PR that intro
 - [url_launcher](https://pub.dev/packages/url_launcher): opening links and store pages
 - [package_info_plus](https://pub.dev/packages/package_info_plus): app version for the
   server compatibility check
+- [cryptography](https://pub.dev/packages/cryptography) (Apache-2.0): Ed25519 telemetry enrollment and report signatures
+- [flutter_secure_storage](https://pub.dev/packages/flutter_secure_storage) (BSD-3-Clause): client identity, persistent polling limits and pending reports in platform secure storage
+- [flutter_blue_plus](https://pub.dev/packages/flutter_blue_plus/versions/1.36.8) (BSD-3-Clause): foreground BLE companion discovery and connection, pinned to MeshMapper’s version
+- [permission_handler](https://pub.dev/packages/permission_handler) (MIT): explicit Bluetooth permission requests
+- [device_info_plus](https://pub.dev/packages/device_info_plus) (BSD-3-Clause): select the correct Android Bluetooth permissions by OS API level; no device information is uploaded
 
 ## Map and charts
 
@@ -32,3 +37,5 @@ projects that make this possible. Add new dependencies here in the PR that intro
 ## The network
 
 - [MeshCore](https://github.com/meshcore-dev/MeshCore): the mesh this app observes
+
+- [MeshMapper](https://github.com/MeshMapper/MeshMapper_Flutter_App) (MIT): companion connection sequence and GATT-busy retry policy; notice in [meshmapper-MIT.txt](docs/licenses/meshmapper-MIT.txt)

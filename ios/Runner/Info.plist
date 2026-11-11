@@ -2,13 +2,15 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- HTTPS/WSS transport only; packet decryption happens on the Beacon server. -->
+	<!-- Maintainer review required before distributing the telemetry signing alpha; see docs/telemetry-sharing.md. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>NSAppTransportSecurity</key>
 	<dict><key>NSAllowsArbitraryLoads</key><true/></dict>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Connect to a Beacon server on your local network.</string>
+	<string>Connect to a Beacon server or a MeshCore companion on your local network.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Connect to your MeshCore companion to collect telemetry from repeaters you select.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
