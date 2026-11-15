@@ -1,4 +1,5 @@
 import '../../core/api.dart';
+import '../../core/json.dart';
 import '../../core/strings.dart';
 import 'account_errors.dart';
 
@@ -16,31 +17,28 @@ String requestStatusText(String status) {
       : status;
 }
 
-// The sentences beacon-server's polling code puts in statusReason.
+// beacon-server's statusReasonCode, by the catalog key that carries each.
 const _reasonKeys = {
-  'No observer can reach this repeater yet.': 'noObserver',
-  'Every observer that can reach this repeater is already polling its maximum.':
-      'noSeat',
-  'The repeater did not accept this guest password. Enter a new one.':
-      'loginFailed',
-  'The repeater did not accept a blank or hello login. Enter a guest password.':
-      'blankFailed',
-  'The repeater gave admin access to this password, so Beacon deleted it. Enter a guest password, never an admin one.':
-      'adminStopped',
-  'This repeater gives admin access to a blank login, so Beacon will not poll it without a guest password.':
-      'blankBlocked',
+  'no_observer': 'noObserver',
+  'no_seat': 'noSeat',
+  'login_failed': 'loginFailed',
+  'blank_login_failed': 'blankFailed',
+  'admin_stopped': 'adminStopped',
+  'blank_blocked': 'blankBlocked',
 };
-final _offline = RegExp(r'^Not heard by any observer for (\d+) days?\.$');
 
-/// A status reason in the user's language; one this build does not know shows as sent.
-String requestReasonText(String reason) {
-  final key = _reasonKeys[reason];
+/// A request's reason in the user's language, read from its statusReasonCode
+/// (and statusReasonDays for offline). No code (an older server) or one this
+/// build does not know shows statusReason as sent.
+String requestReasonText(Json request) {
+  final code = textOf(request['statusReasonCode']);
+  final key = _reasonKeys[code];
   if (key != null) return trKey('serverText.requestReason.$key');
-  final days = _offline.firstMatch(reason)?.group(1);
-  if (days != null) {
-    return trKey('serverText.requestReason.offline', count: int.parse(days));
+  final days = request['statusReasonDays'];
+  if (code == 'offline' && days is int && days >= 0) {
+    return trKey('serverText.requestReason.offline', count: days);
   }
-  return reason;
+  return textOf(request['statusReason']);
 }
 
 /// The line under a failed request action, by the server's error code.

@@ -759,4 +759,45 @@ void main() {
       expect(fake.puts, isEmpty);
     });
   });
+
+  group('radios named by an alert', () {
+    // Push data carries a public key, but the detail routes take ids.
+    test('a node is found by key and answers its id', () async {
+      final fake = FakeServer()
+        ..revision = 1
+        ..pins = [serverNode(key)];
+      final r = await rig(fake: fake);
+      await r.store.idle;
+      expect(r.store.idForRadio('node', key.toUpperCase()), nodeId);
+      expect(r.store.idForRadio('node', otherKey), isNull);
+    });
+
+    test(
+      'an observer is found by key once the server Atlas has loaded',
+      () async {
+        final fake = FakeServer()
+          ..revision = 1
+          ..pins = [
+            {
+              'kind': 'observer',
+              'observerPublicKey': obsKey,
+              'observerId': obsId,
+              'name': 'Roof',
+            },
+            {
+              'kind': 'observer',
+              'observerPublicKey': otherKey,
+              'observerId': null,
+              'name': 'Gone',
+            },
+          ];
+        final r = await rig(fake: fake);
+        expect(r.store.idForRadio('observer', obsKey), isNull);
+        await r.store.idle;
+        expect(r.store.idForRadio('observer', obsKey), obsId);
+        // An observer the server could not resolve has nothing to open.
+        expect(r.store.idForRadio('observer', otherKey), isNull);
+      },
+    );
+  });
 }

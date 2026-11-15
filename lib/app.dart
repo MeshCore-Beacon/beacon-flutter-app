@@ -589,20 +589,15 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
   }
 
   /// A tapped alert names a radio by public key; a pinned node opens by its id.
-  void openAlertTarget(String kind, String publicKey) {
-    if (!mounted) return;
-    if (kind == 'node') {
-      final pin = atlas.saved.pins
-          .where(
-            (p) =>
-                p.isNode &&
-                p.publicKey?.toLowerCase() == publicKey.toLowerCase(),
-          )
-          .firstOrNull;
-      open('node', pin?.id ?? publicKey);
-    } else {
-      open('observer', publicKey);
+  /// A tapped alert names a radio by public key; the detail routes take ids,
+  /// which the Atlas holds. A cold start waits for the Atlas to load first.
+  Future<void> openAlertTarget(String kind, String publicKey) async {
+    var id = atlas.idForRadio(kind, publicKey);
+    if (id == null) {
+      await atlas.idle.timeout(const Duration(seconds: 10), onTimeout: () {});
+      id = atlas.idForRadio(kind, publicKey);
     }
+    if (id != null && mounted) open(kind == 'node' ? 'node' : 'observer', id);
   }
 
   void open(String kind, String id) {

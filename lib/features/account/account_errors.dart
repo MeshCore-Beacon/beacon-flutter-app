@@ -13,6 +13,8 @@ String accountError(Object error) {
       return error.message;
     case 'invalid_input':
       return trKey('account.errors.invalidInput');
+    case 'portal_managed':
+      return trKey('account.portalManagedError');
     case 'service_unavailable':
       return trKey('serverText.errors.busy');
     case 'read_only':
@@ -23,6 +25,13 @@ String accountError(Object error) {
   }
   return trKey('account.errors.generic');
 }
+
+/// The line under a failed account deletion. A portal account confirms with
+/// its username, and the server answers a wrong one with 422 invalid_input.
+String deleteError(Object error, {required bool portal}) =>
+    portal && error is ApiException && error.code == 'invalid_input'
+    ? trKey('account.wrongUsername')
+    : accountError(error);
 
 String _retry(String code, Duration? wait) {
   final head = trKey(

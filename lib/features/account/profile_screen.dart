@@ -124,7 +124,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _Devices(account: widget.account, revision: devices),
             ]),
             section(trKey('account.sectionDelete'), [
-              _DeleteForm(account: widget.account, portal: portal),
+              _DeleteForm(account: widget.account),
             ]),
           ],
         );
@@ -619,11 +619,8 @@ class _DevicesState extends State<_Devices> with _Action {
 }
 
 class _DeleteForm extends StatefulWidget {
-  const _DeleteForm({required this.account, required this.portal});
+  const _DeleteForm({required this.account});
   final AccountState account;
-
-  /// Portal accounts have no password; the typed username confirms.
-  final bool portal;
   @override
   State<_DeleteForm> createState() => _DeleteFormState();
 }
@@ -641,13 +638,17 @@ class _DeleteFormState extends State<_DeleteForm> with _Action {
 
   String get username => textOf(widget.account.user?['username']);
 
+  /// Portal accounts have no password; the typed username confirms. The
+  /// account decides, as on the server, not the server's mode.
+  bool get portal => widget.account.user?['provider'] == 'portal';
+
   // The account and its token are gone on success, which closes this screen.
   Future<void> delete() => run(() async {
-    await (widget.portal
+    await (portal
         ? widget.account.api.deleteAccount(confirmUsername: typed.text.trim())
         : widget.account.api.deleteAccount(currentPassword: password.text));
     return null;
-  });
+  }, describe: (e) => deleteError(e, portal: portal));
 
   @override
   Widget build(BuildContext context) => AutofillGroup(
@@ -655,7 +656,7 @@ class _DeleteFormState extends State<_DeleteForm> with _Action {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(trKey('account.deleteExplain')),
-        if (!widget.portal)
+        if (!portal)
           _PasswordField(
             key: const ValueKey('delete-password'),
             controller: password,

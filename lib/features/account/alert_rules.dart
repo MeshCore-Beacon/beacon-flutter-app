@@ -86,6 +86,14 @@ int? parseTenths(String text) {
   return v == null ? null : (v * 10).round();
 }
 
+/// Whether tenths of a degree are inside what the server takes, -50 to 150 C.
+bool tenthsInRange(int tenths) => tenths >= -500 && tenths <= 1500;
+
+/// A duration of whole minutes in words: hours when it is a whole number of them.
+String minutesLabel(int minutes) => minutes % 60 == 0
+    ? trKey('alerts.hours', count: minutes ~/ 60)
+    : trKey('alerts.minutes', count: minutes);
+
 String voltsText(int? mv) => ((mv ?? 3500) / 1000).toStringAsFixed(2);
 
 String tenthsText(int? tenths) =>
@@ -110,6 +118,8 @@ String alertError(Object error) {
       case 'invalid_threshold':
       case 'not_on_atlas':
       case 'alerts_disabled':
+      case 'not_found':
+      case 'app_session_required':
         return trKey('alerts.errors.${error.code}');
     }
   }

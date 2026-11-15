@@ -316,6 +316,11 @@ class _AlertRowState extends State<_AlertRow> with _Action {
           _complain(trKey('alerts.errors.temperature'));
           return null;
         }
+        if ((a != null && !tenthsInRange(a)) ||
+            (b != null && !tenthsInRange(b))) {
+          _complain(trKey('alerts.errors.temperatureRange'));
+          return null;
+        }
         return (low: a, high: b);
     }
   }
@@ -359,7 +364,11 @@ class _AlertRowState extends State<_AlertRow> with _Action {
   }
 
   String _optionLabel(int value) => switch (widget.spec.input) {
-    AlertInput.drop => trKey('alerts.mv').replaceAll('{{n}}', '$value'),
+    AlertInput.hours => trKey('alerts.hours', count: value),
+    AlertInput.minutes => minutesLabel(value),
+    AlertInput.drop => trKey(
+      'alerts.voltsPerDay',
+    ).replaceAll('{{volts}}', (value / 1000).toStringAsFixed(1)),
     AlertInput.drift => trKey('alerts.drift.$value'),
     _ => '$value',
   };
@@ -499,10 +508,11 @@ class _AlertRowState extends State<_AlertRow> with _Action {
             if (reason != null)
               Text(reason, style: muted)
             else ...[
+              Text(trKey('alerts.when.$kind'), style: muted),
               if (needsGoneQuiet && !enabled)
                 Text(
                   trKey('alerts.needsGoneQuiet')
-                      .replaceAll('{{kind}}', trKey('alerts.kind.gone_quiet')),
+                      .replaceAll('{{name}}', trKey('alerts.kind.gone_quiet')),
                   style: muted,
                 ),
               _input(),

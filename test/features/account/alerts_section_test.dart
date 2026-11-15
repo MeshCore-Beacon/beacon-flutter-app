@@ -339,7 +339,7 @@ void main() {
       tester,
     ) async {
       final h = await open(tester);
-      await pick(tester, 'alert-input-aabb-gone_quiet', '48');
+      await pick(tester, 'alert-input-aabb-gone_quiet', '48 hours');
       expect(puts, isEmpty);
       await tap(tester, 'alert-switch-aabb-gone_quiet');
       expect(body(0), {
@@ -400,15 +400,29 @@ void main() {
         ),
       ];
       await open(tester);
-      await pick(tester, 'alert-input-aabb-battery_falling', '300 mV');
+      await pick(tester, 'alert-input-aabb-battery_falling', '0.3 V per day');
       await tap(tester, 'alert-switch-aabb-battery_falling');
       expect(body(0)['threshold'], 300);
       await pick(tester, 'alert-input-aabb-clock', '1 day');
       await tap(tester, 'alert-switch-aabb-clock');
       expect(body(1)['threshold'], 86400);
-      await pick(tester, 'alert-input-aabb-observer_offline', '180');
+      await pick(tester, 'alert-input-aabb-observer_offline', '3 hours');
       await tap(tester, 'alert-switch-aabb-observer_offline');
       expect(body(2)['threshold'], 180);
+    });
+
+    testWidgets('temperature outside -50 to 150 degrees is refused', (
+      tester,
+    ) async {
+      await open(tester);
+      await type(tester, 'alert-input-aabb-temperature-high', '150.5');
+      await tap(tester, 'alert-switch-aabb-temperature');
+      expect(find.textContaining('between -50 and 150'), findsOneWidget);
+      await type(tester, 'alert-input-aabb-temperature-high', '');
+      await type(tester, 'alert-input-aabb-temperature-low', '-50.1');
+      await tap(tester, 'alert-switch-aabb-temperature');
+      expect(find.textContaining('between -50 and 150'), findsOneWidget);
+      expect(puts, isEmpty);
     });
 
     testWidgets('noise_high sends dBm and refuses out of range', (
@@ -472,7 +486,7 @@ void main() {
         target(rules: [rule('gone_quiet', threshold: 24)]),
       ];
       await open(tester);
-      await pick(tester, 'alert-input-aabb-gone_quiet', '12');
+      await pick(tester, 'alert-input-aabb-gone_quiet', '12 hours');
       expect(body(0)['threshold'], 12);
       expect(body(0)['enabled'], true);
     });
@@ -486,6 +500,41 @@ void main() {
       await submit(tester);
       expect(find.textContaining('-130 and -50'), findsOneWidget);
       expect(puts, isEmpty);
+    });
+  });
+
+  group('wording shared with the web', () {
+    testWidgets('each row says what the alert is for', (tester) async {
+      await open(tester);
+      expect(
+        find.descendant(
+          of: k('alert-aabb-battery_low'),
+          matching: find.text('When the battery stays below this voltage.'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: k('alert-aabb-rebooted'),
+          matching: find.text('When the radio restarts.'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('the observer offline choices read as durations', (
+      tester,
+    ) async {
+      data['targets'] = [
+        target(kind: 'observer', available: ['observer_offline']),
+      ];
+      await open(tester);
+      await tester.ensureVisible(k('alert-input-aabb-observer_offline'));
+      await tester.tap(k('alert-input-aabb-observer_offline'));
+      await tester.pumpAndSettle();
+      for (final text in ['30 minutes', '1 hour', '3 hours', '6 hours']) {
+        expect(find.text(text), findsWidgets, reason: text);
+      }
     });
   });
 
@@ -541,6 +590,9 @@ void main() {
       ('invalid_threshold', 422, 'bad', 'not an allowed value'),
       ('not_on_atlas', 409, 'x', 'no longer in your Atlas'),
       ('alerts_disabled', 404, 'x', 'turned off on this server'),
+      ('not_found', 404, 'No such rule.', 'no longer exists'),
+      ('app_session_required', 403, 'x', 'Only the Beacon app'),
+      ('invalid_input', 422, 'x', 'Check what you entered'),
     ];
     for (final (code, status, message, text) in cases) {
       testWidgets(code, (tester) async {

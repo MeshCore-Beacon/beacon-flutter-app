@@ -30,6 +30,7 @@ Map<String, dynamic> user({
   String name = 'Ridge Walker',
   String? pendingEmail,
   bool verified = true,
+  String provider = 'local',
 }) => {
   'id': 'u1',
   'username': 'ridgewalker',
@@ -37,7 +38,7 @@ Map<String, dynamic> user({
   'email': 'a@example.org',
   'emailVerified': verified,
   'pendingEmail': pendingEmail,
-  'provider': 'local',
+  'provider': provider,
   'createdAt': 1794700000000,
 };
 

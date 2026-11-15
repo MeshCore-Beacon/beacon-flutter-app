@@ -64,6 +64,23 @@ class AtlasStore extends ChangeNotifier {
   List<SavedAtlas Function(SavedAtlas)> _held = [];
   SavedAtlas? _heldBase;
 
+  /// The id the detail screens take for the radio an alert names; they do not
+  /// take public keys. Null when this Atlas has no such pin, or the observer's
+  /// row is gone.
+  String? idForRadio(String kind, String publicKey) {
+    final key = publicKey.toLowerCase();
+    if (kind == 'node') {
+      return saved.pins
+          .where((p) => p.isNode && p.publicKey?.toLowerCase() == key)
+          .firstOrNull
+          ?.id;
+    }
+    for (final MapEntry(key: id, value: observerKey) in _observerKeys.entries) {
+      if (observerKey == key && id != placeholderObserverId(key)) return id;
+    }
+    return null;
+  }
+
   /// Completes when no load or write is running or waiting.
   Future<void> get idle async {
     while (_job != null) {

@@ -60,46 +60,90 @@ void main() {
     );
   });
 
-  // Every statusReason beacon-server's polling code can emit.
-  const serverReasons = [
-    'No observer can reach this repeater yet.',
-    'Every observer that can reach this repeater is already polling its maximum.',
-    'The repeater did not accept this guest password. Enter a new one.',
-    'The repeater did not accept a blank or hello login. Enter a guest password.',
-    'The repeater gave admin access to this password, so Beacon deleted it. Enter a guest password, never an admin one.',
-    'This repeater gives admin access to a blank login, so Beacon will not poll it without a guest password.',
-    'Not heard by any observer for 7 days.',
+  // statusReasonCode as beacon-server sends it (reason-codes.md), with its
+  // English sentence and the days an offline reason carries.
+  const reasonCodes = [
+    ('no_observer', 'No observer can reach this repeater yet.', null),
+    (
+      'no_seat',
+      'Every observer that can reach this repeater is already polling its maximum.',
+      null,
+    ),
+    (
+      'login_failed',
+      'The repeater did not accept this guest password. Enter a new one.',
+      null,
+    ),
+    (
+      'blank_login_failed',
+      'The repeater did not accept a blank or hello login. Enter a guest password.',
+      null,
+    ),
+    (
+      'admin_stopped',
+      'The repeater gave admin access to this password, so Beacon deleted it. Enter a guest password, never an admin one.',
+      null,
+    ),
+    (
+      'blank_blocked',
+      'This repeater gives admin access to a blank login, so Beacon will not poll it without a guest password.',
+      null,
+    ),
+    ('offline', 'Not heard by any observer for 7 days.', 7),
   ];
 
-  test('every server reason has words in each language', () {
-    for (final code in supportedLanguages) {
-      language = code;
-      for (final reason in serverReasons) {
-        final text = requestReasonText(reason);
-        expect(text, isNot(startsWith('serverText.')), reason: '$code $reason');
-        expect(text, isNotEmpty);
-        if (code == 'en') {
-          expect(text, reason);
+  Map<String, dynamic> request(String code, String sentence, [int? days]) => {
+    'statusReasonCode': code,
+    'statusReason': sentence,
+    'statusReasonDays': ?days,
+  };
+
+  test('every reason code has words in each language, read from the code', () {
+    for (final lang in supportedLanguages) {
+      for (final (code, sentence, days) in reasonCodes) {
+        language = 'en';
+        final english = requestReasonText(request(code, 'x', days));
+        language = lang;
+        // The sentence is deliberately wrong: only the code may decide.
+        final text = requestReasonText(request(code, 'x', days));
+        expect(text, isNot(startsWith('serverText.')), reason: '$lang $code');
+        expect(text, isNot('x'), reason: '$lang $code');
+        if (lang == 'en') {
+          expect(text, sentence);
         } else {
-          expect(text, isNot(reason), reason: '$code $reason');
+          expect(text, isNot(english), reason: '$lang $code');
         }
       }
     }
   });
 
+  test('the offline reason carries its days, one day included', () {
+    expect(
+      requestReasonText(request('offline', '', 1)),
+      'Not heard by any observer for 1 day.',
+    );
+    expect(requestReasonText(request('offline', '', 30)), contains('30 days'));
+  });
+
   test(
-    'the offline reason carries its days, and an unknown one shows as sent',
+    'no code, an unknown code, other, or offline without days show the text',
     () {
       expect(
-        requestReasonText('Not heard by any observer for 1 days.'),
-        contains('1 day'),
+        requestReasonText({
+          'statusReason': 'No observer can reach this repeater yet.',
+        }),
+        'No observer can reach this repeater yet.',
       );
       expect(
-        requestReasonText('Not heard by any observer for 30 days.'),
-        contains('30'),
+        requestReasonText(request('future_code', 'Something new.')),
+        'Something new.',
       );
-      expect(requestReasonText('Something new.'), 'Something new.');
-      expect(requestReasonText(''), '');
+      expect(requestReasonText(request('other', 'Odd text.')), 'Odd text.');
+      expect(
+        requestReasonText(request('offline', 'Not heard for ages.')),
+        'Not heard for ages.',
+      );
+      expect(requestReasonText(request('', '')), '');
     },
   );
 

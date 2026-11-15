@@ -1348,7 +1348,9 @@
         "minutes_other": "{{count}} minuter",
         "network": "Det gick inte att nå servern. Kontrollera anslutningen.",
         "generic": "Något gick fel. Försök igen."
-      }
+      },
+      "portalManagedError": "Din inloggning hanteras i MeshMapper-portalen. Använd den där.",
+      "wrongUsername": "Det är inte ditt användarnamn."
     },
     "telemetryRequests": {
       "title": "Telemetribegäran",
@@ -1402,10 +1404,9 @@
       "toEmail": "Aviseringar skickas till {{email}}",
       "byEmail": "Aviseringar skickas till din e-postadress.",
       "toPhone": "Aviseringar skickas till Beacon-appen på din telefon",
-      "empty": "Aviseringar ställs in på radioapparater i din Atlas. Lägg först till en radio i din Atlas och kom sedan tillbaka hit.",
-      "requestAttention": "Du får också alltid besked när en av dina telemetribegäranden behöver uppmärksamhet. Den har ingen strömbrytare.",
-      "needsGoneQuiet": "Slå först på {{kind}}.",
-      "mv": "{{n}} mV",
+      "empty": "Aviseringar ställs in på radioapparater i din Atlas. Lägg först till en radio.",
+      "requestAttention": "Du får alltid besked när en av dina telemetribegäranden behöver uppmärksamhet.",
+      "needsGoneQuiet": "Slå först på {{name}}.",
       "push": {
         "notSetUp": "Pushnotiser är inte inställda i den här versionen.",
         "enable": "Slå på notiser",
@@ -1414,13 +1415,13 @@
       },
       "kind": {
         "gone_quiet": "Tystnat",
-        "back_online": "Online igen",
+        "back_online": "Tillbaka online",
         "battery_low": "Lågt batteri",
         "battery_falling": "Fallande batteri",
         "rebooted": "Startade om",
         "temperature": "Temperatur",
         "noise_high": "Högt brus",
-        "clock": "Klockdrift",
+        "clock": "Klockavvikelse",
         "observer_offline": "Observatör offline"
       },
       "input": {
@@ -1429,9 +1430,9 @@
         "drop": "Fall per dygn",
         "dbm": "dBm",
         "drift": "Avvikelse",
-        "minutes": "Minuter utan rapport",
-        "low": "Lägst (°C)",
-        "high": "Högst (°C)"
+        "minutes": "Ingen rapport på",
+        "low": "Låg (°C)",
+        "high": "Hög (°C)"
       },
       "drift": {
         "300": "5 minuter",
@@ -1452,8 +1453,27 @@
         "volts": "Ange ett värde mellan 2,50 och 5,00 volt.",
         "dbm": "Ange ett heltal mellan -130 och -50 dBm.",
         "temperatureNone": "Ange en nedre eller övre gräns.",
-        "temperature": "Ange en temperatur i grader C, till exempel 4,5."
-      }
+        "temperature": "Ange en temperatur i grader C, till exempel 4,5.",
+        "not_found": "Den aviseringen finns inte längre.",
+        "app_session_required": "Bara Beacon-appen kan registrera en telefon för aviseringar.",
+        "temperatureRange": "Ange gränser mellan -50 och 150 grader C."
+      },
+      "when": {
+        "gone_quiet": "När radion inte har hörts på så här länge.",
+        "back_online": "När radion hörs igen efter att ha tystnat.",
+        "battery_low": "När batteriet stannar under den här spänningen.",
+        "battery_falling": "När batteriet sjunker snabbare än så här på ett dygn.",
+        "rebooted": "När radion startar om.",
+        "temperature": "När temperaturen går under den låga gränsen eller över den höga.",
+        "noise_high": "När brusnivån stannar över den här nivån.",
+        "clock": "När radions klocka avviker mer än så här.",
+        "observer_offline": "När observatören inte skickar någon statusrapport på så här länge."
+      },
+      "voltsPerDay": "{{volts}} V per dygn",
+      "hours_one": "{{count}} timme",
+      "hours_other": "{{count}} timmar",
+      "minutes_one": "{{count}} minut",
+      "minutes_other": "{{count}} minuter"
     },
     "serverText": {
       "requestReason": {

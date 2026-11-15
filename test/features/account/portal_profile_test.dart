@@ -86,6 +86,8 @@ void main() {
     tester,
   ) async {
     final h = await open(tester);
+    h.account.adopt(user(provider: 'portal'));
+    await tester.pump();
     expect(find.byKey(const ValueKey('delete-password')), findsNothing);
     FilledButton button() => tester.widget<FilledButton>(
       find.byKey(const ValueKey('delete-confirm')),
@@ -102,5 +104,32 @@ void main() {
       'confirmUsername': 'ridgewalker',
     });
     expect(await h.tokens.read(server), isNull);
+  });
+
+  testWidgets('a wrong username shows that it is not the username', (
+    tester,
+  ) async {
+    final h = await open(
+      tester,
+      onDelete: (_) =>
+          failure(422, 'invalid_input', 'Check the values you entered.'),
+    );
+    h.account.adopt(user(provider: 'portal'));
+    await tester.pump();
+    final field = find.byKey(const ValueKey('delete-username'));
+    await tester.ensureVisible(field);
+    await tester.enterText(field, 'ridgewalker');
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('delete-confirm')));
+    await tester.pumpAndSettle();
+    expect(find.text('That is not your username.'), findsOneWidget);
+  });
+
+  testWidgets('the delete form follows the account, not the server mode', (
+    tester,
+  ) async {
+    await open(tester);
+    // A local account on a portal server still confirms with its password.
+    expect(find.byKey(const ValueKey('delete-password')), findsOneWidget);
   });
 }

@@ -1395,7 +1395,9 @@
         "minutes_other": "{{count}} minutes",
         "network": "Impossible de joindre le serveur. Vérifiez votre connexion.",
         "generic": "Une erreur est survenue. Réessayez."
-      }
+      },
+      "portalManagedError": "Votre connexion est gérée sur le portail MeshMapper. Utilisez-le là-bas.",
+      "wrongUsername": "Ce n’est pas votre nom d’utilisateur."
     },
     "telemetryRequests": {
       "title": "Demandes de télémétrie",
@@ -1449,10 +1451,9 @@
       "toEmail": "Les alertes sont envoyées à {{email}}",
       "byEmail": "Les alertes sont envoyées à votre adresse courriel.",
       "toPhone": "Les alertes sont envoyées à l'application Beacon sur votre téléphone",
-      "empty": "Les alertes se règlent sur les radios de votre Atlas. Ajoutez d'abord une radio à votre Atlas, puis revenez ici.",
-      "requestAttention": "Vous êtes aussi toujours prévenu quand une de vos demandes de télémétrie demande de l'attention. Celle-là n'a pas d'interrupteur.",
-      "needsGoneQuiet": "Activez d'abord {{kind}}.",
-      "mv": "{{n}} mV",
+      "empty": "Les alertes se règlent sur les radios de votre Atlas. Ajoutez d'abord une radio.",
+      "requestAttention": "Vous êtes toujours prévenu quand une de vos demandes de télémétrie demande votre attention.",
+      "needsGoneQuiet": "Activez d'abord « {{name}} ».",
       "push": {
         "notSetUp": "Les notifications push ne sont pas configurées dans cette version.",
         "enable": "Activer les notifications",
@@ -1460,14 +1461,14 @@
         "failed": "Impossible d'inscrire ce téléphone aux alertes."
       },
       "kind": {
-        "gone_quiet": "Silencieux",
-        "back_online": "De retour en ligne",
+        "gone_quiet": "Silence",
+        "back_online": "De retour",
         "battery_low": "Batterie faible",
         "battery_falling": "Batterie en baisse",
-        "rebooted": "Redémarré",
+        "rebooted": "Redémarrage",
         "temperature": "Température",
         "noise_high": "Bruit élevé",
-        "clock": "Dérive de l'horloge",
+        "clock": "Dérive d'horloge",
         "observer_offline": "Observateur hors ligne"
       },
       "input": {
@@ -1476,9 +1477,9 @@
         "drop": "Baisse par jour",
         "dbm": "dBm",
         "drift": "Dérive",
-        "minutes": "Minutes sans rapport",
-        "low": "Min. (°C)",
-        "high": "Max. (°C)"
+        "minutes": "Sans rapport depuis",
+        "low": "Bas (°C)",
+        "high": "Haut (°C)"
       },
       "drift": {
         "300": "5 minutes",
@@ -1499,8 +1500,27 @@
         "volts": "Entrez une valeur entre 2,50 et 5,00 volts.",
         "dbm": "Entrez un nombre entier entre -130 et -50 dBm.",
         "temperatureNone": "Entrez une limite basse ou haute.",
-        "temperature": "Entrez une température en degrés C, par exemple 4,5."
-      }
+        "temperature": "Entrez une température en degrés C, par exemple 4,5.",
+        "not_found": "Cette alerte n'existe plus.",
+        "app_session_required": "Seule l'application Beacon peut inscrire un téléphone aux alertes.",
+        "temperatureRange": "Entrez des limites entre -50 et 150 degrés C."
+      },
+      "when": {
+        "gone_quiet": "Quand la radio n'a pas été entendue depuis ce délai.",
+        "back_online": "Quand la radio est de nouveau entendue après un silence.",
+        "battery_low": "Quand la batterie reste sous cette tension.",
+        "battery_falling": "Quand la batterie baisse plus vite que cela en une journée.",
+        "rebooted": "Quand la radio redémarre.",
+        "temperature": "Quand la température passe sous la limite basse ou au-dessus de la limite haute.",
+        "noise_high": "Quand le niveau de bruit reste au-dessus de cette valeur.",
+        "clock": "Quand l'horloge de la radio s'écarte de plus que cela.",
+        "observer_offline": "Quand l'observateur n'envoie aucun rapport d'état depuis ce délai."
+      },
+      "voltsPerDay": "{{volts}} V par jour",
+      "hours_one": "{{count}} heure",
+      "hours_other": "{{count}} heures",
+      "minutes_one": "{{count}} minute",
+      "minutes_other": "{{count}} minutes"
     },
     "serverText": {
       "requestReason": {
