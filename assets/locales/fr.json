@@ -1533,6 +1533,22 @@
         "offline_one": "Aucun observateur ne l'a entendu depuis {{count}} jour.",
         "offline_other": "Aucun observateur ne l'a entendu depuis {{count}} jours."
       },
+      "alertReason": {
+        "observerNoData": "Cet observateur ne remonte pas {{what}}.",
+        "repeatersOnly": "Seuls les répéteurs remontent {{what}}.",
+        "notPolled": "Beacon ne sonde pas ce répéteur. Demandez d'abord sa télémétrie.",
+        "noData": "Ce répéteur ne remonte pas {{what}}.",
+        "observerNoClock": "Les observateurs n'ont pas de dérive d'horloge.",
+        "clockRepeatersOnly": "Seuls les répéteurs et les serveurs de salle remontent leur horloge.",
+        "needsGoneQuiet": "Activez d'abord l'alerte de silence pour cette radio.",
+        "notApplicable": "Cette alerte ne s'applique pas à cette radio."
+      },
+      "alertWhat": {
+        "battery": "le niveau de batterie",
+        "uptime": "la durée de fonctionnement",
+        "temperature": "la température",
+        "noise": "le niveau de bruit"
+      },
       "errors": {
         "busy": "Le serveur est occupé. Réessayez dans un instant.",
         "readOnly": "Ce serveur est en lecture seule pour le moment. Réessayez plus tard.",

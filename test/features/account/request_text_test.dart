@@ -1,5 +1,6 @@
 import 'package:beacon/core/api.dart';
 import 'package:beacon/core/strings.dart';
+import 'package:beacon/features/account/alert_rules.dart';
 import 'package:beacon/features/account/request_text.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -193,4 +194,83 @@ void main() {
       );
     },
   );
+  // unavailableCodes as beacon-server sends them (alerts.md), with the kind
+  // that carries each and its English sentence.
+  const unavailableCodes = [
+    (
+      'observer_no_data',
+      'battery_low',
+      'This observer does not report a battery level.',
+    ),
+    ('repeaters_only', 'rebooted', 'Only repeaters report its uptime.'),
+    (
+      'not_polled',
+      'temperature',
+      'Beacon is not polling this repeater. Request telemetry for it first.',
+    ),
+    ('no_data', 'noise_high', 'This repeater does not report a noise floor.'),
+    ('observer_no_clock', 'clock', 'Observers have no clock drift value.'),
+    (
+      'clock_repeaters_only',
+      'clock',
+      'Only repeaters and room servers report their clock.',
+    ),
+    (
+      'needs_gone_quiet',
+      'back_online',
+      'Turn on the gone-quiet alert for this radio first.',
+    ),
+    (
+      'not_applicable',
+      'observer_offline',
+      'This alert does not apply to this radio.',
+    ),
+  ];
+
+  test('every alert reason code has words in each language', () {
+    for (final lang in supportedLanguages) {
+      for (final (code, kind, sentence) in unavailableCodes) {
+        language = 'en';
+        final english = alertReasonText(kind, code, 'x');
+        language = lang;
+        // The sentence is deliberately wrong: only the code may decide.
+        final text = alertReasonText(kind, code, 'x');
+        expect(text, isNot(startsWith('serverText.')), reason: '$lang $code');
+        expect(text, isNot('x'), reason: '$lang $code');
+        if (lang == 'en') {
+          expect(text, sentence);
+        } else {
+          expect(text, isNot(english), reason: '$lang $code');
+        }
+      }
+    }
+  });
+
+  test('an alert reason falls back to the sentence', () {
+    expect(alertReasonText('clock', 'brand_new', 'As sent.'), 'As sent.');
+    expect(alertReasonText('clock', null, 'As sent.'), 'As sent.');
+    expect(alertReasonText('clock', '', 'As sent.'), 'As sent.');
+    // A data code for a kind with no value name also falls back.
+    expect(alertReasonText('clock', 'no_data', 'As sent.'), 'As sent.');
+  });
+
+  test('a kind_unavailable error is read from the reasonCode in its body', () {
+    ApiException error(String? reasonCode) => ApiException(
+      'Sentence.',
+      status: 422,
+      code: 'kind_unavailable',
+      body: {
+        'error': {
+          'code': 'kind_unavailable',
+          'message': 'Sentence.',
+          'reasonCode': ?reasonCode,
+        },
+      },
+    );
+    expect(
+      alertError(error('needs_gone_quiet'), 'back_online'),
+      'Turn on the gone-quiet alert for this radio first.',
+    );
+    expect(alertError(error(null), 'back_online'), 'Sentence.');
+  });
 }

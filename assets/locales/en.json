@@ -1486,6 +1486,22 @@
         "offline_one": "Not heard by any observer for {{count}} day.",
         "offline_other": "Not heard by any observer for {{count}} days."
       },
+      "alertReason": {
+        "observerNoData": "This observer does not report {{what}}.",
+        "repeatersOnly": "Only repeaters report {{what}}.",
+        "notPolled": "Beacon is not polling this repeater. Request telemetry for it first.",
+        "noData": "This repeater does not report {{what}}.",
+        "observerNoClock": "Observers have no clock drift value.",
+        "clockRepeatersOnly": "Only repeaters and room servers report their clock.",
+        "needsGoneQuiet": "Turn on the gone-quiet alert for this radio first.",
+        "notApplicable": "This alert does not apply to this radio."
+      },
+      "alertWhat": {
+        "battery": "a battery level",
+        "uptime": "its uptime",
+        "temperature": "a temperature",
+        "noise": "a noise floor"
+      },
       "errors": {
         "busy": "The server is busy. Try again in a moment.",
         "readOnly": "This server is read-only right now. Try again later.",

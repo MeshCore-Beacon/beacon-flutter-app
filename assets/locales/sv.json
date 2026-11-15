@@ -1486,6 +1486,22 @@
         "offline_one": "Ingen observatör har hört den på {{count}} dag.",
         "offline_other": "Ingen observatör har hört den på {{count}} dagar."
       },
+      "alertReason": {
+        "observerNoData": "Den här observatören rapporterar inte {{what}}.",
+        "repeatersOnly": "Bara repeatrar rapporterar {{what}}.",
+        "notPolled": "Beacon hämtar inte data från den här repeatern. Begär telemetri för den först.",
+        "noData": "Den här repeatern rapporterar inte {{what}}.",
+        "observerNoClock": "Observatörer har inget klockavvikelsevärde.",
+        "clockRepeatersOnly": "Bara repeatrar och rumsservrar rapporterar sin klocka.",
+        "needsGoneQuiet": "Slå först på tystnadsaviseringen för den här radion.",
+        "notApplicable": "Den här aviseringen gäller inte den här radion."
+      },
+      "alertWhat": {
+        "battery": "batterinivå",
+        "uptime": "drifttid",
+        "temperature": "temperatur",
+        "noise": "brusnivå"
+      },
       "errors": {
         "busy": "Servern är upptagen. Försök igen om en stund.",
         "readOnly": "Servern är skrivskyddad just nu. Försök igen senare.",

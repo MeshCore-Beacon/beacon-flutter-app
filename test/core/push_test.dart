@@ -198,22 +198,34 @@ void main() {
   test('a tapped notification reports the target it names', () async {
     push.state = PushPermission.granted;
     final tapped = <String>[];
-    registration.onOpened = (kind, key) => tapped.add('$kind:$key');
+    registration.onOpened = (kind, key, id) =>
+        tapped.add('$kind:$key:${id ?? '-'}');
     await signIn();
     push.taps.add({'targetKind': 'node', 'publicKey': 'aabb'});
+    push.taps.add({
+      'targetKind': 'node',
+      'publicKey': 'aabb',
+      'id': '11111111-1111-1111-1111-111111111111',
+    });
+    push.taps.add({'targetKind': 'node', 'publicKey': 'aabb', 'id': ''});
     push.taps.add({'other': 'x'});
     await pump();
-    expect(tapped, ['node:aabb']);
+    expect(tapped, [
+      'node:aabb:-',
+      'node:aabb:11111111-1111-1111-1111-111111111111',
+      'node:aabb:-',
+    ]);
   });
 
   test('the notification that launched the app is opened once', () async {
     push.state = PushPermission.granted;
     push.initial = {'targetKind': 'observer', 'publicKey': 'ccdd'};
     final tapped = <String>[];
-    registration.onOpened = (kind, key) => tapped.add('$kind:$key');
+    registration.onOpened = (kind, key, id) =>
+        tapped.add('$kind:$key:${id ?? '-'}');
     await signIn();
     await registration.refresh();
-    expect(tapped, ['observer:ccdd']);
+    expect(tapped, ['observer:ccdd:-']);
   });
 }
 

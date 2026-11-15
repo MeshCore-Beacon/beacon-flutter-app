@@ -22,8 +22,9 @@ http.Response failure(
   String code,
   String message, {
   Map<String, String>? headers,
+  String? reasonCode,
 }) => json(status, {
-  'error': {'code': code, 'message': message},
+  'error': {'code': code, 'message': message, 'reasonCode': ?reasonCode},
 }, headers: headers);
 
 Map<String, dynamic> user({

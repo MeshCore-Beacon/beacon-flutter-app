@@ -80,8 +80,9 @@ class PushRegistration extends ChangeNotifier {
   final AccountState account;
   final Future<ServerFeatures> Function() features;
 
-  /// Called with (targetKind, publicKey) when a notification is tapped.
-  void Function(String kind, String publicKey)? onOpened;
+  /// Called with (targetKind, publicKey, id) when a notification is tapped; id
+  /// is the radio's node or observer id, null when the payload has none.
+  void Function(String kind, String publicKey, String? id)? onOpened;
 
   PushStatus status = PushStatus.off;
   StreamSubscription<String>? _refreshes;
@@ -188,7 +189,8 @@ class PushRegistration extends ChangeNotifier {
     final kind = textOf(data['targetKind'], textOf(data['kind']));
     final key = textOf(data['publicKey']);
     if (kind.isEmpty || key.isEmpty) return;
-    onOpened?.call(kind, key);
+    final id = textOf(data['id']);
+    onOpened?.call(kind, key, id.isEmpty ? null : id);
   }
 
   /// Removes this phone from the account. Call before the session ends; a

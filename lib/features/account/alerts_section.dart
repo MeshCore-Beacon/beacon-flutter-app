@@ -167,6 +167,7 @@ class _AlertTarget extends StatelessWidget {
       for (final k in target['available'] as List? ?? []) '$k',
     ];
     final unavailable = object(target['unavailable']);
+    final codes = object(target['unavailableCodes']);
     final rules = rows(target['rules']);
     final goneQuiet = rules.any(
       (r) => r['kind'] == 'gone_quiet' && r['enabled'] == true,
@@ -192,7 +193,11 @@ class _AlertTarget extends StatelessWidget {
                 rule: rules.where((r) => r['kind'] == spec.kind).firstOrNull,
                 reason: available.contains(spec.kind)
                     ? null
-                    : textOf(unavailable[spec.kind]),
+                    : alertReasonText(
+                        spec.kind,
+                        textOf(codes[spec.kind]),
+                        textOf(unavailable[spec.kind]),
+                      ),
                 goneQuietOn: goneQuiet,
                 account: account,
                 changed: changed,
@@ -242,7 +247,10 @@ class _AlertRowState extends State<_AlertRow> with _Action {
   int? _stored(String field) => number(widget.rule?[field])?.toInt();
 
   List<int> get options => widget.spec.input == AlertInput.hours
-      ? goneQuietHours(textOf(widget.target['kind']), widget.available)
+      ? goneQuietHours(
+          textOf(widget.target['kind']),
+          widget.target['polled'] == true,
+        )
       : widget.spec.options;
 
   @override
@@ -336,7 +344,7 @@ class _AlertRowState extends State<_AlertRow> with _Action {
         enabled: on,
       );
       return null;
-    }, describe: alertError);
+    }, describe: (e) => alertError(e, kind));
     if (ok) await widget.changed();
   }
 

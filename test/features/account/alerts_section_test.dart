@@ -44,15 +44,21 @@ Map<String, dynamic> target({
   String name = 'Hilltop',
   String key = 'aabb',
   String kind = 'node',
+  String? id = '11111111-1111-1111-1111-111111111111',
+  bool polled = true,
   List<String> available = full,
   Map<String, String> unavailable = const {},
+  Map<String, String> unavailableCodes = const {},
   List<Map<String, dynamic>> rules = const [],
 }) => {
+  'id': id,
   'kind': kind,
   'publicKey': key,
   'name': name,
+  'polled': polled,
   'available': available,
   'unavailable': unavailable,
+  'unavailableCodes': unavailableCodes,
   'rules': rules,
 };
 
@@ -128,10 +134,13 @@ void main() {
         target(
           name: 'Ridge',
           key: 'ccdd',
+          id: null,
+          polled: false,
           available: ['gone_quiet', 'back_online'],
           unavailable: {
             'temperature': 'This repeater does not report a temperature.',
           },
+          unavailableCodes: {'temperature': 'no_data'},
         ),
       ],
     };
@@ -272,6 +281,36 @@ void main() {
     expect(k('alert-switch-ccdd-temperature'), findsNothing);
   });
 
+  testWidgets('a reason is read from its code, else the server sentence', (
+    tester,
+  ) async {
+    data['targets'] = [
+      target(
+        key: 'eeff',
+        available: ['gone_quiet'],
+        unavailable: {
+          'clock': 'Server sentence one.',
+          'noise_high': 'Server sentence two.',
+          'battery_low': 'Server sentence three.',
+        },
+        unavailableCodes: {
+          'clock': 'brand_new_code',
+          'noise_high': 'not_polled',
+        },
+      ),
+    ];
+    await open(tester);
+    expect(find.text('Server sentence one.'), findsOneWidget);
+    expect(
+      find.text(
+        'Beacon is not polling this repeater. Request telemetry for it first.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Server sentence three.'), findsOneWidget);
+    expect(find.text('Server sentence two.'), findsNothing);
+  });
+
   testWidgets('rule states read in words and only for enabled rules', (
     tester,
   ) async {
@@ -304,6 +343,34 @@ void main() {
       expect(await options(tester, 'alert-input-aabb-gone_quiet'), [
         3,
         6,
+        12,
+        24,
+        48,
+      ]);
+    });
+
+    testWidgets('3 and 6 for a polled repeater that lists no telemetry kind', (
+      tester,
+    ) async {
+      data['targets'] = [
+        target(available: ['gone_quiet', 'clock']),
+      ];
+      await open(tester);
+      expect(await options(tester, 'alert-input-aabb-gone_quiet'), [
+        3,
+        6,
+        12,
+        24,
+        48,
+      ]);
+    });
+
+    testWidgets('only 12, 24 and 48 when not polled, whatever it lists', (
+      tester,
+    ) async {
+      data['targets'] = [target(polled: false)];
+      await open(tester);
+      expect(await options(tester, 'alert-input-aabb-gone_quiet'), [
         12,
         24,
         48,
@@ -580,24 +647,33 @@ void main() {
   });
 
   group('server errors show on their own row', () {
-    const cases = [
+    const cases = <(String, int, String, String, String?)>[
       (
         'kind_unavailable',
         422,
         'This repeater does not report a temperature.',
         'does not report a temperature',
+        null,
       ),
-      ('invalid_threshold', 422, 'bad', 'not an allowed value'),
-      ('not_on_atlas', 409, 'x', 'no longer in your Atlas'),
-      ('alerts_disabled', 404, 'x', 'turned off on this server'),
-      ('not_found', 404, 'No such rule.', 'no longer exists'),
-      ('app_session_required', 403, 'x', 'Only the Beacon app'),
-      ('invalid_input', 422, 'x', 'Check what you entered'),
+      (
+        'kind_unavailable',
+        422,
+        'English sentence.',
+        'Turn on the gone-quiet alert',
+        'needs_gone_quiet',
+      ),
+      ('invalid_threshold', 422, 'bad', 'not an allowed value', null),
+      ('not_on_atlas', 409, 'x', 'no longer in your Atlas', null),
+      ('alerts_disabled', 404, 'x', 'turned off on this server', null),
+      ('not_found', 404, 'No such rule.', 'no longer exists', null),
+      ('app_session_required', 403, 'x', 'Only the Beacon app', null),
+      ('invalid_input', 422, 'x', 'Check what you entered', null),
     ];
-    for (final (code, status, message, text) in cases) {
-      testWidgets(code, (tester) async {
+    for (final (code, status, message, text, reasonCode) in cases) {
+      testWidgets('$code ${reasonCode ?? ''}', (tester) async {
         await open(tester);
-        putAnswer = (_) => failure(status, code, message);
+        putAnswer = (_) =>
+            failure(status, code, message, reasonCode: reasonCode);
         await tap(tester, 'alert-switch-aabb-rebooted');
         final row = find.descendant(
           of: k('alert-aabb-rebooted'),
