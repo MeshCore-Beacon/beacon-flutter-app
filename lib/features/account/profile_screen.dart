@@ -242,7 +242,7 @@ class _Empty extends StatelessWidget {
   final String text;
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 8),
+    padding: const EdgeInsets.only(top: 8),
     child: Text(
       text,
       style: TextStyle(color: BeaconColors.of(context).muted, fontSize: 13),
@@ -593,7 +593,9 @@ class _PasswordFormState extends State<_PasswordForm> with _Action {
           hint: AutofillHints.newPassword,
           helper: trKey('passwordRule.hint'),
           // Red only once something is typed, so the form opens calm.
-          error: next.text.isNotEmpty && !newPasswordOk(next.text)
+          error: passwordTooLong(next.text)
+              ? trKey('passwordRule.tooLong')
+              : next.text.isNotEmpty && !newPasswordOk(next.text)
               ? trKey('passwordRule.hint')
               : null,
           action: TextInputAction.done,

@@ -188,10 +188,7 @@ void main() {
   ) async {
     final h = make({});
     await open(tester, h);
-    expect(
-      find.text('At least 12 characters, at most 128 bytes.'),
-      findsOneWidget,
-    );
+    expect(find.text('At least 12 characters.'), findsOneWidget);
     await typeInto(tester, 'pw-current', 'old-password-1');
     await typeInto(tester, 'pw-new', 'short-pw-11');
     FilledButton save() =>
@@ -199,6 +196,11 @@ void main() {
     expect(save().onPressed, isNull);
     await typeInto(tester, 'pw-new', 'long-enough-12');
     expect(save().onPressed, isNotNull);
+    await typeInto(tester, 'pw-new', 'a' * 129);
+    await tester.pumpAndSettle();
+    expect(find.text('That password is too long.'), findsOneWidget);
+    expect(find.text('At least 12 characters.'), findsNothing);
+    expect(save().onPressed, isNull);
   });
 
   testWidgets('changing the password works and refreshes devices', (

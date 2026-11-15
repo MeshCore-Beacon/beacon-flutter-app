@@ -1514,7 +1514,8 @@
       }
     },
     "passwordRule": {
-      "hint": "At least 12 characters, at most 128 bytes."
+      "hint": "At least 12 characters.",
+      "tooLong": "That password is too long."
     },
     "accountUi": {
       "introBase": "Sync your Atlas.",

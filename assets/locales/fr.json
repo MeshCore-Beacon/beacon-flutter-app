@@ -1561,7 +1561,8 @@
       }
     },
     "passwordRule": {
-      "hint": "Au moins 12 caractères, au plus 128 octets."
+      "hint": "Au moins 12 caractères.",
+      "tooLong": "Ce mot de passe est trop long."
     },
     "accountUi": {
       "introBase": "Synchronisez votre Atlas.",

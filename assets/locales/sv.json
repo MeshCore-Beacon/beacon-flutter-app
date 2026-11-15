@@ -1514,7 +1514,8 @@
       }
     },
     "passwordRule": {
-      "hint": "Minst 12 tecken, högst 128 byte."
+      "hint": "Minst 12 tecken.",
+      "tooLong": "Lösenordet är för långt."
     },
     "accountUi": {
       "introBase": "Synka din Atlas.",

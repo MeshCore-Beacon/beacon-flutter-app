@@ -88,7 +88,7 @@ class _AlertsState extends State<_Alerts> {
             changed: load,
           ),
         Padding(
-          padding: const EdgeInsets.only(top: 12),
+          padding: const EdgeInsets.only(top: 8),
           child: Text(trKey('alerts.requestAttention'), style: muted),
         ),
       ],
