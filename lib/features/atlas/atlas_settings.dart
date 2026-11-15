@@ -76,6 +76,7 @@ class AtlasSettings extends StatelessWidget {
   }
 
   Future<void> _import(BuildContext context, String url) async {
+    final epoch = store?.epoch;
     String? text;
     try {
       text = await files.pick();
@@ -116,6 +117,8 @@ class AtlasSettings extends StatelessWidget {
       if (replace != true || !context.mounted) return;
     }
     final shared = store;
+    // The account that picked the file may be gone by now.
+    if (shared != null && epoch != null && !shared.sameAccount(epoch)) return;
     if (shared != null && shared.url == url && shared.signedIn) {
       shared.update((_) => result.atlas);
     } else {

@@ -1,11 +1,16 @@
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:beacon/core/account.dart';
 import 'package:beacon/core/api.dart';
+import 'package:beacon/core/auth_api.dart';
 import 'package:beacon/core/preferences.dart';
 import 'package:beacon/core/theme.dart';
+import 'package:beacon/core/token_store.dart';
 import 'package:beacon/features/atlas/atlas.dart';
 import 'package:beacon/features/atlas/atlas_grid.dart';
 import 'package:beacon/features/atlas/atlas_screen.dart';
+import 'package:beacon/features/atlas/atlas_store.dart';
 import 'package:beacon/features/atlas/atlas_widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -62,6 +67,9 @@ class Server {
     'radio': '910.525,62.5,7',
     'batteryLevel': 4.1,
   };
+
+  /// Holds the observer lookup, like a slow network.
+  Completer<void>? holdObserver;
   bool activity404 = false;
   bool polling = true;
   List<Map<String, dynamic>> readings = [
@@ -176,6 +184,9 @@ class Server {
     now: () => clock,
     client: MockClient((request) async {
       requests.add(request.url);
+      if (request.url.path.endsWith('/observers/$observerId')) {
+        await holdObserver?.future;
+      }
       final body = reply(request.url);
       return body == null
           ? http.Response('{"error":{"message":"not found"}}', 404)
@@ -685,5 +696,81 @@ void main() {
     final prefs = await Preferences.load();
     expect(parseAtlas(prefs.atlasFor(server)).pins, hasLength(1));
     expect(prefs.atlasFor('https://other.invalid'), isNull);
+  });
+
+  testWidgets('an observer add that outlives its sign-in writes nothing', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    SharedPreferences.setMockInitialValues({
+      'beacon.servers': jsonEncode([
+        {'name': 'Test', 'url': server},
+      ]),
+      'beacon.active': server,
+      'beacon.atlas.synced.$server.u1': true,
+      'beacon.atlas.synced.$server.u2': true,
+    });
+    final prefs = await Preferences.load();
+    final tokens = MemoryTokenStore();
+    await tokens.write(server, 'tok');
+    final puts = <Map<String, dynamic>>[];
+    final account = AccountState(
+      AuthApi(
+        server,
+        tokens,
+        client: MockClient((r) async {
+          if (r.method == 'PUT') {
+            puts.add(jsonDecode(r.body) as Map<String, dynamic>);
+          }
+          return http.Response(
+            jsonEncode({
+              'revision': 1,
+              'range': '24h',
+              'limit': 12,
+              'pins': [],
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }),
+      ),
+    )..adopt({'id': 'u1'});
+    final store = AtlasStore(prefs, server, account: account);
+    await store.idle;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: BeaconTheme.all.first.data,
+        home: Scaffold(
+          body: AtlasScreen(
+            api: fake.api,
+            preferences: prefs,
+            store: store,
+            onOpen: (_, _) {},
+            clock: () => now,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('atlas-search-field')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Observer').last);
+    await tester.pumpAndSettle();
+    await search(tester, 'roof');
+    fake.holdObserver = Completer();
+    await tester.tap(find.text('Add'));
+    await tester.pump();
+    account.adopt(null);
+    account.adopt({'id': 'u2'});
+    await store.idle;
+    fake.holdObserver!.complete();
+    await tester.pumpAndSettle();
+    await store.idle;
+    expect(puts, isEmpty);
+    expect(store.saved.pins, isEmpty);
+    await close(tester);
   });
 }

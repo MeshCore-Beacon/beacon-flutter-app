@@ -198,10 +198,13 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
       addFailed = false;
     });
     final id = textOf(row['id']), name = textOf(row['displayName']);
+    final epoch = store.epoch;
     try {
       final observer = object(await widget.api.getCached('/observers/$id'));
       final match = await resolveObserverNode(widget.api, observer);
       if (!mounted) return;
+      // Another account signed in while the lookup ran: it is not theirs to add.
+      if (!store.sameAccount(epoch)) return setState(() => adding = false);
       if (match == null) {
         store.update(
           (value) =>

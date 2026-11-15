@@ -42,6 +42,11 @@ class AtlasStore extends ChangeNotifier {
 
   bool get signedIn => _currentUser != null;
 
+  /// The account generation. An action that awaits notes it first and drops
+  /// its result when [sameAccount] says it moved.
+  int get epoch => account?.epoch ?? 0;
+  bool sameAccount(int noted) => epoch == noted;
+
   /// True while [user]'s session, as noted at [epoch], is still the live one.
   bool _live(String user, int epoch) =>
       _currentUser == user && account?.epoch == epoch;
@@ -200,6 +205,7 @@ class AtlasStore extends ChangeNotifier {
     final local = _heldBase ?? saved, held = _held;
     _held = [];
     _heldBase = null;
+    final edited = _revision;
     _revision = server.revision;
     _observerKeys = {..._observerKeys, ...server.observerKeys};
     final owner = preferences.atlasOwnerFor(url);
@@ -223,8 +229,10 @@ class AtlasStore extends ChangeNotifier {
         await preferences.markAtlasSynced(url, user);
       }
     } else if (_dirty) {
-      // Local changes the server has not seen: push them over its revision.
+      // Local changes the server has not seen keep the revision they were made
+      // on, so a newer server copy answers 409 instead of being overwritten.
       saved = local;
+      _revision = edited ?? server.revision;
     } else {
       _adopt(server);
     }

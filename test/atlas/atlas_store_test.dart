@@ -700,6 +700,40 @@ void main() {
     });
   });
 
+  group('a failed write followed by a reload', () {
+    test(
+      'keeps the base revision of the edit, so the server answers 409',
+      () async {
+        final fake = FakeServer()
+          ..revision = 4
+          ..pins = [serverNode(key)];
+        final r = await rig(fake: fake, marked: true, owner: 'u1');
+        await r.store.idle;
+        fake.offline = true;
+        r.store.update((v) => v.appended(node(otherKey, 'Mine')));
+        await r.store.idle;
+        fake.offline = false;
+        // Another device adds a pin at revision 5.
+        fake
+          ..revision = 5
+          ..pins = [serverNode(key), serverNode(keyN(7), 'Elsewhere')];
+        await r.store.sync();
+        await r.store.idle;
+        final bases = [
+          for (final q in fake.puts)
+            (jsonDecode(q.body) as Map)['baseRevision'],
+        ];
+        expect(bases, isNot(contains(5)));
+        expect(fake.pins.length, 2);
+        expect(
+          [for (final p in r.store.saved.pins) p.name],
+          ['Hill', 'Elsewhere'],
+        );
+        expect(r.store.notice?.kind, AtlasNoticeKind.conflict);
+      },
+    );
+  });
+
   group('automatic rewrites', () {
     test('a relink changes the view only: no write, no request', () async {
       final fake = FakeServer()
