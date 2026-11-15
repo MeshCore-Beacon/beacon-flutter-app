@@ -1392,6 +1392,52 @@
         "network": "Impossible de joindre le serveur. Vérifiez votre connexion.",
         "generic": "Une erreur est survenue. Réessayez."
       }
+    },
+    "telemetryRequests": {
+      "title": "Demandes de télémétrie",
+      "request": "Demander la télémétrie",
+      "explain": "Demandez à des observateurs bénévoles qui entendent ce répéteur de lire ses statistiques. Les mesures apparaissent ensuite ici.",
+      "passwordLabel": "Mot de passe invité (facultatif)",
+      "notice": "Le mot de passe invité est partagé avec des observateurs bénévoles pour qu'ils puissent demander ses statistiques à ce répéteur. N'entrez jamais un mot de passe administrateur.",
+      "used": "{{used}} demandes sur {{limit}} utilisées",
+      "count": "{{used}} sur {{limit}}",
+      "limitReached": "Vous avez utilisé toutes vos demandes. Supprimez-en une dans votre profil pour faire de la place.",
+      "submit": "Demander la télémétrie",
+      "requested": "Vous avez demandé ce répéteur.",
+      "openProfile": "Ouvrir le profil",
+      "loadFailed": "Impossible de charger vos demandes.",
+      "retry": "Réessayer",
+      "requestedOk": "Demande envoyée.",
+      "empty": "Aucune demande pour l'instant. Ouvrez un répéteur et choisissez Demander la télémétrie.",
+      "unknownRepeater": "Répéteur inconnu",
+      "polledBy": "Interrogé par {{name}}",
+      "lastReading": "Dernière mesure {{when}}",
+      "noReading": "Aucune mesure pour l'instant",
+      "passwordSet": "Mot de passe invité défini",
+      "passwordNone": "Pas de mot de passe invité",
+      "changePassword": "Changer le mot de passe",
+      "newPassword": "Nouveau mot de passe invité (vide pour le retirer)",
+      "save": "Enregistrer",
+      "cancel": "Annuler",
+      "saved": "Enregistré.",
+      "reenable": "Réactiver",
+      "remove": "Supprimer",
+      "confirmRemove": "Supprimer cette demande ?",
+      "status": {
+        "waiting": "En attente d'un observateur qui peut l'atteindre",
+        "active": "Interrogé régulièrement",
+        "login_failed": "Le répéteur a refusé le mot de passe",
+        "admin_stopped": "Arrêté : ce mot de passe donnait un accès administrateur et a été supprimé",
+        "disabled": "En pause : le répéteur n'a pas été entendu récemment"
+      },
+      "errors": {
+        "request_limit": "Vous avez utilisé toutes vos demandes.",
+        "already_requested": "Vous avez déjà demandé ce répéteur.",
+        "not_a_repeater": "Seuls les répéteurs et les serveurs de salle peuvent être interrogés.",
+        "password_invalid": "Le mot de passe invité doit comporter de 1 à 15 caractères.",
+        "no_password_blocked": "Ce répéteur donne un accès administrateur sans mot de passe, il ne peut donc pas être interrogé ainsi",
+        "requests_disabled": "Les demandes de télémétrie sont désactivées sur ce serveur."
+      }
     }
   }
 }

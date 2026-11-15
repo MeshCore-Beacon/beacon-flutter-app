@@ -343,6 +343,75 @@ void main() {
     });
   });
 
+  group('Telemetry requests', () {
+    Future<AuthApi> signedIn(http.Response Function(http.Request) h) async {
+      await tokens.write(_base, 'abc');
+      return make(h);
+    }
+
+    test('telemetryRequests() reads the list with the Bearer token', () async {
+      final api = await signedIn(
+        (_) => _json(200, {'limit': 3, 'requests': []}),
+      );
+      expect((await api.telemetryRequests())['limit'], 3);
+      expect(seen.single.method, 'GET');
+      expect(seen.single.url.path, '/api/v1/me/telemetry-requests');
+      expect(seen.single.headers['authorization'], 'Bearer abc');
+    });
+
+    test('create sends the node, and a password only when given', () async {
+      final api = await signedIn((_) => _json(201, {'id': 'r1'}));
+      await api.createTelemetryRequest('n1', password: 'guest');
+      await api.createTelemetryRequest('n1');
+      await api.createTelemetryRequest('n1', password: '');
+      expect(seen.map((r) => r.method), ['POST', 'POST', 'POST']);
+      expect(seen.first.url.path, '/api/v1/me/telemetry-requests');
+      expect(jsonDecode(seen[0].body), {'nodeId': 'n1', 'password': 'guest'});
+      expect(jsonDecode(seen[1].body), {'nodeId': 'n1'});
+      expect(jsonDecode(seen[2].body), {'nodeId': 'n1'});
+    });
+
+    test(
+      'update sends a new password, null to remove it, or enabled',
+      () async {
+        final api = await signedIn((_) => _json(200, {'id': 'r1'}));
+        await api.updateTelemetryRequest(
+          'r1',
+          withPassword: true,
+          password: 'x',
+        );
+        await api.updateTelemetryRequest(
+          'r1',
+          withPassword: true,
+          password: '',
+        );
+        await api.updateTelemetryRequest('r1', enabled: true);
+        expect(seen.map((r) => r.method), ['PATCH', 'PATCH', 'PATCH']);
+        expect(seen.first.url.path, '/api/v1/me/telemetry-requests/r1');
+        expect(jsonDecode(seen[0].body), {'password': 'x'});
+        expect(jsonDecode(seen[1].body), {'password': null});
+        expect(jsonDecode(seen[2].body), {'enabled': true});
+      },
+    );
+
+    test('delete removes the request', () async {
+      final api = await signedIn((_) => http.Response('', 204));
+      await api.deleteTelemetryRequest('r/1');
+      expect(seen.single.method, 'DELETE');
+      expect(seen.single.url.path, '/api/v1/me/telemetry-requests/r%2F1');
+    });
+
+    test('a refusal keeps its code', () async {
+      final api = await signedIn((_) => _error(409, 'request_limit'));
+      await expectLater(
+        api.createTelemetryRequest('n1'),
+        throwsA(
+          isA<ApiException>().having((e) => e.code, 'code', 'request_limit'),
+        ),
+      );
+    });
+  });
+
   group('Atlas', () {
     test(
       'atlas() reads the account collection with the Bearer token',

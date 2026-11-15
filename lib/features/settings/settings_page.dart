@@ -29,6 +29,7 @@ class SettingsPage extends StatelessWidget {
     this.account,
     this.api,
     this.atlas,
+    this.onOpen,
   });
   final Preferences preferences;
   final Future<String?> Function() appVersion;
@@ -41,6 +42,9 @@ class SettingsPage extends StatelessWidget {
 
   /// The active server's shared Atlas store, so a signed-in import is synced.
   final AtlasStore? atlas;
+
+  /// Opens a repeater from the profile's telemetry requests.
+  final void Function(String, String)? onOpen;
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: preferences,
@@ -122,6 +126,7 @@ class SettingsPage extends StatelessWidget {
                 account: account!,
                 api: api!,
                 serverName: preferences.active!.name,
+                onOpen: onOpen,
               ),
           ],
           const SizedBox(height: 12),

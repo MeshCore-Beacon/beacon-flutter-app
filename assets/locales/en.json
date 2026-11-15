@@ -1345,6 +1345,52 @@
         "network": "Could not reach the server. Check your connection.",
         "generic": "Something went wrong. Try again."
       }
+    },
+    "telemetryRequests": {
+      "title": "Telemetry requests",
+      "request": "Request telemetry",
+      "explain": "Ask volunteer observers that can hear this repeater to read its stats. The readings then appear here.",
+      "passwordLabel": "Guest password (optional)",
+      "notice": "The guest password is shared with volunteer observers so they can ask this repeater for its stats. Never enter an admin password.",
+      "used": "{{used}} of {{limit}} requests used",
+      "count": "{{used}} of {{limit}}",
+      "limitReached": "You have used all your requests. Remove one in your profile to make room.",
+      "submit": "Request telemetry",
+      "requested": "You requested this repeater.",
+      "openProfile": "Open profile",
+      "loadFailed": "Could not load your requests.",
+      "retry": "Retry",
+      "requestedOk": "Requested.",
+      "empty": "No requests yet. Open a repeater and choose Request telemetry.",
+      "unknownRepeater": "Unknown repeater",
+      "polledBy": "Polled by {{name}}",
+      "lastReading": "Last reading {{when}}",
+      "noReading": "No readings yet",
+      "passwordSet": "Guest password set",
+      "passwordNone": "No guest password",
+      "changePassword": "Change password",
+      "newPassword": "New guest password (empty removes it)",
+      "save": "Save",
+      "cancel": "Cancel",
+      "saved": "Saved.",
+      "reenable": "Re-enable",
+      "remove": "Remove",
+      "confirmRemove": "Remove this request?",
+      "status": {
+        "waiting": "Waiting for an observer that can reach it",
+        "active": "Being polled",
+        "login_failed": "The repeater refused the password",
+        "admin_stopped": "Stopped: that password gave admin access and was deleted",
+        "disabled": "Paused: the repeater has not been heard recently"
+      },
+      "errors": {
+        "request_limit": "You have used all your requests.",
+        "already_requested": "You already requested this repeater.",
+        "not_a_repeater": "Only repeaters and room servers can be polled.",
+        "password_invalid": "The guest password must be 1 to 15 characters.",
+        "no_password_blocked": "This repeater gives admin access without a password, so it cannot be polled this way",
+        "requests_disabled": "Telemetry requests are turned off on this server."
+      }
     }
   }
 }

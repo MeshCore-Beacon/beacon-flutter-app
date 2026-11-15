@@ -1,0 +1,317 @@
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import '../../core/account.dart';
+import '../../core/api.dart';
+import '../../core/json.dart';
+import '../../core/strings.dart';
+import '../../core/theme.dart';
+import '../account/profile_screen.dart';
+import '../account/request_text.dart';
+import 'directory_widgets.dart';
+
+const guestPasswordMaxBytes = 15;
+
+/// Cuts the text to the server's 15-byte limit, counting UTF-8 bytes, so a
+/// paste is shortened instead of refused.
+class _ByteLimit extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    if (utf8.encode(newValue.text).length <= guestPasswordMaxBytes) {
+      return newValue;
+    }
+    var kept = '';
+    for (final rune in newValue.text.runes) {
+      final next = kept + String.fromCharCode(rune);
+      if (utf8.encode(next).length > guestPasswordMaxBytes) break;
+      kept = next;
+    }
+    return TextEditingValue(
+      text: kept,
+      selection: TextSelection.collapsed(offset: kept.length),
+    );
+  }
+}
+
+/// The optional guest password field: obscured with a show control, capped, and
+/// kept out of autofill and the keyboard's suggestions.
+class GuestPasswordField extends StatefulWidget {
+  const GuestPasswordField({
+    super.key,
+    required this.controller,
+    required this.label,
+  });
+  final TextEditingController controller;
+  final String label;
+  @override
+  State<GuestPasswordField> createState() => _GuestPasswordFieldState();
+}
+
+class _GuestPasswordFieldState extends State<GuestPasswordField> {
+  bool shown = false;
+  @override
+  Widget build(BuildContext context) => TextField(
+    controller: widget.controller,
+    obscureText: !shown,
+    autocorrect: false,
+    enableSuggestions: false,
+    autofillHints: null,
+    inputFormatters: [_ByteLimit()],
+    decoration: InputDecoration(
+      labelText: widget.label,
+      suffixIcon: IconButton(
+        tooltip: trKey(shown ? 'account.hidePassword' : 'account.showPassword'),
+        icon: Icon(shown ? Icons.visibility_off : Icons.visibility, size: 20),
+        onPressed: () => setState(() => shown = !shown),
+      ),
+    ),
+  );
+}
+
+/// "Request telemetry" on a repeater's detail screen. Draws nothing unless the
+/// user is signed in on this server and the server has requests on. [standalone]
+/// wraps it in its own section, for a node with no readings.
+class TelemetryRequestBlock extends StatefulWidget {
+  const TelemetryRequestBlock({
+    super.key,
+    required this.api,
+    required this.account,
+    required this.nodeId,
+    required this.publicKey,
+    required this.onOpen,
+    this.standalone = false,
+  });
+  final ApiClient api;
+  final AccountState account;
+  final String nodeId, publicKey;
+  final void Function(String, String) onOpen;
+  final bool standalone;
+  @override
+  State<TelemetryRequestBlock> createState() => _TelemetryRequestBlockState();
+}
+
+class _TelemetryRequestBlockState extends State<TelemetryRequestBlock> {
+  final password = TextEditingController();
+  bool enabled = false, loaded = false, failed = false, busy = false;
+  List<Json> requests = [];
+  int limit = 0, generation = 0;
+  String? note;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.account.addListener(load);
+    load();
+  }
+
+  @override
+  void didUpdateWidget(covariant TelemetryRequestBlock old) {
+    super.didUpdateWidget(old);
+    if (old.api != widget.api || old.account != widget.account) {
+      old.account.removeListener(load);
+      widget.account.addListener(load);
+    }
+    if (old.api != widget.api ||
+        old.account != widget.account ||
+        old.nodeId != widget.nodeId) {
+      load();
+    }
+  }
+
+  @override
+  void dispose() {
+    generation++;
+    widget.account.removeListener(load);
+    password.dispose();
+    super.dispose();
+  }
+
+  Future<void> load() async {
+    final token = ++generation;
+    bool stale() => !mounted || token != generation;
+    if (!widget.account.signedIn) {
+      setState(() => enabled = loaded = false);
+      return;
+    }
+    final features = await widget.api.features();
+    if (stale()) return;
+    if (!features.telemetryRequests) {
+      setState(() => enabled = loaded = false);
+      return;
+    }
+    try {
+      final data = await widget.account.api.telemetryRequests();
+      if (stale()) return;
+      setState(() {
+        enabled = loaded = true;
+        failed = false;
+        requests = rows(data['requests']);
+        limit = (number(data['limit']) ?? 0).toInt();
+        if (limit <= 0) enabled = false;
+      });
+    } catch (_) {
+      if (stale()) return;
+      setState(() {
+        enabled = true;
+        loaded = false;
+        failed = true;
+      });
+    }
+  }
+
+  Json? get mine {
+    for (final r in requests) {
+      final node = object(r['node']);
+      final id = textOf(node['id']);
+      if (id.isNotEmpty && id == widget.nodeId) return r;
+      if (widget.publicKey.isNotEmpty &&
+          textOf(node['publicKey']).toLowerCase() ==
+              widget.publicKey.toLowerCase()) {
+        return r;
+      }
+    }
+    return null;
+  }
+
+  Future<void> submit() async {
+    setState(() {
+      busy = true;
+      note = null;
+    });
+    final typed = password.text;
+    try {
+      await widget.account.api.createTelemetryRequest(
+        widget.nodeId,
+        password: typed,
+      );
+      password.clear();
+      busy = false;
+      await load();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        busy = false;
+        note = requestError(e);
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!enabled) return const SizedBox.shrink();
+    final colors = BeaconColors.of(context);
+    final muted = TextStyle(fontSize: 12, color: colors.muted);
+    final children = <Widget>[
+      if (!widget.standalone)
+        Padding(
+          padding: const EdgeInsets.only(top: 12, bottom: 6),
+          child: Text(
+            trKey('telemetryRequests.request'),
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+        ),
+      ..._body(context, muted),
+    ];
+    if (widget.standalone) {
+      return section(trKey('telemetryRequests.request'), children);
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: children,
+    );
+  }
+
+  List<Widget> _body(BuildContext context, TextStyle muted) {
+    if (failed && !loaded) {
+      return [
+        Text(trKey('telemetryRequests.loadFailed'), style: muted),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            onPressed: load,
+            child: Text(trKey('telemetryRequests.retry')),
+          ),
+        ),
+      ];
+    }
+    final request = mine;
+    if (request != null) {
+      return [
+        Text(requestStatusText(textOf(request['status']))),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: OutlinedButton(
+            key: const ValueKey('request-open-profile'),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (_) => ProfileScreen(
+                  account: widget.account,
+                  api: widget.api,
+                  onOpen: widget.onOpen,
+                ),
+              ),
+            ),
+            child: Text(trKey('telemetryRequests.openProfile')),
+          ),
+        ),
+      ];
+    }
+    final full = requests.length >= limit;
+    return [
+      Text(trKey('telemetryRequests.explain'), style: muted),
+      const SizedBox(height: 8),
+      GuestPasswordField(
+        key: const ValueKey('request-password'),
+        controller: password,
+        label: trKey('telemetryRequests.passwordLabel'),
+      ),
+      const SizedBox(height: 4),
+      Text(trKey('telemetryRequests.notice'), style: muted),
+      const SizedBox(height: 8),
+      Text(
+        trKey('telemetryRequests.used')
+            .replaceAll('{{used}}', '${requests.length}')
+            .replaceAll('{{limit}}', '$limit'),
+        style: muted,
+      ),
+      if (full)
+        Text(
+          trKey('telemetryRequests.limitReached'),
+          style: TextStyle(
+            fontSize: 12,
+            color: BeaconColors.of(context).danger,
+          ),
+        ),
+      const SizedBox(height: 8),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: FilledButton(
+          key: const ValueKey('request-submit'),
+          onPressed: busy || full ? null : submit,
+          child: busy
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Text(trKey('telemetryRequests.submit')),
+        ),
+      ),
+      if (note != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Text(
+            note!,
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
+        ),
+    ];
+  }
+}

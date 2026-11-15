@@ -17,10 +17,12 @@ class AccountSection extends StatefulWidget {
     required this.account,
     required this.api,
     required this.serverName,
+    this.onOpen,
   });
   final AccountState account;
   final ApiClient api;
   final String serverName;
+  final void Function(String, String)? onOpen;
   @override
   State<AccountSection> createState() => _AccountSectionState();
 }
@@ -132,7 +134,11 @@ class _AccountSectionState extends State<AccountSection> {
         onTap: () => Navigator.push(
           context,
           MaterialPageRoute<void>(
-            builder: (_) => ProfileScreen(account: widget.account),
+            builder: (_) => ProfileScreen(
+              account: widget.account,
+              api: widget.api,
+              onOpen: widget.onOpen,
+            ),
           ),
         ),
       ),

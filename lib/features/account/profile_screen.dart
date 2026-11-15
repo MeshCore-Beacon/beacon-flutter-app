@@ -1,15 +1,31 @@
 import 'package:flutter/material.dart';
 
 import '../../core/account.dart';
+import '../../core/api.dart';
 import '../../core/json.dart';
 import '../../core/strings.dart';
+import '../../core/theme.dart';
 import '../directory/directory_widgets.dart';
+import '../directory/telemetry_request.dart';
 import 'account_errors.dart';
+import 'request_text.dart';
+
+part 'telemetry_requests_section.dart';
 
 /// Profile for the signed-in user: account, password, devices, deletion.
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key, required this.account});
+  const ProfileScreen({
+    super.key,
+    required this.account,
+    this.api,
+    this.onOpen,
+  });
   final AccountState account;
+
+  /// With the server's client the profile can show telemetry requests, and
+  /// [onOpen] opens a repeater from one.
+  final ApiClient? api;
+  final void Function(String, String)? onOpen;
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
@@ -58,6 +74,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
             section(trKey('account.sectionPassword'), [
               _PasswordForm(account: widget.account, devices: devices),
             ]),
+            if (widget.api case final api?)
+              _TelemetryRequests(
+                account: widget.account,
+                api: api,
+                onOpen: widget.onOpen,
+              ),
             section(trKey('account.sectionDevices'), [
               _Devices(account: widget.account, revision: devices),
             ]),
@@ -79,7 +101,10 @@ mixin _Action<T extends StatefulWidget> on State<T> {
 
   /// Runs [action]; its returned text is the success note, a thrown error
   /// becomes the mapped failure note. True when it succeeded.
-  Future<bool> run(Future<String?> Function() action) async {
+  Future<bool> run(
+    Future<String?> Function() action, {
+    String Function(Object)? describe,
+  }) async {
     setState(() {
       busy = true;
       note = null;
@@ -95,7 +120,7 @@ mixin _Action<T extends StatefulWidget> on State<T> {
     setState(() {
       busy = false;
       bad = failure != null;
-      note = failure == null ? result : accountError(failure);
+      note = failure == null ? result : (describe ?? accountError)(failure);
     });
     return failure == null;
   }

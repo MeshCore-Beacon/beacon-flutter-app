@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/account.dart';
 import '../../core/api.dart';
 import '../../core/json.dart';
 import '../../core/strings.dart';
@@ -8,6 +9,7 @@ import '../analytics/charts.dart';
 import '../analytics/transforms.dart';
 import '../atlas/atlas.dart' show hourMs;
 import 'directory_widgets.dart';
+import 'telemetry_request.dart';
 
 const _ranges = {'24h': '24h', '7d': '168h', '30d': '720h'};
 const _intervalMs = {'24h': hourMs, '168h': 6 * hourMs, '720h': 24 * hourMs};
@@ -99,10 +101,16 @@ class NodeTelemetrySection extends StatefulWidget {
     required this.api,
     required this.nodeId,
     required this.onOpen,
+    this.account,
+    this.publicKey = '',
   });
   final ApiClient api;
   final String nodeId;
   final void Function(String, String) onOpen;
+
+  /// With a signed-in account the section offers "Request telemetry".
+  final AccountState? account;
+  final String publicKey;
   @override
   State<NodeTelemetrySection> createState() => _NodeTelemetrySectionState();
 }
@@ -110,6 +118,9 @@ class NodeTelemetrySection extends StatefulWidget {
 class _NodeTelemetrySectionState extends State<NodeTelemetrySection> {
   String range = '7d';
   bool enabled = false, hidden = false, loaded = false, failed = false;
+  // Set once the server's features are known, so the request block does not
+  // flash on its own before the section shows.
+  bool checked = false;
   // Once a chart has shown, a failed reload keeps the section instead of hiding it.
   bool chartShown = false;
   Json telemetry = {}, polling = {};
@@ -125,7 +136,7 @@ class _NodeTelemetrySectionState extends State<NodeTelemetrySection> {
   void didUpdateWidget(covariant NodeTelemetrySection old) {
     super.didUpdateWidget(old);
     if (old.api != widget.api || old.nodeId != widget.nodeId) {
-      loaded = hidden = enabled = failed = chartShown = false;
+      loaded = hidden = enabled = failed = chartShown = checked = false;
       polling = telemetry = {};
       start();
     }
@@ -141,7 +152,11 @@ class _NodeTelemetrySectionState extends State<NodeTelemetrySection> {
     final token = ++generation;
     bool current() => mounted && token == generation;
     final features = await widget.api.features();
-    if (!current() || !features.polling) return;
+    if (!current()) return;
+    if (!features.polling) {
+      setState(() => checked = true);
+      return;
+    }
     enabled = true;
     // The poller is a nicety: if its route fails the charts still show.
     final pollerFuture = widget.api
@@ -162,6 +177,7 @@ class _NodeTelemetrySectionState extends State<NodeTelemetrySection> {
       );
       if (!mounted || token != generation || mine != rangeToken) return;
       setState(() {
+        checked = true;
         telemetry = t;
         hidden = failed = false;
         chartShown = chartShown || hasChartData(rows(t['points']));
@@ -172,6 +188,7 @@ class _NodeTelemetrySectionState extends State<NodeTelemetrySection> {
       // Only a 404 means no such route; other failures keep the section and retry.
       final missing = e is ApiException && e.status == 404;
       setState(() {
+        checked = true;
         hidden = missing;
         failed = !missing;
         loaded = true;
@@ -179,11 +196,33 @@ class _NodeTelemetrySectionState extends State<NodeTelemetrySection> {
     }
   }
 
+  Widget _request({bool standalone = false}) {
+    final account = widget.account;
+    if (account == null) return const SizedBox.shrink();
+    return TelemetryRequestBlock(
+      key: ValueKey('request:${widget.nodeId}:$standalone'),
+      api: widget.api,
+      account: account,
+      nodeId: widget.nodeId,
+      publicKey: widget.publicKey,
+      onOpen: widget.onOpen,
+      standalone: standalone,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final shown = _section(context);
+    if (shown != null) return shown;
+    // No readings to show, but the user can still ask for them.
+    return checked ? _request(standalone: true) : const SizedBox.shrink();
+  }
+
+  /// The telemetry section, or null when it has nothing to show.
+  Widget? _section(BuildContext context) {
     // A first-load failure stays quiet: nothing has shown, so there is nothing to keep.
     if (!enabled || hidden || !loaded || (failed && !chartShown)) {
-      return const SizedBox.shrink();
+      return null;
     }
     final points = rows(telemetry['points']);
     final poller = object(polling['poller']);
@@ -192,7 +231,7 @@ class _NodeTelemetrySectionState extends State<NodeTelemetrySection> {
         points.isEmpty &&
         poller.isEmpty &&
         telemetry['polled'] != true) {
-      return const SizedBox.shrink();
+      return null;
     }
     final colors = BeaconColors.of(context);
     final bucketMs = _intervalMs[_ranges[range]]!;
@@ -318,6 +357,7 @@ class _NodeTelemetrySectionState extends State<NodeTelemetrySection> {
             style: TextStyle(fontSize: 11, color: colors.muted),
           ),
         ),
+      _request(),
     ]);
   }
 }

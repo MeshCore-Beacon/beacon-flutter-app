@@ -174,6 +174,40 @@ class AuthApi {
     await send('DELETE', '/me/sessions');
   }
 
+  /// The user's telemetry requests and their limit.
+  Future<Json> telemetryRequests() => send('GET', '/me/telemetry-requests');
+
+  /// A blank password is left out, which asks for a request without one.
+  Future<Json> createTelemetryRequest(String nodeId, {String? password}) =>
+      send(
+        'POST',
+        '/me/telemetry-requests',
+        body: {
+          'nodeId': nodeId,
+          if (password != null && password.isNotEmpty) 'password': password,
+        },
+      );
+
+  /// [withPassword] with an empty [password] removes the stored one.
+  Future<Json> updateTelemetryRequest(
+    String id, {
+    bool withPassword = false,
+    String? password,
+    bool? enabled,
+  }) => send(
+    'PATCH',
+    '/me/telemetry-requests/${Uri.encodeComponent(id)}',
+    body: {
+      if (withPassword)
+        'password': password == null || password.isEmpty ? null : password,
+      'enabled': ?enabled,
+    },
+  );
+
+  Future<void> deleteTelemetryRequest(String id) async {
+    await send('DELETE', '/me/telemetry-requests/${Uri.encodeComponent(id)}');
+  }
+
   /// The account Atlas as the server holds it.
   Future<Json> atlas() => send('GET', '/me/atlas');
 

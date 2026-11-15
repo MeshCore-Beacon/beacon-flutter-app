@@ -209,6 +209,7 @@ Future<void> showServerSwitcher(
   AccountState? account,
   ApiClient? api,
   AtlasStore? atlas,
+  void Function(String, String)? onOpen,
 }) async {
   final manage = await showModalBottomSheet<bool>(
     context: context,
@@ -260,6 +261,7 @@ Future<void> showServerSwitcher(
           account: account,
           api: api,
           atlas: atlas,
+          onOpen: onOpen,
         ),
       ),
     );
@@ -608,6 +610,7 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
             region: region,
             onOpen: open,
             events: live.events,
+            account: account,
           );
     Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
   }
@@ -618,6 +621,7 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
     account: account,
     api: api,
     atlas: atlas,
+    onOpen: open,
   );
 
   void settings() => Navigator.push(
@@ -628,6 +632,7 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
         account: account,
         api: api,
         atlas: atlas,
+        onOpen: open,
       ),
     ),
   );

@@ -1345,6 +1345,52 @@
         "network": "Det gick inte att nå servern. Kontrollera anslutningen.",
         "generic": "Något gick fel. Försök igen."
       }
+    },
+    "telemetryRequests": {
+      "title": "Telemetribegäran",
+      "request": "Begär telemetri",
+      "explain": "Be frivilliga observatörer som hör den här repeatern att läsa av dess statistik. Värdena visas sedan här.",
+      "passwordLabel": "Gästlösenord (valfritt)",
+      "notice": "Gästlösenordet delas med frivilliga observatörer så att de kan be den här repeatern om dess statistik. Ange aldrig ett administratörslösenord.",
+      "used": "{{used}} av {{limit}} begäranden använda",
+      "count": "{{used}} av {{limit}}",
+      "limitReached": "Du har använt alla dina begäranden. Ta bort en i din profil för att få plats.",
+      "submit": "Begär telemetri",
+      "requested": "Du har begärt den här repeatern.",
+      "openProfile": "Öppna profilen",
+      "loadFailed": "Det gick inte att läsa in dina begäranden.",
+      "retry": "Försök igen",
+      "requestedOk": "Begärd.",
+      "empty": "Inga begäranden ännu. Öppna en repeater och välj Begär telemetri.",
+      "unknownRepeater": "Okänd repeater",
+      "polledBy": "Läses av {{name}}",
+      "lastReading": "Senaste värde {{when}}",
+      "noReading": "Inga värden ännu",
+      "passwordSet": "Gästlösenord inställt",
+      "passwordNone": "Inget gästlösenord",
+      "changePassword": "Byt lösenord",
+      "newPassword": "Nytt gästlösenord (tomt tar bort det)",
+      "save": "Spara",
+      "cancel": "Avbryt",
+      "saved": "Sparat.",
+      "reenable": "Aktivera igen",
+      "remove": "Ta bort",
+      "confirmRemove": "Ta bort den här begäran?",
+      "status": {
+        "waiting": "Väntar på en observatör som kan nå den",
+        "active": "Läses av regelbundet",
+        "login_failed": "Repeatern nekade lösenordet",
+        "admin_stopped": "Stoppad: lösenordet gav administratörsåtkomst och raderades",
+        "disabled": "Pausad: repeatern har inte hörts på sistone"
+      },
+      "errors": {
+        "request_limit": "Du har använt alla dina begäranden.",
+        "already_requested": "Du har redan begärt den här repeatern.",
+        "not_a_repeater": "Bara repeatrar och rumsservrar kan läsas av.",
+        "password_invalid": "Gästlösenordet måste vara 1 till 15 tecken.",
+        "no_password_blocked": "Den här repeatern ger administratörsåtkomst utan lösenord, så den kan inte läsas av på det här sättet",
+        "requests_disabled": "Telemetribegäran är avstängda på den här servern."
+      }
     }
   }
 }
