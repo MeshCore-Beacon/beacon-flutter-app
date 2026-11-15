@@ -154,11 +154,13 @@ class ApiClient {
       {'/iatas', '/regions', '/scopes', '/brokers', '/info'}.contains(path) ||
       RegExp(r'^/iatas/[^/]+/border$').hasMatch(path);
 
+  static const _referenceTtl = Duration(minutes: 5);
+
   Duration _ttl(String path, Map<String, dynamic> params) {
     if (path.endsWith('/border')) return const Duration(hours: 1);
-    if (_reference(path)) return const Duration(minutes: 5);
+    if (_reference(path)) return _referenceTtl;
     if (path == '/nodes' && '${params['neighbors']}' == 'true') {
-      return const Duration(minutes: 5);
+      return _referenceTtl;
     }
     return const Duration(seconds: 30);
   }
@@ -236,6 +238,8 @@ class ApiClient {
   }
 
   void invalidateCache({String? prefix}) {
+    _features = null;
+    _featuresUntil = null;
     bool matches(String key) {
       final path = Uri.parse(key).path;
       final target = prefix == null ? null : uri(prefix).path;
@@ -456,8 +460,8 @@ class ApiClient {
   }
 
   /// Server feature flags from /info; all off on any failure so nothing new shows.
-  /// A 404 (no flags on this server) is kept for the client's life, any other failure
-  /// for a minute, so a passing network error does not hide a feature until restart.
+  /// A success lasts like other reference data, a 404 (no flags on this server) the
+  /// client's life, any other failure a minute; invalidateCache() clears it.
   Future<ServerFeatures> features() {
     final until = _featuresUntil;
     if (_features == null || (until != null && !_now().isBefore(until))) {
@@ -472,7 +476,9 @@ class ApiClient {
 
   Future<ServerFeatures> _readFeatures() async {
     try {
-      return ServerFeatures.fromInfo(object(await getCached('/info')));
+      final f = ServerFeatures.fromInfo(object(await getCached('/info')));
+      _featuresUntil = _now().add(_referenceTtl);
+      return f;
     } catch (e) {
       if (!(e is ApiException && e.status == 404)) {
         _featuresUntil = _now().add(const Duration(seconds: 60));

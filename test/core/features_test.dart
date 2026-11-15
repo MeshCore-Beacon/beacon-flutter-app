@@ -104,6 +104,47 @@ void main() {
       expect(calls, 2);
     });
 
+    test(
+      'a successful features() answer is re-read after five minutes',
+      () async {
+        var calls = 0;
+        var now = DateTime(2026, 1, 1);
+        final api = ApiClient(
+          Uri.parse('https://test.invalid'),
+          transientRetries: 0,
+          now: () => now,
+          client: MockClient((r) async {
+            calls++;
+            return http.Response(
+              jsonEncode({
+                'features': {'polling': calls > 1},
+              }),
+              200,
+            );
+          }),
+        );
+        expect((await api.features()).polling, false);
+        now = now.add(const Duration(minutes: 4, seconds: 59));
+        expect((await api.features()).polling, false);
+        expect(calls, 1);
+        now = now.add(const Duration(seconds: 2));
+        expect((await api.features()).polling, true);
+        expect(calls, 2);
+      },
+    );
+
+    test('invalidateCache() forces features() to be re-read', () async {
+      var calls = 0;
+      final api = client((r) async {
+        calls++;
+        return http.Response('{"features":{"polling":true}}', 200);
+      });
+      await api.features();
+      api.invalidateCache();
+      await api.features();
+      expect(calls, 2);
+    });
+
     test('features() reads /info and caches it', () async {
       var calls = 0;
       final api = client((r) async {
