@@ -329,6 +329,11 @@ class _AlertRowState extends State<_AlertRow> with _Action {
           _complain(trKey('alerts.errors.temperatureRange'));
           return null;
         }
+        // The server refuses a range under 2.0 degrees (20 tenths).
+        if (a != null && b != null && b - a < 20) {
+          _complain(trKey('alerts.errors.temperatureWidth'));
+          return null;
+        }
         return (low: a, high: b);
     }
   }

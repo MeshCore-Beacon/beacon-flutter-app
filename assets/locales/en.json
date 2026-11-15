@@ -1456,7 +1456,8 @@
         "temperature": "Enter a temperature in degrees C, such as 4.5.",
         "not_found": "That alert no longer exists.",
         "app_session_required": "Only the Beacon app can register a phone for alerts.",
-        "temperatureRange": "Enter limits between -50 and 150 degrees C."
+        "temperatureRange": "Enter limits between -50 and 150 degrees C.",
+        "temperatureWidth": "The high limit must be at least 2 degrees above the low limit."
       },
       "when": {
         "gone_quiet": "When the radio has not been heard for this long.",

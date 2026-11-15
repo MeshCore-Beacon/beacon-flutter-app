@@ -1503,7 +1503,8 @@
         "temperature": "Entrez une température en degrés C, par exemple 4,5.",
         "not_found": "Cette alerte n'existe plus.",
         "app_session_required": "Seule l'application Beacon peut inscrire un téléphone aux alertes.",
-        "temperatureRange": "Entrez des limites entre -50 et 150 degrés C."
+        "temperatureRange": "Entrez des limites entre -50 et 150 degrés C.",
+        "temperatureWidth": "La limite haute doit être au moins 2 degrés au-dessus de la limite basse."
       },
       "when": {
         "gone_quiet": "Quand la radio n'a pas été entendue depuis ce délai.",

@@ -492,6 +492,26 @@ void main() {
       expect(puts, isEmpty);
     });
 
+    testWidgets('temperature limits under 2 degrees apart are refused', (
+      tester,
+    ) async {
+      await open(tester);
+      await type(tester, 'alert-input-aabb-temperature-low', '10');
+      await type(tester, 'alert-input-aabb-temperature-high', '11.9');
+      await tap(tester, 'alert-switch-aabb-temperature');
+      expect(
+        find.text(
+          'The high limit must be at least 2 degrees above the low limit.',
+        ),
+        findsOneWidget,
+      );
+      expect(puts, isEmpty);
+      await type(tester, 'alert-input-aabb-temperature-high', '12');
+      await tap(tester, 'alert-switch-aabb-temperature');
+      expect(body(0)['threshold'], 100);
+      expect(body(0)['thresholdHigh'], 120);
+    });
+
     testWidgets('noise_high sends dBm and refuses out of range', (
       tester,
     ) async {

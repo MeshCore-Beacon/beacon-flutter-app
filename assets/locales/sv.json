@@ -1456,7 +1456,8 @@
         "temperature": "Ange en temperatur i grader C, till exempel 4,5.",
         "not_found": "Den aviseringen finns inte längre.",
         "app_session_required": "Bara Beacon-appen kan registrera en telefon för aviseringar.",
-        "temperatureRange": "Ange gränser mellan -50 och 150 grader C."
+        "temperatureRange": "Ange gränser mellan -50 och 150 grader C.",
+        "temperatureWidth": "Den höga gränsen måste vara minst 2 grader över den låga."
       },
       "when": {
         "gone_quiet": "När radion inte har hörts på så här länge.",
