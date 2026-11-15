@@ -8,12 +8,14 @@ class ServerFeatures {
     required this.accounts,
     required this.telemetryRequests,
     required this.alerts,
+    this.registration = false,
   });
   const ServerFeatures.off()
     : polling = false,
       accounts = 'off',
       telemetryRequests = false,
-      alerts = false;
+      alerts = false,
+      registration = false;
 
   factory ServerFeatures.fromInfo(Json? info) {
     final f = object(info?['features']);
@@ -22,6 +24,7 @@ class ServerFeatures {
       accounts: f['accounts'] is String ? f['accounts'] as String : 'off',
       telemetryRequests: f['telemetryRequests'] == true,
       alerts: f['alerts'] == true,
+      registration: f['registration'] == true,
     );
   }
 
@@ -29,4 +32,5 @@ class ServerFeatures {
   final String accounts;
   final bool telemetryRequests;
   final bool alerts;
+  final bool registration;
 }

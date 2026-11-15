@@ -5,10 +5,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'instance.dart';
 import 'json.dart';
+import 'token_store.dart';
 
 class Preferences extends ChangeNotifier {
-  Preferences._(this._store);
+  Preferences._(this._store, this._tokens);
   final SharedPreferences _store;
+  final TokenStore? _tokens;
   final List<BeaconInstance> servers = [];
   String? _activeUrl;
   String themeId = 'neutral-blue';
@@ -20,8 +22,8 @@ class Preferences extends ChangeNotifier {
     return servers.isEmpty ? null : servers.first;
   }
 
-  static Future<Preferences> load() async {
-    final result = Preferences._(await SharedPreferences.getInstance());
+  static Future<Preferences> load({TokenStore? tokens}) async {
+    final result = Preferences._(await SharedPreferences.getInstance(), tokens);
     try {
       final values = jsonDecode(
         result._store.getString('beacon.servers') ?? '[]',
@@ -74,6 +76,12 @@ class Preferences extends ChangeNotifier {
         }
         await _store.remove('beacon.atlas.$replacing');
       }
+      // The sign-in token follows too; a keystore failure must not block the edit.
+      if (replacing != server.url) {
+        try {
+          await _tokens?.move(replacing, server.url);
+        } catch (_) {}
+      }
     }
     servers.removeWhere((e) => e.url == server.url);
     servers.add(server);
@@ -94,6 +102,9 @@ class Preferences extends ChangeNotifier {
     }
     await _store.remove('beacon.region.$url');
     await _store.remove('beacon.atlas.$url');
+    try {
+      await _tokens?.delete(url);
+    } catch (_) {}
     await _persist();
   }
 

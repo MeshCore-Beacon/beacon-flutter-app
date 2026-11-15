@@ -14,6 +14,16 @@ void main() {
       expect(f.accounts, 'off');
       expect(f.telemetryRequests, false);
       expect(f.alerts, false);
+      expect(f.registration, false);
+    });
+
+    test('registration is read when present', () {
+      expect(
+        ServerFeatures.fromInfo({
+          'features': {'accounts': 'local', 'registration': true},
+        }).registration,
+        true,
+      );
     });
 
     test('info without features is all off', () {

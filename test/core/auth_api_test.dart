@@ -1,0 +1,360 @@
+import 'dart:convert';
+
+import 'package:beacon/core/api.dart';
+import 'package:beacon/core/auth_api.dart';
+import 'package:beacon/core/token_store.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+
+const _base = 'https://beacon.example.com';
+
+http.Response _json(int status, Object? body, {Map<String, String>? headers}) =>
+    http.Response(
+      jsonEncode(body),
+      status,
+      headers: {'content-type': 'application/json', ...?headers},
+    );
+
+http.Response _error(int status, String code, [String message = 'nope']) =>
+    _json(status, {
+      'error': {'code': code, 'message': message},
+    });
+
+void main() {
+  late MemoryTokenStore tokens;
+  late List<http.Request> seen;
+
+  AuthApi make(http.Response Function(http.Request) handler) {
+    seen = [];
+    return AuthApi(
+      _base,
+      tokens,
+      client: MockClient((request) async {
+        seen.add(request);
+        return handler(request);
+      }),
+    );
+  }
+
+  setUp(() => tokens = MemoryTokenStore());
+
+  group('headers', () {
+    test(
+      'no Authorization without a token, none of the unsafe headers',
+      () async {
+        final api = make((_) => _json(200, {'user': {}}));
+        await api.send('GET', '/me');
+        final h = seen.single.headers;
+        expect(seen.single.url.toString(), '$_base/api/v1/me');
+        expect(h.containsKey('authorization'), false);
+        expect(h.containsKey('cookie'), false);
+        expect(h.containsKey('x-beacon-csrf'), false);
+        expect(h.containsKey('user-agent'), false);
+        expect(h.containsKey('content-type'), false);
+      },
+    );
+
+    test('Bearer is sent when a token is stored for this server', () async {
+      await tokens.write(_base, 'abc');
+      await tokens.write('https://other.test', 'zzz');
+      final api = make((_) => _json(200, {}));
+      await api.send('GET', '/me');
+      expect(seen.single.headers['authorization'], 'Bearer abc');
+    });
+
+    test('a body is sent as JSON', () async {
+      final api = make((_) => _json(200, {}));
+      await api.send('POST', '/auth/logout', body: {'a': 1});
+      expect(seen.single.method, 'POST');
+      expect(
+        seen.single.headers['content-type'],
+        startsWith('application/json'),
+      );
+      expect(jsonDecode(seen.single.body), {'a': 1});
+    });
+
+    test('a trailing slash on the base does not double up', () async {
+      seen = [];
+      final api = AuthApi(
+        '$_base/',
+        tokens,
+        client: MockClient((r) async {
+          seen.add(r);
+          return _json(200, {});
+        }),
+      );
+      await api.send('GET', '/me');
+      expect(seen.single.url.toString(), '$_base/api/v1/me');
+    });
+  });
+
+  group('errors', () {
+    test(
+      'ApiException carries status, code, message and Retry-After',
+      () async {
+        final api = make(
+          (_) => _json(
+            429,
+            {
+              'error': {'code': 'too_many_attempts', 'message': 'slow down'},
+            },
+            headers: {'retry-after': '30'},
+          ),
+        );
+        await expectLater(
+          api.send('POST', '/me/password', body: {}),
+          throwsA(
+            isA<ApiException>()
+                .having((e) => e.status, 'status', 429)
+                .having((e) => e.code, 'code', 'too_many_attempts')
+                .having((e) => e.message, 'message', 'slow down')
+                .having(
+                  (e) => e.retryAfter,
+                  'retryAfter',
+                  const Duration(seconds: 30),
+                ),
+          ),
+        );
+      },
+    );
+
+    test('a 401 not_signed_in clears the token and tells the state', () async {
+      await tokens.write(_base, 'abc');
+      var signedOut = 0;
+      final api = make((_) => _error(401, 'not_signed_in'))
+        ..onSignedOut = () => signedOut++;
+      await expectLater(
+        api.send('GET', '/me/sessions'),
+        throwsA(isA<ApiException>()),
+      );
+      expect(await tokens.read(_base), isNull);
+      expect(signedOut, 1);
+    });
+
+    for (final c in [
+      (401, 'invalid_credentials'),
+      (403, 'csrf_rejected'),
+      (422, 'weak_password'),
+      (500, 'internal'),
+      (503, 'read_only'),
+    ]) {
+      test('${c.$1} ${c.$2} keeps the token', () async {
+        await tokens.write(_base, 'abc');
+        var signedOut = 0;
+        final api = make((_) => _error(c.$1, c.$2))
+          ..onSignedOut = () => signedOut++;
+        await expectLater(
+          api.send('POST', '/me/password', body: {}),
+          throwsA(isA<ApiException>()),
+        );
+        expect(await tokens.read(_base), 'abc');
+        expect(signedOut, 0);
+      });
+    }
+
+    test(
+      'a network failure becomes an ApiException and keeps the token',
+      () async {
+        await tokens.write(_base, 'abc');
+        final api = AuthApi(
+          _base,
+          tokens,
+          client: MockClient((_) async => throw http.ClientException('down')),
+        );
+        await expectLater(api.send('GET', '/me'), throwsA(isA<ApiException>()));
+        expect(await tokens.read(_base), 'abc');
+      },
+    );
+  });
+
+  group('me', () {
+    test('is null without a token and sends nothing', () async {
+      final api = make((_) => _json(200, {'user': {}}));
+      expect(await api.me(), isNull);
+      expect(seen, isEmpty);
+    });
+
+    test('returns the user', () async {
+      await tokens.write(_base, 'abc');
+      final api = make(
+        (_) => _json(200, {
+          'user': {'username': 'ridge'},
+        }),
+      );
+      expect((await api.me())!['username'], 'ridge');
+    });
+
+    test('is null on 404 accounts_disabled', () async {
+      await tokens.write(_base, 'abc');
+      final api = make((_) => _error(404, 'accounts_disabled'));
+      expect(await api.me(), isNull);
+    });
+
+    test('is null on a 401 and the token is gone', () async {
+      await tokens.write(_base, 'abc');
+      final api = make((_) => _error(401, 'not_signed_in'));
+      expect(await api.me(), isNull);
+      expect(await tokens.read(_base), isNull);
+    });
+
+    test('other failures throw', () async {
+      await tokens.write(_base, 'abc');
+      final api = make((_) => _error(500, 'internal'));
+      await expectLater(api.me(), throwsA(isA<ApiException>()));
+    });
+  });
+
+  group('routes', () {
+    setUp(() => tokens.write(_base, 'abc'));
+
+    test('setDisplayName', () async {
+      final api = make(
+        (_) => _json(200, {
+          'user': {'displayName': 'R'},
+        }),
+      );
+      final user = await api.setDisplayName('R');
+      expect(seen.single.method, 'PATCH');
+      expect(seen.single.url.path, '/api/v1/me');
+      expect(jsonDecode(seen.single.body), {'displayName': 'R'});
+      expect(user['displayName'], 'R');
+    });
+
+    test('changePassword', () async {
+      final api = make((_) => http.Response('', 204));
+      await api.changePassword('old', 'new');
+      expect(seen.single.method, 'POST');
+      expect(seen.single.url.path, '/api/v1/me/password');
+      expect(jsonDecode(seen.single.body), {
+        'currentPassword': 'old',
+        'newPassword': 'new',
+      });
+    });
+
+    test('changeEmail', () async {
+      final api = make((_) => _json(202, {'status': 'check_email'}));
+      await api.changeEmail('a@b.c', 'pw');
+      expect(seen.single.url.path, '/api/v1/me/email');
+      expect(jsonDecode(seen.single.body), {
+        'email': 'a@b.c',
+        'currentPassword': 'pw',
+      });
+    });
+
+    test('deleteAccount drops the token', () async {
+      var signedOut = 0;
+      final api = make((_) => http.Response('', 204))
+        ..onSignedOut = () => signedOut++;
+      await api.deleteAccount('pw');
+      expect(seen.single.method, 'DELETE');
+      expect(seen.single.url.path, '/api/v1/me');
+      expect(jsonDecode(seen.single.body), {'currentPassword': 'pw'});
+      expect(await tokens.read(_base), isNull);
+      expect(signedOut, 1);
+    });
+
+    test('a failed deleteAccount keeps the token', () async {
+      final api = make((_) => _error(401, 'invalid_credentials'));
+      await expectLater(api.deleteAccount('bad'), throwsA(isA<ApiException>()));
+      expect(await tokens.read(_base), 'abc');
+    });
+
+    test('sessions, endSession, endOtherSessions', () async {
+      final api = make(
+        (r) => r.method == 'GET'
+            ? _json(200, {
+                'sessions': [
+                  {'id': 'a', 'current': true},
+                  {'id': 'b'},
+                ],
+              })
+            : http.Response('', 204),
+      );
+      final list = await api.sessions();
+      expect(list.map((s) => s['id']), ['a', 'b']);
+      await api.endSession('b/../x');
+      expect(seen.last.method, 'DELETE');
+      expect(seen.last.url.path, '/api/v1/me/sessions/b%2F..%2Fx');
+      await api.endOtherSessions();
+      expect(seen.last.method, 'DELETE');
+      expect(seen.last.url.path, '/api/v1/me/sessions');
+    });
+  });
+
+  group('signOut', () {
+    test('posts logout then deletes the token', () async {
+      await tokens.write(_base, 'abc');
+      var signedOut = 0;
+      final api = make((_) => http.Response('', 204))
+        ..onSignedOut = () => signedOut++;
+      await api.signOut();
+      expect(seen.single.method, 'POST');
+      expect(seen.single.url.path, '/api/v1/auth/logout');
+      expect(seen.single.headers['authorization'], 'Bearer abc');
+      expect(await tokens.read(_base), isNull);
+      expect(signedOut, 1);
+    });
+
+    test('deletes the token even when the request fails', () async {
+      await tokens.write(_base, 'abc');
+      final api = AuthApi(
+        _base,
+        tokens,
+        client: MockClient((_) async => throw http.ClientException('down')),
+      );
+      await api.signOut();
+      expect(await tokens.read(_base), isNull);
+    });
+  });
+
+  group('exchangeAppCode', () {
+    test(
+      'posts code and verifier, stores the token, sends no Bearer',
+      () async {
+        await tokens.write(_base, 'stale');
+        final api = make(
+          (_) => _json(200, {
+            'token': 'fresh',
+            'expiresAt': 1,
+            'user': {'username': 'ridge'},
+          }),
+        );
+        final result = await api.exchangeAppCode('c', 'v');
+        expect(seen.single.url.path, '/api/v1/auth/app/token');
+        expect(jsonDecode(seen.single.body), {
+          'code': 'c',
+          'codeVerifier': 'v',
+        });
+        expect(seen.single.headers.containsKey('authorization'), false);
+        expect(result['user']['username'], 'ridge');
+        expect(await tokens.read(_base), 'fresh');
+      },
+    );
+
+    test('a failure leaves the stored token alone', () async {
+      await tokens.write(_base, 'stale');
+      final api = make((_) => _error(400, 'token_invalid'));
+      await expectLater(
+        api.exchangeAppCode('c', 'v'),
+        throwsA(isA<ApiException>()),
+      );
+      expect(await tokens.read(_base), 'stale');
+    });
+  });
+
+  test('authenticated responses never enter ApiClient\'s cache', () async {
+    await tokens.write(_base, 'abc');
+    final api = make(
+      (_) => _json(200, {
+        'user': {'username': 'ridge'},
+      }),
+    );
+    await api.me();
+    final reads = ApiClient(
+      Uri.parse(_base),
+      client: MockClient((_) async => _json(200, {})),
+    );
+    expect(reads.peekCache('/me'), isNull);
+  });
+}

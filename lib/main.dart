@@ -6,6 +6,7 @@ import 'app.dart';
 import 'core/preferences.dart';
 import 'core/strings.dart';
 import 'core/theme.dart';
+import 'core/token_store.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -17,6 +18,6 @@ Future<void> main() async {
       ], await rootBundle.loadString('assets/fonts/$family-LICENSE.txt'));
     }
   });
-  final preferences = await Preferences.load();
+  final preferences = await Preferences.load(tokens: SecureTokenStore());
   runApp(BeaconApp(preferences: preferences));
 }
