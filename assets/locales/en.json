@@ -1597,7 +1597,29 @@
       }
     },
     "passwordRule": {
-      "hint": "At least 12 characters, at most 128 bytes."
+      "hint": "At least 12 characters.",
+      "tooLong": "That password is too long."
+    },
+    "accountUi": {
+      "introBase": "Sync your Atlas.",
+      "introTelemetry": "Sync your Atlas and request repeater telemetry.",
+      "introAlerts": "Sync your Atlas and get alerts.",
+      "introBoth": "Sync your Atlas, request repeater telemetry and get alerts.",
+      "waiting": "Waiting for your browser",
+      "waitingNote": "Finish signing in in your browser, then come back to this app.",
+      "cancel": "Cancel",
+      "profileNote": "Name, email, password and devices",
+      "signOutTitle": "Sign out?",
+      "signOutBody": "You will need to sign in again to use your account on this device.",
+      "endOthersTitle": "Sign out everywhere else?",
+      "endOthersBody": "Every other browser and app signed in to your account is signed out. This device stays signed in.",
+      "deleteTitle": "Delete your account?",
+      "nameHelper": "Up to 40 characters.",
+      "emailHelper": "We send a link to the new address to confirm it.",
+      "emailInvalid": "Enter a valid email address.",
+      "passwordHelper": "Needed to confirm it is you.",
+      "noDevices": "No devices to show.",
+      "deleteUsernameHelper": "Type your username exactly as shown."
     }
   }
 }

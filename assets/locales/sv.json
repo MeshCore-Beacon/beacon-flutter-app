@@ -1597,7 +1597,29 @@
       }
     },
     "passwordRule": {
-      "hint": "Minst 12 tecken, högst 128 byte."
+      "hint": "Minst 12 tecken.",
+      "tooLong": "Lösenordet är för långt."
+    },
+    "accountUi": {
+      "introBase": "Synka din Atlas.",
+      "introTelemetry": "Synka din Atlas och begär telemetri från repeaters.",
+      "introAlerts": "Synka din Atlas och få aviseringar.",
+      "introBoth": "Synka din Atlas, begär telemetri från repeaters och få aviseringar.",
+      "waiting": "Väntar på din webbläsare",
+      "waitingNote": "Slutför inloggningen i webbläsaren och gå sedan tillbaka till appen.",
+      "cancel": "Avbryt",
+      "profileNote": "Namn, e-post, lösenord och enheter",
+      "signOutTitle": "Logga ut?",
+      "signOutBody": "Du måste logga in igen för att använda ditt konto på den här enheten.",
+      "endOthersTitle": "Logga ut överallt annars?",
+      "endOthersBody": "Alla andra webbläsare och appar som är inloggade på ditt konto loggas ut. Den här enheten förblir inloggad.",
+      "deleteTitle": "Ta bort ditt konto?",
+      "nameHelper": "Högst 40 tecken.",
+      "emailHelper": "Vi skickar en länk till den nya adressen för att bekräfta den.",
+      "emailInvalid": "Ange en giltig e-postadress.",
+      "passwordHelper": "Behövs för att bekräfta att det är du.",
+      "noDevices": "Inga enheter att visa.",
+      "deleteUsernameHelper": "Skriv ditt användarnamn exakt som det visas."
     }
   }
 }

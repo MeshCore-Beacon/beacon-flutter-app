@@ -61,6 +61,7 @@ class _GuestPasswordFieldState extends State<GuestPasswordField> {
     autocorrect: false,
     enableSuggestions: false,
     autofillHints: null,
+    textInputAction: TextInputAction.done,
     inputFormatters: [_ByteLimit()],
     decoration: InputDecoration(
       labelText: widget.label,
@@ -241,13 +242,20 @@ class _TelemetryRequestBlockState extends State<TelemetryRequestBlock> {
   List<Widget> _body(BuildContext context, TextStyle muted) {
     if (failed && !loaded) {
       return [
-        Text(trKey('telemetryRequests.loadFailed'), style: muted),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton(
-            onPressed: load,
-            child: Text(trKey('telemetryRequests.retry')),
-          ),
+        Row(
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 18,
+              color: BeaconColors.of(context).danger,
+            ),
+            const SizedBox(width: 8),
+            Expanded(child: Text(trKey('telemetryRequests.loadFailed'))),
+            TextButton(
+              onPressed: load,
+              child: Text(trKey('telemetryRequests.retry')),
+            ),
+          ],
         ),
       ];
     }
@@ -302,10 +310,11 @@ class _TelemetryRequestBlockState extends State<TelemetryRequestBlock> {
           ),
         ),
       const SizedBox(height: 8),
-      Align(
-        alignment: Alignment.centerLeft,
+      SizedBox(
+        width: double.infinity,
         child: FilledButton(
           key: const ValueKey('request-submit'),
+          style: FilledButton.styleFrom(minimumSize: const Size(48, 48)),
           onPressed: busy || full ? null : submit,
           child: busy
               ? const SizedBox(

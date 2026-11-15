@@ -3,8 +3,13 @@ part of 'profile_screen.dart';
 /// Alert rules for the radios on the user's Atlas. Only built when the server
 /// has alerts on.
 class _Alerts extends StatefulWidget {
-  const _Alerts({required this.account, required this.deliveryHint});
+  const _Alerts({
+    required this.account,
+    required this.deliveryHint,
+    this.refresh,
+  });
   final AccountState account;
+  final ValueNotifier<int>? refresh;
 
   /// The delivery the server's features announce, used until the list loads.
   final String? deliveryHint;
@@ -23,7 +28,14 @@ class _AlertsState extends State<_Alerts> {
     if (push != null && push.status == PushStatus.off) {
       unawaited(push.refresh());
     }
+    widget.refresh?.addListener(load);
     load();
+  }
+
+  @override
+  void dispose() {
+    widget.refresh?.removeListener(load);
+    super.dispose();
   }
 
   Future<void> load() async {
@@ -54,37 +66,20 @@ class _AlertsState extends State<_Alerts> {
     final targets = rows(loaded?['targets']);
     return section(trKey('alerts.title'), [
       if (loaded == null && error != null)
-        Row(
-          children: [
-            Expanded(child: Text(alertError(error!))),
-            TextButton(
-              onPressed: () {
-                setState(() => error = null);
-                load();
-              },
-              child: Text(trKey('alerts.retry')),
-            ),
-          ],
+        _LoadFailed(
+          text: alertError(error!),
+          retry: trKey('alerts.retry'),
+          onRetry: () {
+            setState(() => error = null);
+            load();
+          },
         )
       else if (loaded == null)
-        const Padding(
-          padding: EdgeInsets.all(8),
-          child: Center(
-            child: SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-          ),
-        )
+        const _Loading()
       else ...[
         _delivery(delivery),
         if (delivery == 'push') _PushStatus(push: widget.account.push),
-        if (targets.isEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Text(trKey('alerts.empty')),
-          ),
+        if (targets.isEmpty) _Empty(trKey('alerts.empty')),
         for (final target in targets)
           _AlertTarget(
             key: ValueKey('alert-target-${textOf(target['publicKey'])}'),
@@ -93,7 +88,7 @@ class _AlertsState extends State<_Alerts> {
             changed: load,
           ),
         Padding(
-          padding: const EdgeInsets.only(top: 12),
+          padding: const EdgeInsets.only(top: 8),
           child: Text(trKey('alerts.requestAttention'), style: muted),
         ),
       ],
@@ -182,6 +177,7 @@ class _AlertTarget extends StatelessWidget {
             textOf(target['name'], shortKey(key)),
             style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
           ),
+          const Divider(height: 12),
           for (final spec in alertKinds)
             if (available.contains(spec.kind) ||
                 unavailable.containsKey(spec.kind))
@@ -479,7 +475,16 @@ class _AlertRowState extends State<_AlertRow> with _Action {
         signed: true,
         decimal: decimal,
       ),
-      decoration: InputDecoration(labelText: label, isDense: true),
+      textInputAction: TextInputAction.done,
+      decoration: InputDecoration(
+        labelText: label,
+        isDense: true,
+        suffixText: widget.spec.input == AlertInput.volts
+            ? 'V'
+            : widget.spec.input == AlertInput.dbm
+            ? 'dBm'
+            : '\u00b0C',
+      ),
       onSubmitted: (_) => unawaited(commit()),
     ),
   );
@@ -498,7 +503,7 @@ class _AlertRowState extends State<_AlertRow> with _Action {
     return Opacity(
       opacity: reason != null ? .6 : 1,
       child: Padding(
-        padding: const EdgeInsets.only(top: 12),
+        padding: const EdgeInsets.only(top: 8, bottom: 4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -528,6 +533,7 @@ class _AlertRowState extends State<_AlertRow> with _Action {
                       .replaceAll('{{name}}', trKey('alerts.kind.gone_quiet')),
                   style: muted,
                 ),
+              const SizedBox(height: 10),
               _input(),
               if (enabled && rule != null)
                 Padding(

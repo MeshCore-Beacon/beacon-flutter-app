@@ -58,6 +58,12 @@ Future<void> press(WidgetTester tester, String key) async {
   await tester.pumpAndSettle();
 }
 
+/// Taps the action of the confirmation dialog that just opened.
+Future<void> confirm(WidgetTester tester) async {
+  await tester.tap(find.byKey(const ValueKey('confirm-yes')));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   setUp(loadAssets);
 
@@ -136,7 +142,7 @@ void main() {
       'PATCH /me': (_) => failure(422, 'invalid_input', 'bad name'),
     });
     await open(tester, h);
-    await typeInto(tester, 'display-name', ' ');
+    await typeInto(tester, 'display-name', 'Bad name');
     await press(tester, 'name-save');
     expect(find.text('Check what you entered and try again.'), findsOneWidget);
     expect(find.text('Saved.'), findsNothing);
@@ -182,10 +188,7 @@ void main() {
   ) async {
     final h = make({});
     await open(tester, h);
-    expect(
-      find.text('At least 12 characters, at most 128 bytes.'),
-      findsOneWidget,
-    );
+    expect(find.text('At least 12 characters.'), findsOneWidget);
     await typeInto(tester, 'pw-current', 'old-password-1');
     await typeInto(tester, 'pw-new', 'short-pw-11');
     FilledButton save() =>
@@ -193,6 +196,11 @@ void main() {
     expect(save().onPressed, isNull);
     await typeInto(tester, 'pw-new', 'long-enough-12');
     expect(save().onPressed, isNotNull);
+    await typeInto(tester, 'pw-new', 'a' * 129);
+    await tester.pumpAndSettle();
+    expect(find.text('That password is too long.'), findsOneWidget);
+    expect(find.text('At least 12 characters.'), findsNothing);
+    expect(save().onPressed, isNull);
   });
 
   testWidgets('changing the password works and refreshes devices', (
@@ -352,6 +360,7 @@ void main() {
     final h = make({'DELETE /me/sessions': (_) => http.Response('', 204)});
     await open(tester, h);
     await press(tester, 'devices-others');
+    await confirm(tester);
     expect(h.calls('DELETE', '/me/sessions'), hasLength(1));
     expect(find.text('Signed out everywhere else.'), findsOneWidget);
   });
@@ -395,6 +404,7 @@ void main() {
     await typeInto(tester, 'delete-username', 'ridgewalker');
     expect(button().onPressed, isNotNull);
     await press(tester, 'delete-confirm');
+    await confirm(tester);
     expect(jsonDecode(h.calls('DELETE', '/me').single.body), {
       'currentPassword': 'old-password-1',
     });
@@ -412,6 +422,7 @@ void main() {
     await typeInto(tester, 'delete-password', 'bad');
     await typeInto(tester, 'delete-username', 'ridgewalker');
     await press(tester, 'delete-confirm');
+    await confirm(tester);
     expect(find.text('That password is not right.'), findsOneWidget);
     expect(h.account.signedIn, true);
   });
@@ -488,10 +499,86 @@ void main() {
       await typeInto(tester, 'delete-password', 'old-password-1');
       await typeInto(tester, 'delete-username', 'ridgewalker');
       await press(tester, 'delete-confirm');
+      await confirm(tester);
       expect(find.text(busy), findsOneWidget);
       expect(typed(tester, 'delete-password'), 'old-password-1');
       expect(h.account.signedIn, true);
       expect(await h.tokens.read(server), 'tok');
+    });
+  });
+
+  group('form buttons and confirmations', () {
+    bool enabled(WidgetTester tester, String key) =>
+        tester.widget<ButtonStyleButton>(find.byKey(ValueKey(key))).onPressed !=
+        null;
+
+    testWidgets('each form is off until it is valid', (tester) async {
+      final h = make({});
+      await open(tester, h);
+      expect(enabled(tester, 'name-save'), isFalse);
+      await typeInto(tester, 'display-name', 'Ridge Walker');
+      expect(enabled(tester, 'name-save'), isFalse, reason: 'unchanged');
+      await typeInto(tester, 'display-name', 'Someone');
+      expect(enabled(tester, 'name-save'), isTrue);
+
+      expect(enabled(tester, 'email-save'), isFalse);
+      await typeInto(tester, 'email-new', 'not-an-email');
+      await typeInto(tester, 'email-password', 'old-password-1');
+      expect(enabled(tester, 'email-save'), isFalse);
+      expect(find.text('Enter a valid email address.'), findsOneWidget);
+      await typeInto(tester, 'email-new', 'new@example.org');
+      expect(enabled(tester, 'email-save'), isTrue);
+
+      expect(enabled(tester, 'pw-save'), isFalse);
+      await typeInto(tester, 'pw-current', 'old-password-1');
+      await typeInto(tester, 'pw-new', 'short');
+      expect(enabled(tester, 'pw-save'), isFalse);
+      await typeInto(tester, 'pw-new', 'a long enough password');
+      expect(enabled(tester, 'pw-save'), isTrue);
+    });
+
+    testWidgets('a busy form shows a spinner and cannot be sent twice', (
+      tester,
+    ) async {
+      final gate = Completer<http.Response>();
+      final h = make({});
+      h.hold = (r) => r.method == 'PATCH' ? gate.future : null;
+      await open(tester, h);
+      await typeInto(tester, 'display-name', 'Someone');
+      final button = find.byKey(const ValueKey('name-save'));
+      await tester.tap(button);
+      await tester.pump();
+      expect(
+        find.descendant(
+          of: button,
+          matching: find.byType(CircularProgressIndicator),
+        ),
+        findsOneWidget,
+      );
+      expect(enabled(tester, 'name-save'), isFalse);
+      gate.complete(json(200, {'user': user(name: 'Someone')}));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('cancelling a destructive confirmation sends nothing', (
+      tester,
+    ) async {
+      final h = make({});
+      await open(tester, h);
+      await press(tester, 'devices-others');
+      expect(find.text('Sign out everywhere else?'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('confirm-cancel')));
+      await tester.pumpAndSettle();
+      expect(h.calls('DELETE', '/me/sessions'), isEmpty);
+
+      await typeInto(tester, 'delete-password', 'old-password-1');
+      await typeInto(tester, 'delete-username', 'ridgewalker');
+      await press(tester, 'delete-confirm');
+      expect(find.text('Delete your account?'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('confirm-cancel')));
+      await tester.pumpAndSettle();
+      expect(h.calls('DELETE', '/me'), isEmpty);
+      expect(h.account.signedIn, isTrue);
     });
   });
 }

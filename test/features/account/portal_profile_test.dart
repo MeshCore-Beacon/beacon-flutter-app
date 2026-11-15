@@ -100,6 +100,8 @@ void main() {
     expect(button().onPressed, isNotNull);
     await tester.tap(find.byKey(const ValueKey('delete-confirm')));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('confirm-yes')));
+    await tester.pumpAndSettle();
     expect(jsonDecode(h.calls('DELETE', '/me').single.body), {
       'confirmUsername': 'ridgewalker',
     });
@@ -121,6 +123,8 @@ void main() {
     await tester.enterText(field, 'ridgewalker');
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey('delete-confirm')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('confirm-yes')));
     await tester.pumpAndSettle();
     expect(find.text('That is not your username.'), findsOneWidget);
   });

@@ -1644,7 +1644,29 @@
       }
     },
     "passwordRule": {
-      "hint": "Au moins 12 caractères, au plus 128 octets."
+      "hint": "Au moins 12 caractères.",
+      "tooLong": "Ce mot de passe est trop long."
+    },
+    "accountUi": {
+      "introBase": "Synchronisez votre Atlas.",
+      "introTelemetry": "Synchronisez votre Atlas et demandez la télémétrie des répéteurs.",
+      "introAlerts": "Synchronisez votre Atlas et recevez des alertes.",
+      "introBoth": "Synchronisez votre Atlas, demandez la télémétrie des répéteurs et recevez des alertes.",
+      "waiting": "En attente de votre navigateur",
+      "waitingNote": "Terminez la connexion dans votre navigateur, puis revenez dans l'application.",
+      "cancel": "Annuler",
+      "profileNote": "Nom, courriel, mot de passe et appareils",
+      "signOutTitle": "Se déconnecter ?",
+      "signOutBody": "Vous devrez vous reconnecter pour utiliser votre compte sur cet appareil.",
+      "endOthersTitle": "Se déconnecter partout ailleurs ?",
+      "endOthersBody": "Tous les autres navigateurs et applications connectés à votre compte seront déconnectés. Cet appareil reste connecté.",
+      "deleteTitle": "Supprimer votre compte ?",
+      "nameHelper": "40 caractères au maximum.",
+      "emailHelper": "Nous envoyons un lien à la nouvelle adresse pour la confirmer.",
+      "emailInvalid": "Saisissez une adresse courriel valide.",
+      "passwordHelper": "Nécessaire pour confirmer votre identité.",
+      "noDevices": "Aucun appareil à afficher.",
+      "deleteUsernameHelper": "Saisissez votre nom d'utilisateur exactement comme affiché."
     }
   }
 }
