@@ -177,6 +177,24 @@ void main() {
     expect(h.tokens.read(server), completion('tok'));
   });
 
+  testWidgets('a short new password cannot be sent and the rule is shown', (
+    tester,
+  ) async {
+    final h = make({});
+    await open(tester, h);
+    expect(
+      find.text('At least 12 characters, at most 128 bytes.'),
+      findsOneWidget,
+    );
+    await typeInto(tester, 'pw-current', 'old-password-1');
+    await typeInto(tester, 'pw-new', 'short-pw-11');
+    FilledButton save() =>
+        tester.widget<FilledButton>(find.byKey(const ValueKey('pw-save')));
+    expect(save().onPressed, isNull);
+    await typeInto(tester, 'pw-new', 'long-enough-12');
+    expect(save().onPressed, isNotNull);
+  });
+
   testWidgets('changing the password works and refreshes devices', (
     tester,
   ) async {
@@ -404,5 +422,76 @@ void main() {
     await typeInto(tester, 'display-name', 'Other');
     await press(tester, 'name-save');
     expect(find.text('Something went wrong. Try again.'), findsOneWidget);
+  });
+
+  group('a busy server (503 service_unavailable)', () {
+    const busy = 'The server is busy. Try again in a moment.';
+    http.Response Function(http.Request) refuse() =>
+        (_) => failure(
+          503,
+          'service_unavailable',
+          busy,
+          headers: {'retry-after': '5'},
+        );
+
+    String typed(WidgetTester tester, String key) => tester
+        .widget<TextField>(
+          find.descendant(
+            of: find.byKey(ValueKey(key)),
+            matching: find.byType(TextField),
+          ),
+        )
+        .controller!
+        .text;
+
+    testWidgets('a password change says busy and keeps what was typed', (
+      tester,
+    ) async {
+      final h = make({'POST /me/password': refuse()});
+      await open(tester, h);
+      await typeInto(tester, 'pw-current', 'old-password-1');
+      await typeInto(tester, 'pw-new', 'new-password-2');
+      await press(tester, 'pw-save');
+      expect(find.text(busy), findsOneWidget);
+      expect(find.text('That password is not right.'), findsNothing);
+      expect(typed(tester, 'pw-current'), 'old-password-1');
+      expect(typed(tester, 'pw-new'), 'new-password-2');
+      expect(
+        tester
+            .widget<FilledButton>(find.byKey(const ValueKey('pw-save')))
+            .onPressed,
+        isNotNull,
+      );
+      expect(h.account.signedIn, true);
+      expect(await h.tokens.read(server), 'tok');
+    });
+
+    testWidgets('an email change says busy and keeps what was typed', (
+      tester,
+    ) async {
+      final h = make({'POST /me/email': refuse()});
+      await open(tester, h);
+      await typeInto(tester, 'email-new', 'new@example.org');
+      await typeInto(tester, 'email-password', 'old-password-1');
+      await press(tester, 'email-save');
+      expect(find.text(busy), findsOneWidget);
+      expect(typed(tester, 'email-password'), 'old-password-1');
+      expect(h.account.signedIn, true);
+      expect(await h.tokens.read(server), 'tok');
+    });
+
+    testWidgets('a delete says busy, keeps the account and the password', (
+      tester,
+    ) async {
+      final h = make({'DELETE /me': refuse()});
+      await open(tester, h);
+      await typeInto(tester, 'delete-password', 'old-password-1');
+      await typeInto(tester, 'delete-username', 'ridgewalker');
+      await press(tester, 'delete-confirm');
+      expect(find.text(busy), findsOneWidget);
+      expect(typed(tester, 'delete-password'), 'old-password-1');
+      expect(h.account.signedIn, true);
+      expect(await h.tokens.read(server), 'tok');
+    });
   });
 }

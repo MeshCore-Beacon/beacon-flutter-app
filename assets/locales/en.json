@@ -1508,6 +1508,9 @@
         "readOnly": "This server is read-only right now. Try again later.",
         "requestNotFound": "That request no longer exists."
       }
+    },
+    "passwordRule": {
+      "hint": "At least 12 characters, at most 128 bytes."
     }
   }
 }

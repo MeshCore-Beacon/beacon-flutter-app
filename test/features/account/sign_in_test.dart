@@ -239,6 +239,21 @@ void main() {
     expect(flow.pending, isNull);
   });
 
+  test('a busy server on the exchange says so in the app language', () async {
+    exchange = (_) => _json(503, {
+      'error': {'code': 'service_unavailable', 'message': 'raw server text'},
+    });
+    final account = AccountState(AuthApi(_server, tokens));
+    accounts[_server] = account;
+    final flow = make();
+    await flow.start(_server);
+    final result = await flow.handleCallback(callback(flow.pending!.state));
+    expect(result.outcome, SignInOutcome.failed);
+    expect(result.message, trKey('serverText.errors.busy'));
+    expect(await tokens.read(_server), isNull);
+    expect(account.signedIn, false);
+  });
+
   test('the last result is kept and listeners hear about it', () async {
     final flow = make();
     var heard = 0;

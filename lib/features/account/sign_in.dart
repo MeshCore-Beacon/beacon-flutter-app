@@ -150,7 +150,13 @@ class SignInFlow extends ChangeNotifier {
     } on SignInSuperseded {
       return ignored;
     } on ApiException catch (e) {
-      result = SignInResult(SignInOutcome.failed, message: e.message);
+      result = SignInResult(
+        SignInOutcome.failed,
+        // A busy server is retryable and reads the same in every language.
+        message: e.code == 'service_unavailable'
+            ? trKey('serverText.errors.busy')
+            : e.message,
+      );
     } catch (_) {
       // A keystore that cannot save the token also leaves us signed out.
       result = SignInResult(

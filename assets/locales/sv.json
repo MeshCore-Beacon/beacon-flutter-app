@@ -1508,6 +1508,9 @@
         "readOnly": "Servern är skrivskyddad just nu. Försök igen senare.",
         "requestNotFound": "Den begäran finns inte längre."
       }
+    },
+    "passwordRule": {
+      "hint": "Minst 12 tecken, högst 128 byte."
     }
   }
 }

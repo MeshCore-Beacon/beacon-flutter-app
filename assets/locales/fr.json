@@ -1555,6 +1555,9 @@
         "readOnly": "Ce serveur est en lecture seule pour le moment. Réessayez plus tard.",
         "requestNotFound": "Cette demande n'existe plus."
       }
+    },
+    "passwordRule": {
+      "hint": "Au moins 12 caractères, au plus 128 octets."
     }
   }
 }

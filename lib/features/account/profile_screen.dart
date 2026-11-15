@@ -13,6 +13,7 @@ import '../directory/directory_widgets.dart';
 import '../directory/telemetry_request.dart';
 import 'account_errors.dart';
 import 'alert_rules.dart';
+import 'password_rule.dart';
 import 'request_text.dart';
 
 part 'alerts_section.dart';
@@ -224,10 +225,14 @@ class _PasswordField extends StatefulWidget {
     required this.controller,
     required this.label,
     this.hint = AutofillHints.password,
+    this.helper,
+    this.onChanged,
   });
   final TextEditingController controller;
   final String label;
   final String hint;
+  final String? helper;
+  final ValueChanged<String>? onChanged;
   @override
   State<_PasswordField> createState() => _PasswordFieldState();
 }
@@ -241,8 +246,10 @@ class _PasswordFieldState extends State<_PasswordField> {
     autocorrect: false,
     enableSuggestions: false,
     autofillHints: [widget.hint],
+    onChanged: widget.onChanged,
     decoration: InputDecoration(
       labelText: widget.label,
+      helperText: widget.helper,
       suffixIcon: IconButton(
         tooltip: trKey(shown ? 'account.hidePassword' : 'account.showPassword'),
         icon: Icon(shown ? Icons.visibility_off : Icons.visibility, size: 20),
@@ -429,13 +436,15 @@ class _PasswordFormState extends State<_PasswordForm> with _Action {
           controller: next,
           label: trKey('account.newPassword'),
           hint: AutofillHints.newPassword,
+          helper: trKey('passwordRule.hint'),
+          onChanged: (_) => setState(() {}),
         ),
         const SizedBox(height: 8),
         _Button(
           id: 'pw-save',
           label: trKey('account.changePassword'),
           busy: busy,
-          onPressed: save,
+          onPressed: newPasswordOk(next.text) ? save : null,
         ),
         noteLine(context),
       ],
