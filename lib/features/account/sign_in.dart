@@ -9,6 +9,7 @@ import '../../core/api.dart';
 import '../../core/auth_api.dart';
 import '../../core/json.dart';
 import '../../core/pkce.dart';
+import '../../core/strings.dart';
 
 enum SignInOutcome { success, ignored, failed }
 
@@ -104,7 +105,7 @@ class SignInFlow extends ChangeNotifier {
     }
     if (!opened) {
       if (identical(pending, next)) pending = null;
-      throw const ApiException('Could not open the browser.');
+      throw ApiException(trKey('account.browserFailed'));
     }
   }
 
@@ -133,9 +134,9 @@ class SignInFlow extends ChangeNotifier {
       result = SignInResult(SignInOutcome.failed, message: e.message);
     } catch (_) {
       // A keystore that cannot save the token also leaves us signed out.
-      result = const SignInResult(
+      result = SignInResult(
         SignInOutcome.failed,
-        message: 'Could not save the sign-in on this device.',
+        message: trKey('account.saveFailed'),
       );
     }
     lastResult = result;

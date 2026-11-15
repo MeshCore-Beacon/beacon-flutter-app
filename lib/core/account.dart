@@ -12,15 +12,24 @@ class AccountState extends ChangeNotifier {
   final AuthApi api;
   Json? user;
   bool get signedIn => user != null;
+  bool _disposed = false;
+
+  /// A call still in flight when its screen closes must not notify.
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
 
   void _signedOut() {
-    if (user == null) return;
+    if (user == null || _disposed) return;
     user = null;
     notifyListeners();
   }
 
   /// Takes a fresh user from a profile call.
   void adopt(Json? next) {
+    if (_disposed) return;
     user = next;
     notifyListeners();
   }
@@ -40,4 +49,16 @@ class AccountState extends ChangeNotifier {
   }
 
   Future<void> signOut() => api.signOut();
+}
+
+/// The live [AccountState] of each server whose home screen is open, so the
+/// sign-in flow can reach the one that is active.
+class AccountRegistry {
+  final _states = <String, AccountState>{};
+  AccountState? operator [](String serverUrl) => _states[serverUrl];
+  void register(String serverUrl, AccountState state) =>
+      _states[serverUrl] = state;
+  void unregister(String serverUrl, AccountState state) {
+    if (identical(_states[serverUrl], state)) _states.remove(serverUrl);
+  }
 }

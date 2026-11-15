@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'app.dart';
+import 'core/account.dart';
 import 'core/auth_api.dart';
 import 'core/preferences.dart';
 import 'core/strings.dart';
@@ -23,13 +24,17 @@ Future<void> main() async {
   });
   final tokens = SecureTokenStore();
   final preferences = await Preferences.load(tokens: tokens);
+  final accounts = AccountRegistry();
   runApp(
     BeaconApp(
       preferences: preferences,
+      tokens: tokens,
+      accounts: accounts,
       signInFlow: SignInFlow(
         apiFor: (url) => AuthApi(url, tokens),
         launch: (uri) => launchUrl(uri, mode: LaunchMode.externalApplication),
         now: DateTime.now,
+        accountFor: (url) => accounts[url],
       ),
       linkSource: AppLinksSource(),
     ),

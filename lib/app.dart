@@ -6,7 +6,9 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'core/account.dart';
 import 'core/api.dart';
+import 'core/auth_api.dart';
 import 'core/instance.dart';
 import 'core/json.dart';
 import 'core/live.dart';
@@ -15,6 +17,7 @@ import 'core/region_selection.dart';
 import 'core/runtime_config.dart';
 import 'core/strings.dart';
 import 'core/theme.dart';
+import 'core/token_store.dart';
 import 'core/version_gate.dart';
 import 'features/account/sign_in.dart';
 import 'features/analytics/analytics_screen.dart';
@@ -34,6 +37,9 @@ class BeaconApp extends StatefulWidget {
     this.versionGate,
     this.signInFlow,
     this.linkSource,
+    this.tokens,
+    this.accounts,
+    this.authFactory,
   });
   final Preferences preferences;
   final bool connectLive;
@@ -48,6 +54,15 @@ class BeaconApp extends StatefulWidget {
 
   /// Where callback links come from; needed with [signInFlow] to receive any.
   final LinkSource? linkSource;
+
+  /// Where sign-in tokens live; memory only when null, as in tests.
+  final TokenStore? tokens;
+
+  /// Shared with the sign-in flow so a new sign-in reaches the open account.
+  final AccountRegistry? accounts;
+
+  /// Builds the signed-in client for a server URL; tests swap in a mock.
+  final AuthApi Function(String url, TokenStore tokens)? authFactory;
   @override
   State<BeaconApp> createState() => _BeaconAppState();
 }
@@ -57,6 +72,8 @@ class _BeaconAppState extends State<BeaconApp> with WidgetsBindingObserver {
   late final VersionGate gate =
       widget.versionGate ??
       VersionGate(fetchInfo: VersionGate.apiFetcher(widget.apiFactory));
+  late final TokenStore tokens = widget.tokens ?? MemoryTokenStore();
+  late final AccountRegistry accounts = widget.accounts ?? AccountRegistry();
   String? active;
   GateStatus? shown;
   SignInLinks? _signInLinks;
@@ -157,6 +174,9 @@ class _BeaconAppState extends State<BeaconApp> with WidgetsBindingObserver {
         preferences: widget.preferences,
         connectLive: widget.connectLive,
         apiFactory: widget.apiFactory,
+        tokens: tokens,
+        accounts: accounts,
+        authFactory: widget.authFactory,
       ),
     };
   }
@@ -184,8 +204,10 @@ class _BeaconAppState extends State<BeaconApp> with WidgetsBindingObserver {
 
 Future<void> showServerSwitcher(
   BuildContext context,
-  Preferences preferences,
-) async {
+  Preferences preferences, {
+  AccountState? account,
+  ApiClient? api,
+}) async {
   final manage = await showModalBottomSheet<bool>(
     context: context,
     useSafeArea: true,
@@ -230,7 +252,10 @@ Future<void> showServerSwitcher(
   if (manage == true && context.mounted) {
     await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => SettingsPage(preferences: preferences)),
+      MaterialPageRoute(
+        builder: (_) =>
+            SettingsPage(preferences: preferences, account: account, api: api),
+      ),
     );
   }
 }
@@ -438,16 +463,23 @@ class BeaconHome extends StatefulWidget {
     required this.preferences,
     this.connectLive = true,
     this.apiFactory,
+    required this.tokens,
+    required this.accounts,
+    this.authFactory,
   });
   final Preferences preferences;
   final bool connectLive;
   final ApiClient Function(Uri)? apiFactory;
+  final TokenStore tokens;
+  final AccountRegistry accounts;
+  final AuthApi Function(String url, TokenStore tokens)? authFactory;
   @override
   State<BeaconHome> createState() => _BeaconHomeState();
 }
 
 class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
   late final ApiClient api;
+  late final AccountState account;
   late LiveConnection live;
   StreamSubscription<Json>? liveEvents;
   late Map<String, dynamic> region;
@@ -460,6 +492,12 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
     super.initState();
     final instance = widget.preferences.active!;
     api = widget.apiFactory?.call(instance.base) ?? ApiClient(instance.base);
+    account = AccountState(
+      widget.authFactory?.call(instance.url, widget.tokens) ??
+          AuthApi(instance.url, widget.tokens),
+    );
+    widget.accounts.register(instance.url, account);
+    unawaited(account.refresh());
     region = widget.preferences.regionFor(instance.url);
     selection = RegionSelection.restore(
       widget.preferences.regionSelectionFor(instance.url),
@@ -488,6 +526,8 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
     liveEvents?.cancel();
     live.dispose();
     api.close();
+    widget.accounts.unregister(account.api.base, account);
+    account.dispose();
     super.dispose();
   }
 
@@ -513,6 +553,7 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
       );
       if (!mounted || result.status == GateStatus.blocked) return;
     }
+    unawaited(account.refresh());
     if (widget.connectLive) live.start();
   }
 
@@ -560,12 +601,21 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
     Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
   }
 
-  Future<void> switcher() => showServerSwitcher(context, widget.preferences);
+  Future<void> switcher() => showServerSwitcher(
+    context,
+    widget.preferences,
+    account: account,
+    api: api,
+  );
 
   void settings() => Navigator.push(
     context,
     MaterialPageRoute(
-      builder: (_) => SettingsPage(preferences: widget.preferences),
+      builder: (_) => SettingsPage(
+        preferences: widget.preferences,
+        account: account,
+        api: api,
+      ),
     ),
   );
   Future<void> chooseRegion() async {
