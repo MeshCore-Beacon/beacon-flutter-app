@@ -68,6 +68,7 @@ void main() {
       String type = 'repeater',
       bool polling = true,
       int telemetryStatus = 200,
+      int Function(Uri)? statusFor,
       Map<String, dynamic>? telemetry,
       Map<String, dynamic>? pollingBody,
       void Function(String, String)? onOpen,
@@ -101,7 +102,7 @@ void main() {
                       'points': [],
                     },
               ),
-              telemetryStatus,
+              statusFor?.call(request.url) ?? telemetryStatus,
             );
           }
           if (path.endsWith('/polling')) {
@@ -186,6 +187,53 @@ void main() {
       expect(find.text('TELEMETRY'), findsNothing);
     });
 
+    testWidgets('a failed load keeps the section with a retry', (tester) async {
+      await pump(tester, telemetryStatus: 500, pollingBody: poller);
+      expect(find.text('TELEMETRY'), findsOneWidget);
+      expect(find.byType(DropdownButtonFormField<String>), findsOneWidget);
+      expect(find.text(trKey('nodeTelemetry.failed')), findsOneWidget);
+      expect(find.text('Retry'), findsOneWidget);
+    });
+
+    testWidgets('a failure after a range change recovers on retry', (
+      tester,
+    ) async {
+      var fail = false;
+      final seen = await pump(
+        tester,
+        telemetry: data(),
+        pollingBody: poller,
+        statusFor: (_) => fail ? 500 : 200,
+      );
+      fail = true;
+      await tester.tap(find.byType(DropdownButtonFormField<String>).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(trKey('nodeTelemetry.range24h')).last);
+      await tester.pumpAndSettle();
+      expect(find.text('TELEMETRY'), findsOneWidget);
+      expect(find.text(trKey('nodeTelemetry.failed')), findsOneWidget);
+      fail = false;
+      await tester.tap(find.text('Retry'));
+      await tester.pumpAndSettle();
+      expect(find.text(trKey('nodeTelemetry.failed')), findsNothing);
+      expect(find.text('BATTERY (V)'), findsOneWidget);
+      final last = seen.lastWhere((u) => u.path.endsWith('/telemetry'));
+      expect(last.queryParameters['range'], '24h');
+    });
+
+    testWidgets('a polled node with no points in range says so', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        telemetry: {'polled': true, 'points': []},
+        pollingBody: poller,
+      );
+      expect(find.text('No readings in this range'), findsOneWidget);
+      expect(find.text(trKey('nodeTelemetry.waiting')), findsNothing);
+      expect(find.byType(DropdownButtonFormField<String>), findsOneWidget);
+    });
+
     testWidgets('one waiting line with a poller and no points', (tester) async {
       await pump(tester, pollingBody: poller);
       expect(find.text('TELEMETRY'), findsOneWidget);
@@ -211,7 +259,7 @@ void main() {
       expect(find.text('NOISE FLOOR (DBM)'), findsOneWidget);
       expect(find.text('AIRTIME TX AND RX (%)'), findsOneWidget);
       expect(find.text('Polled by HOWL V4.2'), findsOneWidget);
-      expect(find.text(trKey('nodeTelemetry.standbys', count: 2)), findsOne);
+      expect(find.text('2 standby observers'), findsOneWidget);
       expect(find.text(trKey('nodeTelemetry.waiting')), findsNothing);
       await tester.tap(find.text('Polled by HOWL V4.2'));
       expect(opened, 'observer:obs-9');

@@ -1282,7 +1282,9 @@
       "lastReading": "Senaste avläsning",
       "standbys_one": "{{count}} reservobservatör",
       "standbys_other": "{{count}} reservobservatörer",
-      "waiting": "Väntar på första avläsningen från den här noden."
+      "waiting": "Väntar på första avläsningen från den här noden.",
+      "empty": "Inga avläsningar i det här intervallet",
+      "failed": "Det gick inte att läsa in avläsningarna."
     }
   }
 }

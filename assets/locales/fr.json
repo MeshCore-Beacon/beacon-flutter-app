@@ -1329,7 +1329,9 @@
       "lastReading": "Dernière mesure",
       "standbys_one": "{{count}} observateur de réserve",
       "standbys_other": "{{count}} observateurs de réserve",
-      "waiting": "En attente de la première mesure de ce nœud."
+      "waiting": "En attente de la première mesure de ce nœud.",
+      "empty": "Aucune mesure dans cette période",
+      "failed": "Impossible de charger les mesures."
     }
   }
 }

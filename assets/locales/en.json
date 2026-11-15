@@ -1282,7 +1282,9 @@
       "lastReading": "Last reading",
       "standbys_one": "{{count}} standby observer",
       "standbys_other": "{{count}} standby observers",
-      "waiting": "Waiting for the first reading from this node."
+      "waiting": "Waiting for the first reading from this node.",
+      "empty": "No readings in this range",
+      "failed": "Could not load readings."
     }
   }
 }

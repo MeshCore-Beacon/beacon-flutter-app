@@ -6,11 +6,11 @@ import '../../core/strings.dart';
 import '../../core/theme.dart';
 import '../analytics/charts.dart';
 import '../analytics/transforms.dart';
+import '../atlas/atlas.dart' show hourMs;
 import 'directory_widgets.dart';
 
 const _ranges = {'24h': '24h', '7d': '168h', '30d': '720h'};
 const _intervalMs = {'24h': hourMs, '168h': 6 * hourMs, '720h': 24 * hourMs};
-const hourMs = 3600000;
 
 /// Node types the poller reads, as the server names them.
 bool isPolledNodeType(String? typeName) => const {
@@ -87,7 +87,7 @@ class NodeTelemetrySection extends StatefulWidget {
 
 class _NodeTelemetrySectionState extends State<NodeTelemetrySection> {
   String range = '7d';
-  bool enabled = false, hidden = false, loaded = false;
+  bool enabled = false, hidden = false, loaded = false, failed = false;
   Json telemetry = {}, polling = {};
   int generation = 0, rangeToken = 0;
 
@@ -101,7 +101,7 @@ class _NodeTelemetrySectionState extends State<NodeTelemetrySection> {
   void didUpdateWidget(covariant NodeTelemetrySection old) {
     super.didUpdateWidget(old);
     if (old.api != widget.api || old.nodeId != widget.nodeId) {
-      loaded = hidden = enabled = false;
+      loaded = hidden = enabled = failed = false;
       polling = telemetry = {};
       start();
     }
@@ -139,14 +139,16 @@ class _NodeTelemetrySectionState extends State<NodeTelemetrySection> {
       if (!mounted || token != generation || mine != rangeToken) return;
       setState(() {
         telemetry = t;
-        hidden = false;
+        hidden = failed = false;
         loaded = true;
       });
-    } catch (_) {
+    } catch (e) {
       if (!mounted || token != generation || mine != rangeToken) return;
-      // A 404 or any failure leaves the page as it was without this section.
+      // Only a 404 means no such route; other failures keep the section and retry.
+      final missing = e is ApiException && e.status == 404;
       setState(() {
-        hidden = true;
+        hidden = missing;
+        failed = !missing;
         loaded = true;
       });
     }
@@ -158,7 +160,10 @@ class _NodeTelemetrySectionState extends State<NodeTelemetrySection> {
     final points = rows(telemetry['points']);
     final poller = object(polling['poller']);
     final standbys = rows(polling['standbys']);
-    if (points.isEmpty && poller.isEmpty && telemetry['polled'] != true) {
+    if (!failed &&
+        points.isEmpty &&
+        poller.isEmpty &&
+        telemetry['polled'] != true) {
       return const SizedBox.shrink();
     }
     final colors = BeaconColors.of(context);
@@ -205,9 +210,23 @@ class _NodeTelemetrySectionState extends State<NodeTelemetrySection> {
         },
       ),
       const SizedBox(height: 12),
-      if (points.isEmpty)
+      if (failed) ...[
         Text(
-          trKey('nodeTelemetry.waiting'),
+          trKey('nodeTelemetry.failed'),
+          style: TextStyle(fontSize: 12, color: colors.danger),
+        ),
+        TextButton.icon(
+          onPressed: loadTelemetry,
+          icon: const Icon(Icons.refresh),
+          label: Text(tr('Retry')),
+        ),
+      ] else if (points.isEmpty)
+        Text(
+          trKey(
+            telemetry['polled'] == true
+                ? 'nodeTelemetry.empty'
+                : 'nodeTelemetry.waiting',
+          ),
           style: TextStyle(fontSize: 12, color: colors.muted),
         ),
       if (has('batteryMv'))
