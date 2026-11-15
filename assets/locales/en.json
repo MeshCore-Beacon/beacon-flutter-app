@@ -1537,6 +1537,14 @@
       "passwordHelper": "Needed to confirm it is you.",
       "noDevices": "No devices to show.",
       "deleteUsernameHelper": "Type your username exactly as shown."
+    },
+    "pollerState": {
+      "ok": "Being polled by {{name}}",
+      "pending": "Assigned to {{name}}. First poll is on its way.",
+      "notDirect": "Assigned to {{name}}, which cannot hear this repeater directly right now.",
+      "noReply": "{{name}} is asking, but the repeater is not answering.",
+      "notClaimed": "Assigned to {{name}}. Waiting for it to pick this up.",
+      "passwordProblem": "{{name}} reported a password problem. Checking."
     }
   }
 }

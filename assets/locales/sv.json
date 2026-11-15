@@ -1537,6 +1537,14 @@
       "passwordHelper": "Behövs för att bekräfta att det är du.",
       "noDevices": "Inga enheter att visa.",
       "deleteUsernameHelper": "Skriv ditt användarnamn exakt som det visas."
+    },
+    "pollerState": {
+      "ok": "Läses av {{name}}",
+      "pending": "Tilldelad {{name}}. Första avläsningen är på väg.",
+      "notDirect": "Tilldelad {{name}}, som inte kan höra den här repeatern direkt just nu.",
+      "noReply": "{{name}} frågar, men repeatern svarar inte.",
+      "notClaimed": "Tilldelad {{name}}. Väntar på att den ska ta över.",
+      "passwordProblem": "{{name}} rapporterade ett lösenordsproblem. Kontrollerar."
     }
   }
 }

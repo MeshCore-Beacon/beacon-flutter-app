@@ -20,6 +20,7 @@ Map<String, dynamic> request(
   String name = 'Hilltop',
   String? nodeId = 'n1',
   bool poller = true,
+  String? state,
   bool reading = true,
 }) => {
   'id': id,
@@ -29,7 +30,9 @@ Map<String, dynamic> request(
   'hasPassword': hasPassword,
   'createdAt': now,
   'updatedAt': now,
-  'poller': poller ? {'observerId': 'o1', 'name': 'HOWL V4.2'} : null,
+  'poller': poller
+      ? {'observerId': 'o1', 'name': 'HOWL V4.2', 'state': ?state}
+      : null,
   'latestReadingAt': reading ? now - 3600000 : null,
 };
 
@@ -107,6 +110,17 @@ void main() {
     await tester.tap(f);
     await tester.pumpAndSettle();
   }
+
+  testWidgets('an active row says what its poller reports', (tester) async {
+    stored = [request('r1', state: 'no_reply')];
+    await open(tester, make());
+    expect(
+      find.text('HOWL V4.2 is asking, but the repeater is not answering.'),
+      findsOneWidget,
+    );
+    expect(find.text('Being polled'), findsNothing);
+    expect(find.text('Polled by HOWL V4.2'), findsNothing);
+  });
 
   testWidgets('shows each request with its status, reason, poller and age', (
     tester,

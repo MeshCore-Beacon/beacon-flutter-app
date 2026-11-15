@@ -28,6 +28,7 @@ Map<String, dynamic> _request(
   String name,
   String status, {
   bool reading = true,
+  String? state,
 }) => {
   'id': id,
   'node': {'id': 'n$id', 'publicKey': 'ab' * 32, 'name': name},
@@ -35,7 +36,7 @@ Map<String, dynamic> _request(
   'statusReason': '',
   'hasPassword': status != 'waiting',
   'poller': status == 'active'
-      ? {'observerId': 'o1', 'name': 'HOWL V4.2'}
+      ? {'observerId': 'o1', 'name': 'HOWL V4.2', 'state': ?state}
       : null,
   'latestReadingAt': reading ? _now - 3600000 : null,
 };
@@ -320,6 +321,7 @@ void main() {
           _request('1', 'Hilltop', 'active'),
           _request('2', 'Lakeside', 'admin_stopped', reading: false),
           _request('3', 'North ridge', 'waiting', reading: false),
+          _request('4', 'Pine bluff', 'active', state: 'not_direct'),
         ],
       );
       await profile(tester, h, scrollTo: 'request-row-1');

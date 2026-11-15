@@ -1584,6 +1584,14 @@
       "passwordHelper": "Nécessaire pour confirmer votre identité.",
       "noDevices": "Aucun appareil à afficher.",
       "deleteUsernameHelper": "Saisissez votre nom d'utilisateur exactement comme affiché."
+    },
+    "pollerState": {
+      "ok": "Interrogé par {{name}}",
+      "pending": "Attribué à {{name}}. La première interrogation est en route.",
+      "notDirect": "Attribué à {{name}}, qui n'entend pas ce répéteur directement pour l'instant.",
+      "noReply": "{{name}} interroge, mais le répéteur ne répond pas.",
+      "notClaimed": "Attribué à {{name}}. En attente qu'il le prenne en charge.",
+      "passwordProblem": "{{name}} a signalé un problème de mot de passe. Vérification en cours."
     }
   }
 }
