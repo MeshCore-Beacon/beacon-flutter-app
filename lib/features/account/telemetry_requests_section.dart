@@ -132,14 +132,24 @@ class _RequestRowState extends State<_RequestRow> with _Action {
   String get id => textOf(widget.request['id']);
 
   Future<void> savePassword() async {
-    final ok = await run(() async {
-      await widget.account.api.updateTelemetryRequest(
-        id,
-        withPassword: true,
-        password: password.text,
-      );
-      return null;
-    }, describe: requestError);
+    final ok = await run(
+      () async {
+        await widget.account.api.updateTelemetryRequest(
+          id,
+          withPassword: true,
+          password: password.text,
+        );
+        return null;
+      },
+      describe: (e) {
+        // A stopped request cannot take a blank login, so a refusal there reads differently.
+        final stopped = widget.request['status'] == 'admin_stopped';
+        if (stopped && e is ApiException && e.code == 'password_invalid') {
+          return trKey('telemetryRequests.errors.password_invalid_stopped');
+        }
+        return requestError(e);
+      },
+    );
     if (!ok || !mounted) return;
     password.clear();
     setState(() => editing = false);
@@ -177,6 +187,9 @@ class _RequestRowState extends State<_RequestRow> with _Action {
     );
     final poller = object(r['poller']);
     final reason = requestReasonText(r);
+    // Only a new password restarts these; enable and a blank login do nothing.
+    final stopped = r['status'] == 'admin_stopped';
+    final needsNew = stopped || r['status'] == 'login_failed';
     final name = textOf(
       node['name'],
       trKey('telemetryRequests.unknownRepeater'),
@@ -198,6 +211,7 @@ class _RequestRowState extends State<_RequestRow> with _Action {
           ),
           Text(requestStatusText(textOf(r['status']))),
           if (reason.isNotEmpty) Text(reason, style: muted),
+          if (stopped) Text(trKey('telemetryRequests.adminStoppedHelp')),
           if (poller.isNotEmpty)
             Text(
               trKey('telemetryRequests.polledBy')
@@ -223,15 +237,24 @@ class _RequestRowState extends State<_RequestRow> with _Action {
             GuestPasswordField(
               key: ValueKey('request-pw-field-$id'),
               controller: password,
-              label: trKey('telemetryRequests.newPassword'),
+              label: trKey(
+                stopped
+                    ? 'telemetryRequests.newPasswordRequired'
+                    : 'telemetryRequests.newPassword',
+              ),
             ),
             Text(trKey('telemetryRequests.notice'), style: muted),
             Row(
               children: [
-                FilledButton(
-                  key: ValueKey('request-pw-save-$id'),
-                  onPressed: busy ? null : savePassword,
-                  child: Text(trKey('telemetryRequests.save')),
+                ListenableBuilder(
+                  listenable: password,
+                  builder: (_, _) => FilledButton(
+                    key: ValueKey('request-pw-save-$id'),
+                    onPressed: busy || (stopped && password.text.isEmpty)
+                        ? null
+                        : savePassword,
+                    child: Text(trKey('telemetryRequests.save')),
+                  ),
                 ),
                 TextButton(
                   onPressed: busy
@@ -273,7 +296,13 @@ class _RequestRowState extends State<_RequestRow> with _Action {
                 TextButton(
                   key: ValueKey('request-pw-$id'),
                   onPressed: busy ? null : () => setState(() => editing = true),
-                  child: Text(trKey('telemetryRequests.changePassword')),
+                  child: Text(
+                    trKey(
+                      needsNew
+                          ? 'telemetryRequests.enterNewPassword'
+                          : 'telemetryRequests.changePassword',
+                    ),
+                  ),
                 ),
                 if (r['status'] == 'disabled')
                   TextButton(

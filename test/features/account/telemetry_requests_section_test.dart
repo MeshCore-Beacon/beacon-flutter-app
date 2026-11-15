@@ -248,6 +248,90 @@ void main() {
     );
   });
 
+  testWidgets(
+    'an admin-stopped request offers only a new password and delete',
+    (tester) async {
+      stored = [request('r1', status: 'admin_stopped')];
+      await open(tester, make());
+      expect(
+        find.text(
+          'The password you entered was an admin password. Beacon deleted it. '
+          'Only a guest password will start it again.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Enter a new password'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('request-pw-r1')),
+          matching: find.text('Change password'),
+        ),
+        findsNothing,
+      );
+      expect(find.byKey(const ValueKey('request-enable-r1')), findsNothing);
+      expect(find.byKey(const ValueKey('request-remove-r1')), findsOneWidget);
+    },
+  );
+
+  testWidgets('a failed login offers a new password and delete, no enable', (
+    tester,
+  ) async {
+    stored = [request('r1', status: 'login_failed')];
+    await open(tester, make());
+    expect(find.text('Enter a new password'), findsOneWidget);
+    expect(find.byKey(const ValueKey('request-enable-r1')), findsNothing);
+    expect(find.byKey(const ValueKey('request-remove-r1')), findsOneWidget);
+  });
+
+  testWidgets('an admin-stopped request cannot save an empty password', (
+    tester,
+  ) async {
+    stored = [request('r1', status: 'admin_stopped')];
+    final h = make();
+    await open(tester, h);
+    await press(tester, 'request-pw-r1');
+    expect(find.textContaining('empty removes'), findsNothing);
+    final save = find.byKey(const ValueKey('request-pw-save-r1'));
+    expect(tester.widget<FilledButton>(save).onPressed, isNull);
+    await tester.enterText(
+      find.byKey(const ValueKey('request-pw-field-r1')),
+      'guest1',
+    );
+    await tester.pump();
+    await press(tester, 'request-pw-save-r1');
+    expect(
+      jsonDecode(h.calls('PATCH', '/me/telemetry-requests/r1').single.body),
+      {'password': 'guest1'},
+    );
+  });
+
+  testWidgets('a refused password on a stopped request has its own message', (
+    tester,
+  ) async {
+    stored = [request('r1', status: 'admin_stopped')];
+    final h = make(
+      extra: {
+        'PATCH /me/telemetry-requests/r1': (_) =>
+            failure(422, 'password_invalid', 'raw'),
+      },
+    );
+    await open(tester, h);
+    await press(tester, 'request-pw-r1');
+    await tester.enterText(
+      find.byKey(const ValueKey('request-pw-field-r1')),
+      'abc',
+    );
+    await tester.pump();
+    await press(tester, 'request-pw-save-r1');
+    expect(
+      find.text(
+        'This request needs a guest password of 1 to 15 characters. '
+        'It cannot be restarted with a blank login.',
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('re-enable shows only for a paused request', (tester) async {
     stored = [request('r1'), request('r2', status: 'disabled')];
     final h = make();

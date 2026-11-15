@@ -1374,6 +1374,9 @@
       "noReading": "Inga värden ännu",
       "passwordSet": "Gästlösenord inställt",
       "passwordNone": "Inget gästlösenord",
+      "adminStoppedHelp": "Lösenordet du angav var ett administratörslösenord. Beacon har raderat det. Bara ett gästlösenord startar begäran igen.",
+      "enterNewPassword": "Ange ett nytt lösenord",
+      "newPasswordRequired": "Nytt gästlösenord",
       "changePassword": "Byt lösenord",
       "newPassword": "Nytt gästlösenord (tomt tar bort det)",
       "save": "Spara",
@@ -1394,6 +1397,7 @@
         "already_requested": "Du har redan begärt den här repeatern.",
         "not_a_repeater": "Bara repeatrar och rumsservrar kan läsas av.",
         "password_invalid": "Gästlösenordet måste vara 1 till 15 tecken.",
+        "password_invalid_stopped": "Den här begäran behöver ett gästlösenord på 1 till 15 tecken. Den kan inte startas om med en tom inloggning.",
         "no_password_blocked": "Den här repeatern ger administratörsåtkomst utan lösenord, så den kan inte läsas av på det här sättet",
         "requests_disabled": "Telemetribegäran är avstängda på den här servern."
       }
