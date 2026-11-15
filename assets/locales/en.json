@@ -1394,6 +1394,65 @@
         "no_password_blocked": "This repeater gives admin access without a password, so it cannot be polled this way",
         "requests_disabled": "Telemetry requests are turned off on this server."
       }
+    },
+    "alerts": {
+      "title": "Alerts",
+      "retry": "Retry",
+      "toEmail": "Alerts are sent to {{email}}",
+      "byEmail": "Alerts are sent to your email address.",
+      "toPhone": "Alerts are sent to the Beacon app on your phone",
+      "empty": "Alerts are set on radios in your Atlas. Add a radio to your Atlas first, then come back here.",
+      "requestAttention": "You are also always told when one of your telemetry requests needs attention. That one has no switch.",
+      "needsGoneQuiet": "Turn on {{kind}} first.",
+      "mv": "{{n}} mV",
+      "push": {
+        "notSetUp": "Push notifications are not set up in this build.",
+        "enable": "Turn on notifications",
+        "denied": "Notifications are turned off for Beacon. Allow them in your phone settings to get alerts.",
+        "failed": "Could not register this phone for alerts."
+      },
+      "kind": {
+        "gone_quiet": "Gone quiet",
+        "back_online": "Back online",
+        "battery_low": "Battery low",
+        "battery_falling": "Battery falling",
+        "rebooted": "Rebooted",
+        "temperature": "Temperature",
+        "noise_high": "Noise high",
+        "clock": "Clock drift",
+        "observer_offline": "Observer offline"
+      },
+      "input": {
+        "hours": "Hours",
+        "volts": "Volts",
+        "drop": "Drop per day",
+        "dbm": "dBm",
+        "drift": "Drift",
+        "minutes": "Minutes without a report",
+        "low": "Low (°C)",
+        "high": "High (°C)"
+      },
+      "drift": {
+        "300": "5 minutes",
+        "3600": "1 hour",
+        "86400": "1 day"
+      },
+      "state": {
+        "ok": "OK",
+        "firing": "Alerting since {{when}}",
+        "inactive": "No data right now",
+        "unknown": "Not checked yet"
+      },
+      "errors": {
+        "kind_unavailable": "This alert is not available for this radio.",
+        "invalid_threshold": "That is not an allowed value for this alert.",
+        "not_on_atlas": "This radio is no longer in your Atlas.",
+        "alerts_disabled": "Alerts are turned off on this server.",
+        "volts": "Enter a value between 2.50 and 5.00 volts.",
+        "dbm": "Enter a whole number between -130 and -50 dBm.",
+        "temperatureNone": "Enter a low or a high limit.",
+        "temperature": "Enter a temperature in degrees C, such as 4.5."
+      }
     }
   }
 }

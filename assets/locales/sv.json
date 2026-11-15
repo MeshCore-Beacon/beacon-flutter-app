@@ -1394,6 +1394,65 @@
         "no_password_blocked": "Den här repeatern ger administratörsåtkomst utan lösenord, så den kan inte läsas av på det här sättet",
         "requests_disabled": "Telemetribegäran är avstängda på den här servern."
       }
+    },
+    "alerts": {
+      "title": "Aviseringar",
+      "retry": "Försök igen",
+      "toEmail": "Aviseringar skickas till {{email}}",
+      "byEmail": "Aviseringar skickas till din e-postadress.",
+      "toPhone": "Aviseringar skickas till Beacon-appen på din telefon",
+      "empty": "Aviseringar ställs in på radioapparater i din Atlas. Lägg först till en radio i din Atlas och kom sedan tillbaka hit.",
+      "requestAttention": "Du får också alltid besked när en av dina telemetribegäranden behöver uppmärksamhet. Den har ingen strömbrytare.",
+      "needsGoneQuiet": "Slå först på {{kind}}.",
+      "mv": "{{n}} mV",
+      "push": {
+        "notSetUp": "Pushnotiser är inte inställda i den här versionen.",
+        "enable": "Slå på notiser",
+        "denied": "Notiser är avstängda för Beacon. Tillåt dem i telefonens inställningar för att få aviseringar.",
+        "failed": "Det gick inte att registrera telefonen för aviseringar."
+      },
+      "kind": {
+        "gone_quiet": "Tystnat",
+        "back_online": "Online igen",
+        "battery_low": "Lågt batteri",
+        "battery_falling": "Fallande batteri",
+        "rebooted": "Startade om",
+        "temperature": "Temperatur",
+        "noise_high": "Högt brus",
+        "clock": "Klockdrift",
+        "observer_offline": "Observatör offline"
+      },
+      "input": {
+        "hours": "Timmar",
+        "volts": "Volt",
+        "drop": "Fall per dygn",
+        "dbm": "dBm",
+        "drift": "Avvikelse",
+        "minutes": "Minuter utan rapport",
+        "low": "Lägst (°C)",
+        "high": "Högst (°C)"
+      },
+      "drift": {
+        "300": "5 minuter",
+        "3600": "1 timme",
+        "86400": "1 dygn"
+      },
+      "state": {
+        "ok": "OK",
+        "firing": "Larmar sedan {{when}}",
+        "inactive": "Inga data just nu",
+        "unknown": "Inte kontrollerad än"
+      },
+      "errors": {
+        "kind_unavailable": "Den här aviseringen finns inte för den här radion.",
+        "invalid_threshold": "Det värdet är inte tillåtet för den här aviseringen.",
+        "not_on_atlas": "Den här radion finns inte längre i din Atlas.",
+        "alerts_disabled": "Aviseringar är avstängda på den här servern.",
+        "volts": "Ange ett värde mellan 2,50 och 5,00 volt.",
+        "dbm": "Ange ett heltal mellan -130 och -50 dBm.",
+        "temperatureNone": "Ange en nedre eller övre gräns.",
+        "temperature": "Ange en temperatur i grader C, till exempel 4,5."
+      }
     }
   }
 }

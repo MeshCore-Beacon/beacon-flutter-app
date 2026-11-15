@@ -7,6 +7,7 @@ import 'app.dart';
 import 'core/account.dart';
 import 'core/auth_api.dart';
 import 'core/preferences.dart';
+import 'core/push_firebase.dart';
 import 'core/strings.dart';
 import 'core/theme.dart';
 import 'core/token_store.dart';
@@ -37,6 +38,7 @@ Future<void> main() async {
         accountFor: (url) => accounts[url],
       ),
       linkSource: AppLinksSource(),
+      push: FirebasePushClient(),
     ),
   );
 }

@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'api.dart';
 import 'auth_api.dart';
 import 'json.dart';
+import 'push.dart';
 
 /// The signed-in user for one server. Built per active server, like LiveConnection.
 class AccountState extends ChangeNotifier {
@@ -12,6 +13,9 @@ class AccountState extends ChangeNotifier {
   final AuthApi api;
   Json? user;
   bool get signedIn => user != null;
+
+  /// Keeps this phone's push token registered; removed on [signOut].
+  PushRegistration? push;
   bool _disposed = false;
 
   /// A call still in flight when its screen closes must not notify.
@@ -48,7 +52,11 @@ class AccountState extends ChangeNotifier {
     adopt(object(result['user']));
   }
 
-  Future<void> signOut() => api.signOut();
+  Future<void> signOut() async {
+    // The token must go while the session still authorizes the call.
+    await push?.unregister();
+    await api.signOut();
+  }
 }
 
 /// The live [AccountState] of each server whose home screen is open, so the

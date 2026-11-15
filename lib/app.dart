@@ -13,6 +13,7 @@ import 'core/instance.dart';
 import 'core/json.dart';
 import 'core/live.dart';
 import 'core/preferences.dart';
+import 'core/push.dart';
 import 'core/region_selection.dart';
 import 'core/runtime_config.dart';
 import 'core/strings.dart';
@@ -41,10 +42,14 @@ class BeaconApp extends StatefulWidget {
     this.tokens,
     this.accounts,
     this.authFactory,
+    this.push,
   });
   final Preferences preferences;
   final bool connectLive;
   final ApiClient Function(Uri)? apiFactory;
+
+  /// The push plugin behind its interface; null leaves push off, as in tests.
+  final PushClient? push;
 
   /// Minimum-app-version checks. Defaults to one that reads `/api/v1/info`
   /// through [apiFactory].
@@ -178,6 +183,7 @@ class _BeaconAppState extends State<BeaconApp> with WidgetsBindingObserver {
         tokens: tokens,
         accounts: accounts,
         authFactory: widget.authFactory,
+        push: widget.push,
       ),
     };
   }
@@ -474,7 +480,9 @@ class BeaconHome extends StatefulWidget {
     required this.tokens,
     required this.accounts,
     this.authFactory,
+    this.push,
   });
+  final PushClient? push;
   final Preferences preferences;
   final bool connectLive;
   final ApiClient Function(Uri)? apiFactory;
@@ -488,6 +496,7 @@ class BeaconHome extends StatefulWidget {
 class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
   late final ApiClient api;
   late final AccountState account;
+  PushRegistration? pushRegistration;
 
   // One store for this server, so the Atlas tab and Settings share it.
   late final AtlasStore atlas;
@@ -508,6 +517,14 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
           AuthApi(instance.url, widget.tokens),
     );
     widget.accounts.register(instance.url, account);
+    if (widget.push case final client?) {
+      pushRegistration = PushRegistration(
+        client: client,
+        account: account,
+        features: api.features,
+      )..onOpened = openAlertTarget;
+      account.push = pushRegistration;
+    }
     atlas = AtlasStore(widget.preferences, instance.url, account: account);
     unawaited(account.refresh());
     region = widget.preferences.regionFor(instance.url);
@@ -540,6 +557,7 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
     api.close();
     widget.accounts.unregister(account.api.base, account);
     atlas.dispose();
+    pushRegistration?.dispose();
     account.dispose();
     super.dispose();
   }
@@ -568,6 +586,23 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
     }
     unawaited(account.refresh());
     if (widget.connectLive) live.start();
+  }
+
+  /// A tapped alert names a radio by public key; a pinned node opens by its id.
+  void openAlertTarget(String kind, String publicKey) {
+    if (!mounted) return;
+    if (kind == 'node') {
+      final pin = atlas.saved.pins
+          .where(
+            (p) =>
+                p.isNode &&
+                p.publicKey?.toLowerCase() == publicKey.toLowerCase(),
+          )
+          .firstOrNull;
+      open('node', pin?.id ?? publicKey);
+    } else {
+      open('observer', publicKey);
+    }
   }
 
   void open(String kind, String id) {

@@ -220,6 +220,47 @@ class AuthApi {
     await send('DELETE', '/me/telemetry-requests/${Uri.encodeComponent(id)}');
   }
 
+  /// Alert targets, their available kinds and rules.
+  Future<Json> alerts() => send('GET', '/me/alerts');
+
+  /// Upserts the rule for (target, kind); thresholds are in the kind's own unit.
+  Future<Json> putAlertRule({
+    required String targetKind,
+    required String publicKey,
+    required String kind,
+    required int? threshold,
+    required int? thresholdHigh,
+    required bool enabled,
+  }) => send(
+    'PUT',
+    '/me/alerts/rules',
+    body: {
+      'target': {'kind': targetKind, 'publicKey': publicKey},
+      'kind': kind,
+      'threshold': threshold,
+      'thresholdHigh': thresholdHigh,
+      'enabled': enabled,
+    },
+  );
+
+  Future<void> deleteAlertRule(String id) async {
+    await send('DELETE', '/me/alerts/rules/${Uri.encodeComponent(id)}');
+  }
+
+  /// Registers this session's push token; [platform] is ios or android.
+  Future<void> registerDevice(String platform, String pushToken) async {
+    await send(
+      'POST',
+      '/me/devices',
+      body: {'platform': platform, 'pushToken': pushToken},
+    );
+  }
+
+  /// Removes the push token of this session.
+  Future<void> removeDevice() async {
+    await send('DELETE', '/me/devices');
+  }
+
   /// The account Atlas as the server holds it.
   Future<Json> atlas() => send('GET', '/me/atlas');
 

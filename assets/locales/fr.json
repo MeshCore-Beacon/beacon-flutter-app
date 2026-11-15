@@ -1441,6 +1441,65 @@
         "no_password_blocked": "Ce répéteur donne un accès administrateur sans mot de passe, il ne peut donc pas être interrogé ainsi",
         "requests_disabled": "Les demandes de télémétrie sont désactivées sur ce serveur."
       }
+    },
+    "alerts": {
+      "title": "Alertes",
+      "retry": "Réessayer",
+      "toEmail": "Les alertes sont envoyées à {{email}}",
+      "byEmail": "Les alertes sont envoyées à votre adresse courriel.",
+      "toPhone": "Les alertes sont envoyées à l'application Beacon sur votre téléphone",
+      "empty": "Les alertes se règlent sur les radios de votre Atlas. Ajoutez d'abord une radio à votre Atlas, puis revenez ici.",
+      "requestAttention": "Vous êtes aussi toujours prévenu quand une de vos demandes de télémétrie demande de l'attention. Celle-là n'a pas d'interrupteur.",
+      "needsGoneQuiet": "Activez d'abord {{kind}}.",
+      "mv": "{{n}} mV",
+      "push": {
+        "notSetUp": "Les notifications push ne sont pas configurées dans cette version.",
+        "enable": "Activer les notifications",
+        "denied": "Les notifications sont désactivées pour Beacon. Autorisez-les dans les réglages du téléphone pour recevoir les alertes.",
+        "failed": "Impossible d'inscrire ce téléphone aux alertes."
+      },
+      "kind": {
+        "gone_quiet": "Silencieux",
+        "back_online": "De retour en ligne",
+        "battery_low": "Batterie faible",
+        "battery_falling": "Batterie en baisse",
+        "rebooted": "Redémarré",
+        "temperature": "Température",
+        "noise_high": "Bruit élevé",
+        "clock": "Dérive de l'horloge",
+        "observer_offline": "Observateur hors ligne"
+      },
+      "input": {
+        "hours": "Heures",
+        "volts": "Volts",
+        "drop": "Baisse par jour",
+        "dbm": "dBm",
+        "drift": "Dérive",
+        "minutes": "Minutes sans rapport",
+        "low": "Min. (°C)",
+        "high": "Max. (°C)"
+      },
+      "drift": {
+        "300": "5 minutes",
+        "3600": "1 heure",
+        "86400": "1 jour"
+      },
+      "state": {
+        "ok": "OK",
+        "firing": "En alerte depuis {{when}}",
+        "inactive": "Aucune donnée pour le moment",
+        "unknown": "Pas encore vérifié"
+      },
+      "errors": {
+        "kind_unavailable": "Cette alerte n'est pas offerte pour cette radio.",
+        "invalid_threshold": "Cette valeur n'est pas permise pour cette alerte.",
+        "not_on_atlas": "Cette radio n'est plus dans votre Atlas.",
+        "alerts_disabled": "Les alertes sont désactivées sur ce serveur.",
+        "volts": "Entrez une valeur entre 2,50 et 5,00 volts.",
+        "dbm": "Entrez un nombre entier entre -130 et -50 dBm.",
+        "temperatureNone": "Entrez une limite basse ou haute.",
+        "temperature": "Entrez une température en degrés C, par exemple 4,5."
+      }
     }
   }
 }

@@ -1,16 +1,21 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/account.dart';
 import '../../core/api.dart';
 import '../../core/features.dart';
 import '../../core/json.dart';
+import '../../core/push.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
 import '../directory/directory_widgets.dart';
 import '../directory/telemetry_request.dart';
 import 'account_errors.dart';
+import 'alert_rules.dart';
 import 'request_text.dart';
 
+part 'alerts_section.dart';
 part 'telemetry_requests_section.dart';
 
 /// Profile for the signed-in user: account, password, devices, deletion.
@@ -109,6 +114,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 account: widget.account,
                 api: api,
                 onOpen: widget.onOpen,
+              ),
+            if (features.alerts)
+              _Alerts(
+                account: widget.account,
+                deliveryHint: features.alertDelivery,
               ),
             section(trKey('account.sectionDevices'), [
               _Devices(account: widget.account, revision: devices),

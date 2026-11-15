@@ -422,6 +422,89 @@ void main() {
     });
   });
 
+  group('alerts', () {
+    Future<AuthApi> signedIn(http.Response Function(http.Request) h) async {
+      await tokens.write(_base, 'abc');
+      return make(h);
+    }
+
+    test('alerts() reads with the Bearer token', () async {
+      final api = await signedIn(
+        (_) => _json(200, {'delivery': 'push', 'targets': []}),
+      );
+      expect((await api.alerts())['delivery'], 'push');
+      expect(seen.single.method, 'GET');
+      expect(seen.single.url.path, '/api/v1/me/alerts');
+      expect(seen.single.headers['authorization'], 'Bearer abc');
+    });
+
+    test(
+      'putAlertRule sends the target, kind, thresholds and enabled',
+      () async {
+        final api = await signedIn((_) => _json(200, {'id': 'u1'}));
+        await api.putAlertRule(
+          targetKind: 'node',
+          publicKey: 'aabb',
+          kind: 'temperature',
+          threshold: null,
+          thresholdHigh: 455,
+          enabled: true,
+        );
+        expect(seen.single.method, 'PUT');
+        expect(seen.single.url.path, '/api/v1/me/alerts/rules');
+        expect(jsonDecode(seen.single.body), {
+          'target': {'kind': 'node', 'publicKey': 'aabb'},
+          'kind': 'temperature',
+          'threshold': null,
+          'thresholdHigh': 455,
+          'enabled': true,
+        });
+      },
+    );
+
+    test('deleteAlertRule escapes the id', () async {
+      final api = await signedIn((_) => http.Response('', 204));
+      await api.deleteAlertRule('a/b');
+      expect(seen.single.method, 'DELETE');
+      expect(seen.single.url.path, '/api/v1/me/alerts/rules/a%2Fb');
+    });
+
+    test(
+      'registerDevice posts the platform and token, removeDevice deletes',
+      () async {
+        final api = await signedIn((_) => http.Response('', 204));
+        await api.registerDevice('android', 'tok-1');
+        await api.removeDevice();
+        expect(seen[0].method, 'POST');
+        expect(seen[0].url.path, '/api/v1/me/devices');
+        expect(jsonDecode(seen[0].body), {
+          'platform': 'android',
+          'pushToken': 'tok-1',
+        });
+        expect(seen[1].method, 'DELETE');
+        expect(seen[1].url.path, '/api/v1/me/devices');
+        expect(seen[1].body, isEmpty);
+      },
+    );
+
+    test('a not_on_atlas answer keeps its code', () async {
+      final api = await signedIn((_) => _error(409, 'not_on_atlas'));
+      await expectLater(
+        api.putAlertRule(
+          targetKind: 'node',
+          publicKey: 'aa',
+          kind: 'rebooted',
+          threshold: null,
+          thresholdHigh: null,
+          enabled: true,
+        ),
+        throwsA(
+          isA<ApiException>().having((e) => e.code, 'code', 'not_on_atlas'),
+        ),
+      );
+    });
+  });
+
   group('Atlas', () {
     test(
       'atlas() reads the account collection with the Bearer token',
