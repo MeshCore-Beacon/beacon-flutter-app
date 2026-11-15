@@ -1501,6 +1501,23 @@
         "temperatureNone": "Entrez une limite basse ou haute.",
         "temperature": "Entrez une température en degrés C, par exemple 4,5."
       }
+    },
+    "serverText": {
+      "requestReason": {
+        "noObserver": "Aucun observateur ne peut encore atteindre ce répéteur.",
+        "noSeat": "Tous les observateurs qui peuvent atteindre ce répéteur interrogent déjà leur maximum.",
+        "loginFailed": "Le répéteur n'a pas accepté ce mot de passe invité. Entrez-en un nouveau.",
+        "blankFailed": "Le répéteur n'a pas accepté une connexion vide ou « hello ». Entrez un mot de passe invité.",
+        "adminStopped": "Le répéteur a donné un accès administrateur avec ce mot de passe, donc Beacon l'a supprimé. Entrez un mot de passe invité, jamais celui d'un administrateur.",
+        "blankBlocked": "Ce répéteur donne un accès administrateur avec une connexion vide, donc Beacon ne l'interrogera pas sans mot de passe invité.",
+        "offline_one": "Aucun observateur ne l'a entendu depuis {{count}} jour.",
+        "offline_other": "Aucun observateur ne l'a entendu depuis {{count}} jours."
+      },
+      "errors": {
+        "busy": "Le serveur est occupé. Réessayez dans un instant.",
+        "readOnly": "Ce serveur est en lecture seule pour le moment. Réessayez plus tard.",
+        "requestNotFound": "Cette demande n'existe plus."
+      }
     }
   }
 }

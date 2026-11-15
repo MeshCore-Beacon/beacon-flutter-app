@@ -176,7 +176,7 @@ class _RequestRowState extends State<_RequestRow> with _Action {
       color: BeaconColors.of(context).muted,
     );
     final poller = object(r['poller']);
-    final reason = textOf(r['statusReason']);
+    final reason = requestReasonText(textOf(r['statusReason']));
     final name = textOf(
       node['name'],
       trKey('telemetryRequests.unknownRepeater'),

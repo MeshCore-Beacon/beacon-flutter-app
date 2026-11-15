@@ -1454,6 +1454,23 @@
         "temperatureNone": "Enter a low or a high limit.",
         "temperature": "Enter a temperature in degrees C, such as 4.5."
       }
+    },
+    "serverText": {
+      "requestReason": {
+        "noObserver": "No observer can reach this repeater yet.",
+        "noSeat": "Every observer that can reach this repeater is already polling its maximum.",
+        "loginFailed": "The repeater did not accept this guest password. Enter a new one.",
+        "blankFailed": "The repeater did not accept a blank or hello login. Enter a guest password.",
+        "adminStopped": "The repeater gave admin access to this password, so Beacon deleted it. Enter a guest password, never an admin one.",
+        "blankBlocked": "This repeater gives admin access to a blank login, so Beacon will not poll it without a guest password.",
+        "offline_one": "Not heard by any observer for {{count}} day.",
+        "offline_other": "Not heard by any observer for {{count}} days."
+      },
+      "errors": {
+        "busy": "The server is busy. Try again in a moment.",
+        "readOnly": "This server is read-only right now. Try again later.",
+        "requestNotFound": "That request no longer exists."
+      }
     }
   }
 }

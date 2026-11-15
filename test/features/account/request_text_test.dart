@@ -60,6 +60,68 @@ void main() {
     );
   });
 
+  // Every statusReason beacon-server's polling code can emit.
+  const serverReasons = [
+    'No observer can reach this repeater yet.',
+    'Every observer that can reach this repeater is already polling its maximum.',
+    'The repeater did not accept this guest password. Enter a new one.',
+    'The repeater did not accept a blank or hello login. Enter a guest password.',
+    'The repeater gave admin access to this password, so Beacon deleted it. Enter a guest password, never an admin one.',
+    'This repeater gives admin access to a blank login, so Beacon will not poll it without a guest password.',
+    'Not heard by any observer for 7 days.',
+  ];
+
+  test('every server reason has words in each language', () {
+    for (final code in supportedLanguages) {
+      language = code;
+      for (final reason in serverReasons) {
+        final text = requestReasonText(reason);
+        expect(text, isNot(startsWith('serverText.')), reason: '$code $reason');
+        expect(text, isNotEmpty);
+        if (code == 'en') {
+          expect(text, reason);
+        } else {
+          expect(text, isNot(reason), reason: '$code $reason');
+        }
+      }
+    }
+  });
+
+  test(
+    'the offline reason carries its days, and an unknown one shows as sent',
+    () {
+      expect(
+        requestReasonText('Not heard by any observer for 1 days.'),
+        contains('1 day'),
+      );
+      expect(
+        requestReasonText('Not heard by any observer for 30 days.'),
+        contains('30'),
+      );
+      expect(requestReasonText('Something new.'), 'Something new.');
+      expect(requestReasonText(''), '');
+    },
+  );
+
+  test('busy, read-only and missing-request answers have their own line', () {
+    for (final code in supportedLanguages) {
+      language = code;
+      final lines = {
+        for (final c in ['service_unavailable', 'read_only', 'not_found'])
+          requestError(
+            ApiException('raw', status: c == 'not_found' ? 404 : 503, code: c),
+          ),
+      };
+      expect(lines, hasLength(3), reason: code);
+      expect(
+        lines,
+        isNot(contains(trKey('account.errors.generic'))),
+        reason: code,
+      );
+      expect(lines.any((l) => l.startsWith('serverText.')), isFalse);
+    }
+  });
+
   test('other failures use the account wording', () {
     expect(
       requestError(const ApiException('x', status: 500, code: 'boom')),

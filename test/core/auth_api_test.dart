@@ -205,6 +205,39 @@ void main() {
     });
   });
 
+  group('503 service_unavailable', () {
+    test('keeps the token, reads Retry-After and never signs out', () async {
+      await tokens.write(_base, 'abc');
+      var signedOut = 0;
+      final api = make(
+        (_) => _json(
+          503,
+          {
+            'error': {
+              'code': 'service_unavailable',
+              'message': 'Try again in a moment.',
+            },
+          },
+          headers: {'retry-after': '5'},
+        ),
+      )..onSignedOut = () => signedOut++;
+      await expectLater(
+        api.me(),
+        throwsA(
+          isA<ApiException>()
+              .having((e) => e.code, 'code', 'service_unavailable')
+              .having(
+                (e) => e.retryAfter,
+                'retryAfter',
+                const Duration(seconds: 5),
+              ),
+        ),
+      );
+      expect(await tokens.read(_base), 'abc');
+      expect(signedOut, 0);
+    });
+  });
+
   group('me', () {
     test('is null without a token and sends nothing', () async {
       final api = make((_) => _json(200, {'user': {}}));

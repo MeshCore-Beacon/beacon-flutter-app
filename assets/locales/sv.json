@@ -1454,6 +1454,23 @@
         "temperatureNone": "Ange en nedre eller övre gräns.",
         "temperature": "Ange en temperatur i grader C, till exempel 4,5."
       }
+    },
+    "serverText": {
+      "requestReason": {
+        "noObserver": "Ingen observatör kan nå den här repeatern ännu.",
+        "noSeat": "Alla observatörer som kan nå den här repeatern läser redan av sitt max.",
+        "loginFailed": "Repeatern godtog inte det här gästlösenordet. Ange ett nytt.",
+        "blankFailed": "Repeatern godtog inte en tom eller hello-inloggning. Ange ett gästlösenord.",
+        "adminStopped": "Repeatern gav administratörsåtkomst med det här lösenordet, så Beacon raderade det. Ange ett gästlösenord, aldrig ett administratörslösenord.",
+        "blankBlocked": "Den här repeatern ger administratörsåtkomst med en tom inloggning, så Beacon läser inte av den utan gästlösenord.",
+        "offline_one": "Ingen observatör har hört den på {{count}} dag.",
+        "offline_other": "Ingen observatör har hört den på {{count}} dagar."
+      },
+      "errors": {
+        "busy": "Servern är upptagen. Försök igen om en stund.",
+        "readOnly": "Servern är skrivskyddad just nu. Försök igen senare.",
+        "requestNotFound": "Den begäran finns inte längre."
+      }
     }
   }
 }

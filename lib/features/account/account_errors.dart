@@ -13,6 +13,10 @@ String accountError(Object error) {
       return error.message;
     case 'invalid_input':
       return trKey('account.errors.invalidInput');
+    case 'service_unavailable':
+      return trKey('serverText.errors.busy');
+    case 'read_only':
+      return trKey('serverText.errors.readOnly');
     case 'rate_limited':
     case 'too_many_attempts':
       return _retry(error.code!, error.retryAfter);
