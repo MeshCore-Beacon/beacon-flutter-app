@@ -1411,6 +1411,11 @@
       "empty": "Aviseringar ställs in på radioapparater i din Atlas. Lägg först till en radio.",
       "requestAttention": "Du får alltid besked när en av dina telemetribegäranden behöver uppmärksamhet.",
       "needsGoneQuiet": "Slå först på {{name}}.",
+      "summaryNone": "Inga larm på",
+      "summaryOnCount_one": "{{count}} larm på",
+      "summaryOnCount_other": "{{count}} larm på",
+      "summaryFiring_one": "Larmar: {{name}}",
+      "summaryFiring_other": "Larmar: {{count}} larm",
       "push": {
         "notSetUp": "Pushnotiser är inte inställda i den här versionen.",
         "enable": "Slå på notiser",

@@ -1458,6 +1458,13 @@
       "empty": "Les alertes se règlent sur les radios de votre Atlas. Ajoutez d'abord une radio.",
       "requestAttention": "Vous êtes toujours prévenu quand une de vos demandes de télémétrie demande votre attention.",
       "needsGoneQuiet": "Activez d'abord « {{name}} ».",
+      "summaryNone": "Aucune alerte activée",
+      "summaryOnCount_one": "{{count}} alerte activée",
+      "summaryOnCount_many": "{{count}} alertes activées",
+      "summaryOnCount_other": "{{count}} alertes activées",
+      "summaryFiring_one": "En alerte : {{name}}",
+      "summaryFiring_many": "En alerte : {{count}} alertes",
+      "summaryFiring_other": "En alerte : {{count}} alertes",
       "push": {
         "notSetUp": "Les notifications push ne sont pas configurées dans cette version.",
         "enable": "Activer les notifications",

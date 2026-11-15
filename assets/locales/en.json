@@ -1411,6 +1411,11 @@
       "empty": "Alerts are set on radios in your Atlas. Add a radio there first.",
       "requestAttention": "You are always told when one of your telemetry requests needs attention.",
       "needsGoneQuiet": "Turn on {{name}} first.",
+      "summaryNone": "No alerts on",
+      "summaryOnCount_one": "{{count}} alert on",
+      "summaryOnCount_other": "{{count}} alerts on",
+      "summaryFiring_one": "Alerting: {{name}}",
+      "summaryFiring_other": "Alerting: {{count}} alerts",
       "push": {
         "notSetUp": "Push notifications are not set up in this build.",
         "enable": "Turn on notifications",
