@@ -31,16 +31,53 @@ void main() {
       expect(s.single.y, closeTo(4.226, 1e-9));
     });
 
-    test('airtime seconds become percent of the bucket', () {
-      // 36 s of a 6 h bucket is 36 / 21600 = 0.1667 %.
+    test('airtime seconds become percent of the counter span', () {
+      // 36 s over a 6 h span is 36 / 21600 = 0.1667 %, whatever the bucket.
+      final s = airtimeSeries(
+        [
+          point(0, {'airtimeTxSecs': 36, 'counterSpanSecs': 21600}),
+        ],
+        'airtimeTxSecs',
+        hour,
+      );
+      expect(s.single.y, closeTo(36 * 100 / 21600, 1e-9));
+    });
+
+    test('airtime without a span, or with a zero span, is null', () {
       final s = airtimeSeries(
         [
           point(0, {'airtimeTxSecs': 36}),
+          point(hour, {'airtimeTxSecs': 36, 'counterSpanSecs': 0}),
         ],
         'airtimeTxSecs',
-        6 * hour,
+        hour,
       );
-      expect(s.single.y, closeTo(36 * 100 / 21600, 1e-9));
+      expect(s.map((p) => p.y), [null, null]);
+    });
+
+    test('airtime above 100 percent is null', () {
+      final s = airtimeSeries(
+        [
+          point(0, {'airtimeTxSecs': 30000, 'counterSpanSecs': 21600}),
+          point(hour, {'airtimeTxSecs': 21600, 'counterSpanSecs': 21600}),
+        ],
+        'airtimeTxSecs',
+        hour,
+      );
+      expect(s.map((p) => p.y), [null, 100]);
+    });
+
+    test('airtime keeps the gap break', () {
+      final s = airtimeSeries(
+        [
+          point(0, {'airtimeTxSecs': 1, 'counterSpanSecs': 100}),
+          point(3 * hour, {'airtimeTxSecs': 1, 'counterSpanSecs': 100}),
+        ],
+        'airtimeTxSecs',
+        hour,
+      );
+      expect(s.map((p) => p.x), [0, hour, 3 * hour]);
+      expect(s.map((p) => p.y), [1, null, 1]);
     });
 
     test('missing buckets and missing fields are null, not bridged', () {
@@ -149,6 +186,7 @@ void main() {
           'noiseFloorDb': -97,
           'airtimeTxSecs': 1.5,
           'airtimeRxSecs': 220,
+          'counterSpanSecs': 21600,
         }),
         point(now - 6 * hour, {'batteryMv': 4000}),
       ],
@@ -257,7 +295,7 @@ void main() {
       expect(find.text('BATTERY (V)'), findsOneWidget);
       expect(find.text('TEMPERATURE (°C)'), findsOneWidget);
       expect(find.text('NOISE FLOOR (DBM)'), findsOneWidget);
-      expect(find.text('AIRTIME TX AND RX (%)'), findsOneWidget);
+      expect(find.text('AIRTIME TX AND RX (% OF TIME)'), findsOneWidget);
       expect(find.text('Polled by HOWL V4.2'), findsOneWidget);
       expect(find.text('2 standby observers'), findsOneWidget);
       expect(find.text(trKey('nodeTelemetry.waiting')), findsNothing);
@@ -277,7 +315,7 @@ void main() {
       );
       expect(find.text('BATTERY (V)'), findsOneWidget);
       expect(find.text('TEMPERATURE (°C)'), findsNothing);
-      expect(find.text('AIRTIME TX AND RX (%)'), findsNothing);
+      expect(find.text('AIRTIME TX AND RX (% OF TIME)'), findsNothing);
     });
 
     testWidgets('the range dropdown asks for another window', (tester) async {

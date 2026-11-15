@@ -1277,7 +1277,7 @@
       "temperatureSeries": "Temperature",
       "noiseFloor": "Noise floor (dBm)",
       "noiseFloorSeries": "Noise floor",
-      "airtime": "Airtime TX and RX (%)",
+      "airtime": "Airtime TX and RX (% of time)",
       "polledBy": "Polled by {{name}}",
       "lastReading": "Last reading",
       "standbys_one": "{{count}} standby observer",

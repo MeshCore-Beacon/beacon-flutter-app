@@ -1324,7 +1324,7 @@
       "temperatureSeries": "Température",
       "noiseFloor": "Bruit de fond (dBm)",
       "noiseFloorSeries": "Bruit de fond",
-      "airtime": "Temps d’antenne TX et RX (%)",
+      "airtime": "Temps d’antenne TX et RX (% du temps)",
       "polledBy": "Interrogé par {{name}}",
       "lastReading": "Dernière mesure",
       "standbys_one": "{{count}} observateur de réserve",

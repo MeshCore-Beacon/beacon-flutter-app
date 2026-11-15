@@ -1277,7 +1277,7 @@
       "temperatureSeries": "Temperatur",
       "noiseFloor": "Brusnivå (dBm)",
       "noiseFloorSeries": "Brusnivå",
-      "airtime": "Sändtid TX och RX (%)",
+      "airtime": "Sändtid TX och RX (% av tiden)",
       "polledBy": "Avläses av {{name}}",
       "lastReading": "Senaste avläsning",
       "standbys_one": "{{count}} reservobservatör",

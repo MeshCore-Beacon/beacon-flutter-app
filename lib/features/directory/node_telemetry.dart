@@ -60,13 +60,26 @@ List<ChartPoint> telemetrySeries(
   return out;
 }
 
-/// Counter seconds in a bucket as a percent of that bucket.
+/// Counter seconds as a percent of the time they cover. A point with no span, or one
+/// that computes above 100, has no value.
 List<ChartPoint> airtimeSeries(List<Json> points, String key, int bucketMs) {
   final seconds = telemetrySeries(points, key, bucketMs);
-  return [
-    for (final p in seconds)
-      ChartPoint(p.x, p.y == null ? null : p.y! * 100000 / bucketMs),
-  ];
+  final out = <ChartPoint>[];
+  var i = 0;
+  for (final p in seconds) {
+    double? y;
+    final real = i < points.length && number(points[i]['t']) == p.x;
+    if (real) {
+      final span = number(points[i]['counterSpanSecs']);
+      i++;
+      if (p.y != null && span != null && span > 0) {
+        final pct = p.y! / span * 100;
+        y = pct > 100 ? null : pct;
+      }
+    }
+    out.add(ChartPoint(p.x, y));
+  }
+  return out;
 }
 
 /// Polled readings for a repeater or room server. Draws nothing when the server has
@@ -172,12 +185,14 @@ class _NodeTelemetrySectionState extends State<NodeTelemetrySection> {
     Widget chart(
       String title,
       Map<String, List<ChartPoint>> series,
-      String unit,
-    ) => AnalyticsCard(
+      String unit, {
+      bool dots = false,
+    }) => AnalyticsCard(
       title: title,
       child: TimeChart(
         unit: unit,
         showSingleSeriesToggle: false,
+        showDots: dots,
         series: series,
       ),
     );
@@ -255,10 +270,15 @@ class _NodeTelemetrySectionState extends State<NodeTelemetrySection> {
           ),
         }, ' dBm'),
       if (has('airtimeTxSecs') || has('airtimeRxSecs'))
-        chart(trKey('nodeTelemetry.airtime'), {
-          'RX': airtimeSeries(points, 'airtimeRxSecs', bucketMs),
-          'TX': airtimeSeries(points, 'airtimeTxSecs', bucketMs),
-        }, '%'),
+        chart(
+          trKey('nodeTelemetry.airtime'),
+          {
+            'RX': airtimeSeries(points, 'airtimeRxSecs', bucketMs),
+            'TX': airtimeSeries(points, 'airtimeTxSecs', bucketMs),
+          },
+          '%',
+          dots: true,
+        ),
       if (poller.isNotEmpty)
         ListTile(
           dense: true,

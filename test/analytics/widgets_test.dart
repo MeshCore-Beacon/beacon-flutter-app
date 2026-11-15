@@ -5,6 +5,7 @@ import 'package:beacon/core/api.dart';
 import 'package:beacon/features/analytics/analytics_screen.dart';
 import 'package:beacon/features/analytics/charts.dart';
 import 'package:beacon/features/analytics/transforms.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -601,6 +602,34 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+  testWidgets('isolated points get dots only when asked', (tester) async {
+    Future<bool> dotsShown({required bool showDots}) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TimeChart(
+              showDots: showDots,
+              series: const {
+                'A': [
+                  ChartPoint(100000, 1),
+                  ChartPoint(200000, null),
+                  ChartPoint(300000, 5),
+                  ChartPoint(400000, null),
+                  ChartPoint(500000, 9),
+                ],
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final chart = tester.widget<LineChart>(find.byType(LineChart));
+      return chart.data.lineBarsData.single.dotData.show;
+    }
+
+    expect(await dotsShown(showDots: false), isFalse);
+    expect(await dotsShown(showDots: true), isTrue);
+  });
   testWidgets('analytics mobile selector includes all nine sections', (
     tester,
   ) async {
