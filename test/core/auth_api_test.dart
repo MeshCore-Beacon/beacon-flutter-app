@@ -246,7 +246,7 @@ void main() {
       var signedOut = 0;
       final api = make((_) => http.Response('', 204))
         ..onSignedOut = () => signedOut++;
-      await api.deleteAccount('pw');
+      await api.deleteAccount(currentPassword: 'pw');
       expect(seen.single.method, 'DELETE');
       expect(seen.single.url.path, '/api/v1/me');
       expect(jsonDecode(seen.single.body), {'currentPassword': 'pw'});
@@ -254,9 +254,19 @@ void main() {
       expect(signedOut, 1);
     });
 
+    test('deleteAccount in portal mode sends the typed username', () async {
+      final api = make((_) => http.Response('', 204));
+      await api.deleteAccount(confirmUsername: 'ridgewalker');
+      expect(jsonDecode(seen.single.body), {'confirmUsername': 'ridgewalker'});
+      expect(await tokens.read(_base), isNull);
+    });
+
     test('a failed deleteAccount keeps the token', () async {
       final api = make((_) => _error(401, 'invalid_credentials'));
-      await expectLater(api.deleteAccount('bad'), throwsA(isA<ApiException>()));
+      await expectLater(
+        api.deleteAccount(currentPassword: 'bad'),
+        throwsA(isA<ApiException>()),
+      );
       expect(await tokens.read(_base), 'abc');
     });
 

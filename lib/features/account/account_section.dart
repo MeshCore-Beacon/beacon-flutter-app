@@ -60,6 +60,7 @@ class _AccountSectionState extends State<AccountSection> {
         return const SizedBox.shrink();
       }
       final flow = SignInScope.maybeOf(context);
+      final portal = data.portal;
       return ListenableBuilder(
         listenable: Listenable.merge([widget.account, ?flow]),
         builder: (context, _) => Column(
@@ -84,14 +85,14 @@ class _AccountSectionState extends State<AccountSection> {
             if (widget.account.signedIn)
               ..._signedIn(context)
             else
-              ..._signedOut(context, flow),
+              ..._signedOut(context, flow, portal),
           ],
         ),
       );
     },
   );
 
-  List<Widget> _signedOut(BuildContext context, SignInFlow? flow) {
+  List<Widget> _signedOut(BuildContext context, SignInFlow? flow, bool portal) {
     final failed = flow?.lastResult?.outcome == SignInOutcome.failed
         ? flow?.lastResult?.message
         : null;
@@ -101,7 +102,9 @@ class _AccountSectionState extends State<AccountSection> {
         ListTile(
           key: const ValueKey('account-sign-in'),
           leading: const Icon(Icons.login, size: 21),
-          title: Text(trKey('account.signIn')),
+          title: Text(
+            trKey(portal ? 'account.signInPortal' : 'account.signIn'),
+          ),
           subtitle: Text(trKey('account.signInNote')),
           onTap: starting ? null : () => signIn(flow),
         ),

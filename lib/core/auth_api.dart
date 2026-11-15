@@ -158,8 +158,20 @@ class AuthApi {
     body: {'email': email, 'currentPassword': currentPassword},
   );
 
-  Future<void> deleteAccount(String currentPassword) async {
-    await send('DELETE', '/me', body: {'currentPassword': currentPassword});
+  /// Local accounts confirm with their password; portal accounts have none and
+  /// confirm with the typed username.
+  Future<void> deleteAccount({
+    String? currentPassword,
+    String? confirmUsername,
+  }) async {
+    await send(
+      'DELETE',
+      '/me',
+      body: {
+        'currentPassword': ?currentPassword,
+        'confirmUsername': ?confirmUsername,
+      },
+    );
     await _forget();
   }
 

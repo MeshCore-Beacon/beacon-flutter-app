@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/account.dart';
 import '../../core/api.dart';
+import '../../core/features.dart';
 import '../../core/json.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
@@ -35,10 +36,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final devices = ValueNotifier<int>(0);
   bool left = false;
 
+  /// Local until the server's features say otherwise; null while they load.
+  ServerFeatures? features;
+
   @override
   void initState() {
     super.initState();
     widget.account.addListener(changed);
+    final api = widget.api;
+    if (api == null) {
+      features = const ServerFeatures.off();
+    } else {
+      api.features().then((f) {
+        if (mounted) setState(() => features = f);
+      });
+    }
   }
 
   /// A 401 anywhere (or a sign out) clears the account; nothing to show then.
@@ -62,18 +74,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
       listenable: widget.account,
       builder: (context, _) {
         final user = widget.account.user;
+        final features = this.features;
         if (user == null) return const SizedBox.shrink();
+        if (features == null) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final portal = features.portal;
         return ListView(
           padding: const EdgeInsets.all(12),
           children: [
             section(trKey('account.sectionAccount'), [
               _NameForm(account: widget.account),
-              const SizedBox(height: 16),
-              _EmailForm(account: widget.account),
+              // The portal owns the email address of its users.
+              if (!portal) ...[
+                const SizedBox(height: 16),
+                _EmailForm(account: widget.account),
+              ],
             ]),
-            section(trKey('account.sectionPassword'), [
-              _PasswordForm(account: widget.account, devices: devices),
-            ]),
+            if (portal)
+              section(trKey('account.sectionPortal'), [
+                Text(trKey('account.portalManaged')),
+                if (features.portalUrl case final url?)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: SelectableText(url),
+                  ),
+              ])
+            else
+              section(trKey('account.sectionPassword'), [
+                _PasswordForm(account: widget.account, devices: devices),
+              ]),
             if (widget.api case final api?)
               _TelemetryRequests(
                 account: widget.account,
@@ -84,7 +114,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _Devices(account: widget.account, revision: devices),
             ]),
             section(trKey('account.sectionDelete'), [
-              _DeleteForm(account: widget.account),
+              _DeleteForm(account: widget.account, portal: portal),
             ]),
           ],
         );
@@ -579,8 +609,11 @@ class _DevicesState extends State<_Devices> with _Action {
 }
 
 class _DeleteForm extends StatefulWidget {
-  const _DeleteForm({required this.account});
+  const _DeleteForm({required this.account, required this.portal});
   final AccountState account;
+
+  /// Portal accounts have no password; the typed username confirms.
+  final bool portal;
   @override
   State<_DeleteForm> createState() => _DeleteFormState();
 }
@@ -600,7 +633,9 @@ class _DeleteFormState extends State<_DeleteForm> with _Action {
 
   // The account and its token are gone on success, which closes this screen.
   Future<void> delete() => run(() async {
-    await widget.account.api.deleteAccount(password.text);
+    await (widget.portal
+        ? widget.account.api.deleteAccount(confirmUsername: typed.text.trim())
+        : widget.account.api.deleteAccount(currentPassword: password.text));
     return null;
   });
 
@@ -610,11 +645,12 @@ class _DeleteFormState extends State<_DeleteForm> with _Action {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(trKey('account.deleteExplain')),
-        _PasswordField(
-          key: const ValueKey('delete-password'),
-          controller: password,
-          label: trKey('account.currentPassword'),
-        ),
+        if (!widget.portal)
+          _PasswordField(
+            key: const ValueKey('delete-password'),
+            controller: password,
+            label: trKey('account.currentPassword'),
+          ),
         TextField(
           key: const ValueKey('delete-username'),
           controller: typed,

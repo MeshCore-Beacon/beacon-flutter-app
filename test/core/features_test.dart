@@ -47,6 +47,24 @@ void main() {
       expect(f.alerts, true);
     });
 
+    test('alertDelivery and portalUrl are read, bad values are dropped', () {
+      final f = ServerFeatures.fromInfo({
+        'features': {
+          'accounts': 'portal',
+          'alertDelivery': 'push',
+          'portalUrl': 'https://portal.example',
+        },
+      });
+      expect(f.alertDelivery, 'push');
+      expect(f.portalUrl, 'https://portal.example');
+      final bad = ServerFeatures.fromInfo({
+        'features': {'alertDelivery': 'sms', 'portalUrl': 4},
+      });
+      expect(bad.alertDelivery, isNull);
+      expect(bad.portalUrl, isNull);
+      expect(ServerFeatures.fromInfo(null).alertDelivery, isNull);
+    });
+
     test('wrong types fall back to off', () {
       final f = ServerFeatures.fromInfo({
         'features': {'polling': 'yes', 'accounts': 3},

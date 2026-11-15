@@ -114,6 +114,17 @@ void main() {
     expect(launched.single.queryParameters['view'], 'signin');
   });
 
+  testWidgets('portal mode offers Sign in with MeshMapper', (tester) async {
+    final h = Harness((_) => json(200, {}), signedIn: false);
+    final launched = await pump(tester, h, accountsOn('portal'));
+    expect(find.text('Sign in'), findsNothing);
+    expect(find.text('Sign in with MeshMapper'), findsOneWidget);
+    await tester.tap(find.text('Sign in with MeshMapper'));
+    await tester.pumpAndSettle();
+    expect(launched.single.queryParameters['view'], 'signin');
+    expect(launched.single.queryParameters['app'], '1');
+  });
+
   testWidgets('a failed sign in shows its message inline', (tester) async {
     final h = Harness((_) => json(200, {}), signedIn: false);
     final flow = SignInFlow(

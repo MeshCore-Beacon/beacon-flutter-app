@@ -9,13 +9,17 @@ class ServerFeatures {
     required this.telemetryRequests,
     required this.alerts,
     this.registration = false,
+    this.alertDelivery,
+    this.portalUrl,
   });
   const ServerFeatures.off()
     : polling = false,
       accounts = 'off',
       telemetryRequests = false,
       alerts = false,
-      registration = false;
+      registration = false,
+      alertDelivery = null,
+      portalUrl = null;
 
   factory ServerFeatures.fromInfo(Json? info) {
     final f = object(info?['features']);
@@ -25,6 +29,13 @@ class ServerFeatures {
       telemetryRequests: f['telemetryRequests'] == true,
       alerts: f['alerts'] == true,
       registration: f['registration'] == true,
+      alertDelivery:
+          f['alertDelivery'] == 'push' || f['alertDelivery'] == 'email'
+          ? f['alertDelivery'] as String
+          : null,
+      portalUrl: f['portalUrl'] is String && (f['portalUrl'] as String) != ''
+          ? f['portalUrl'] as String
+          : null,
     );
   }
 
@@ -33,4 +44,11 @@ class ServerFeatures {
   final bool telemetryRequests;
   final bool alerts;
   final bool registration;
+
+  /// "push" or "email" when alerts are on.
+  final String? alertDelivery;
+
+  /// Where portal users manage their sign-in, in portal mode.
+  final String? portalUrl;
+  bool get portal => accounts == 'portal';
 }
