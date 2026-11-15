@@ -384,8 +384,17 @@ void main() {
       await expectLater(
         api.putAtlas(7, '24h', []),
         throwsA(
-          isA<AtlasConflict>().having((e) => e.current['revision'], 'rev', 9),
+          isA<AtlasConflict>().having((e) => e.current?['revision'], 'rev', 9),
         ),
+      );
+    });
+
+    test('a 409 without the document still reads as a conflict', () async {
+      await tokens.write(_base, 'abc');
+      final api = make((_) => _error(409, 'atlas_conflict'));
+      await expectLater(
+        api.putAtlas(7, '24h', []),
+        throwsA(isA<AtlasConflict>().having((e) => e.current, 'current', null)),
       );
     });
 

@@ -39,7 +39,8 @@ class FakeServer {
   String range = '24h';
   List<Map<String, dynamic>> pins = [];
   final requests = <http.Request>[];
-  Completer<void>? hold;
+  Completer<void>? hold, holdGet;
+  bool bareConflict = false;
   bool offline = false;
   int? staleAfter;
 
@@ -60,9 +61,21 @@ class FakeServer {
     if (offline) throw http.ClientException('down');
     final gate = hold;
     if (gate != null && r.method == 'PUT') await gate.future;
-    if (r.method == 'GET') return _ok(doc);
+    if (r.method == 'GET') {
+      await holdGet?.future;
+      return _ok(doc);
+    }
     final body = jsonDecode(r.body) as Map<String, dynamic>;
     if (body['baseRevision'] != revision) {
+      if (bareConflict) {
+        return http.Response(
+          jsonEncode({
+            'error': {'code': 'atlas_conflict', 'message': 'changed'},
+          }),
+          409,
+          headers: {'content-type': 'application/json'},
+        );
+      }
       return http.Response(
         jsonEncode({
           'error': {'code': 'atlas_conflict', 'message': 'changed'},
@@ -110,11 +123,13 @@ Future<Rig> rig({
   List<AtlasPin>? local,
   AtlasRange range = AtlasRange.day,
   bool marked = false,
+  String? owner,
   FakeServer? fake,
 }) async {
   SharedPreferences.setMockInitialValues({
     if (local != null) cacheKey: SavedAtlas(range: range, pins: local).encode(),
     if (marked) markerKey: true,
+    'beacon.atlas.owner.$server': ?owner,
   });
   final prefs = await Preferences.load();
   fake ??= FakeServer();
@@ -483,6 +498,205 @@ void main() {
       await r.store.idle;
       expect(fake.puts.length, 1);
       expect(jsonDecode(fake.puts.single.body)['baseRevision'], 2);
+    });
+
+    test('a change made while the first load runs lands on the loaded copy, in one write', () async {
+      final fake = FakeServer()
+        ..revision = 2
+        ..pins = [serverNode(key)]
+        ..holdGet = Completer();
+      final r = await rig(fake: fake, marked: true, owner: 'u1');
+      r.store.update((v) => v.appended(node(otherKey, 'Ridge')));
+      expect(fake.puts, isEmpty);
+      fake.holdGet!.complete();
+      await r.store.idle;
+      expect(fake.puts.length, 1);
+      final body = jsonDecode(fake.puts.single.body);
+      expect(body['baseRevision'], 2);
+      expect(
+        [for (final p in body['pins'] as List) p['name']],
+        ['Hill', 'Ridge'],
+      );
+      expect(fake.revision, 3);
+    });
+
+    test('a held change goes on top of the first sign-in merge', () async {
+      final fake = FakeServer()
+        ..revision = 1
+        ..pins = [serverNode(key)]
+        ..holdGet = Completer();
+      final r = await rig(fake: fake, local: [node(otherKey, 'Local')]);
+      r.store.update((v) => v.appended(node(keyN(9), 'Mine')));
+      fake.holdGet!.complete();
+      await r.store.idle;
+      expect(fake.puts.length, 1);
+      expect(
+        [
+          for (final p in (jsonDecode(fake.puts.single.body)['pins'] as List))
+            p['name'],
+        ],
+        ['Hill', 'Local', 'Mine'],
+      );
+      expect(r.prefs.atlasSyncedFor(server, 'u1'), true);
+    });
+
+    test('a held change is not lost when the first load fails', () async {
+      final fake = FakeServer()..offline = true;
+      final r = await rig(fake: fake, marked: true, owner: 'u1', local: []);
+      r.store.update((v) => v.appended(node(otherKey, 'Ridge')));
+      await r.store.idle;
+      expect(r.store.notice?.kind, AtlasNoticeKind.failed);
+      fake.offline = false;
+      fake.revision = 3;
+      r.store.update((v) => v.copyWith(range: AtlasRange.threeDays));
+      await r.store.idle;
+      expect(fake.puts.length, 1);
+      expect(
+        [
+          for (final p in (jsonDecode(fake.puts.single.body)['pins'] as List))
+            p['name'],
+        ],
+        ['Ridge'],
+      );
+      expect(fake.range, '3d');
+    });
+  });
+
+  group('another account on the same device', () {
+    Future<Rig> aSynced(FakeServer fake) async {
+      fake
+        ..revision = 1
+        ..pins = [serverNode(key, 'A pin')];
+      final r = await rig(fake: fake);
+      await r.store.idle;
+      return r;
+    }
+
+    test('a new user gets the server copy, never the previous one', () async {
+      final fake = FakeServer();
+      final r = await aSynced(fake);
+      expect(r.prefs.atlasOwnerFor(server), 'u1');
+      r.account.adopt(null);
+      fake
+        ..revision = 7
+        ..pins = [serverNode(otherKey, 'B pin')];
+      final before = fake.requests.length;
+      r.account.adopt({'id': 'u2', 'username': 'valley'});
+      await r.store.idle;
+      expect([for (final p in r.store.saved.pins) p.name], ['B pin']);
+      expect(fake.puts, isEmpty);
+      expect(
+        [for (final q in fake.requests.skip(before)) q.body].join(),
+        isNot(contains(key)),
+      );
+      expect(fake.revision, 7);
+      expect(r.prefs.atlasOwnerFor(server), 'u2');
+      expect(r.prefs.atlasSyncedFor(server, 'u2'), true);
+    });
+
+    test('a new user with an empty server copy uploads nothing', () async {
+      final fake = FakeServer();
+      final r = await aSynced(fake);
+      r.account.adopt(null);
+      fake
+        ..revision = 0
+        ..pins = [];
+      r.account.adopt({'id': 'u2'});
+      await r.store.idle;
+      expect(r.store.saved.pins, isEmpty);
+      expect(fake.puts, isEmpty);
+    });
+
+    test('the first user signing back in still works', () async {
+      final fake = FakeServer();
+      final r = await aSynced(fake);
+      r.account.adopt(null);
+      fake.pins = [serverNode(otherKey, 'B pin')];
+      r.account.adopt({'id': 'u2'});
+      await r.store.idle;
+      r.account.adopt(null);
+      fake.pins = [serverNode(key, 'A pin')];
+      r.account.adopt({'id': 'u1'});
+      await r.store.idle;
+      expect([for (final p in r.store.saved.pins) p.name], ['A pin']);
+      expect(fake.puts, isEmpty);
+      expect(r.prefs.atlasOwnerFor(server), 'u1');
+    });
+
+    test('signed-out edits keep the owner', () async {
+      final r = await aSynced(FakeServer());
+      r.account.adopt(null);
+      r.store.update((v) => v.appended(node(otherKey, 'Local')));
+      expect(r.prefs.atlasOwnerFor(server), 'u1');
+    });
+
+    test('a held change by the new user goes on the server copy', () async {
+      final fake = FakeServer();
+      final r = await aSynced(fake);
+      r.account.adopt(null);
+      fake
+        ..revision = 7
+        ..pins = [serverNode(otherKey, 'B pin')]
+        ..holdGet = Completer();
+      r.account.adopt({'id': 'u2'});
+      r.store.update((v) => v.appended(node(keyN(9), 'Mine')));
+      fake.holdGet!.complete();
+      await r.store.idle;
+      expect(
+        [
+          for (final p in (jsonDecode(fake.puts.single.body)['pins'] as List))
+            p['name'],
+        ],
+        ['B pin', 'Mine'],
+      );
+    });
+
+    test('a never-synced local Atlas still merges', () async {
+      final fake = FakeServer()
+        ..revision = 1
+        ..pins = [serverNode(key)];
+      final r = await rig(fake: fake, local: [node(otherKey, 'Local')]);
+      await r.store.idle;
+      expect(fake.puts.length, 1);
+      expect(r.store.saved.pins.length, 2);
+      expect(r.prefs.atlasOwnerFor(server), 'u1');
+    });
+
+    test('a local copy owned by the same user still merges', () async {
+      final fake = FakeServer()
+        ..revision = 1
+        ..pins = [serverNode(key)];
+      final r = await rig(
+        fake: fake,
+        local: [node(otherKey, 'Local')],
+        owner: 'u1',
+      );
+      await r.store.idle;
+      expect(fake.puts.length, 1);
+      expect(r.store.saved.pins.length, 2);
+    });
+  });
+
+  group('conflict answer', () {
+    test('without the document the store refetches it', () async {
+      final fake = FakeServer()
+        ..revision = 4
+        ..pins = [serverNode(key)];
+      final r = await rig(fake: fake, marked: true, owner: 'u1');
+      await r.store.idle;
+      fake
+        ..bareConflict = true
+        ..revision = 5
+        ..pins = [serverNode(key), serverNode(otherKey, 'Elsewhere')];
+      final gets = fake.requests.where((q) => q.method == 'GET').length;
+      r.store.update((v) => v.appended(node(keyN(9), 'Mine')));
+      await r.store.idle;
+      expect(
+        [for (final p in r.store.saved.pins) p.name],
+        ['Hill', 'Elsewhere'],
+      );
+      expect(fake.requests.where((q) => q.method == 'GET').length, gets + 1);
+      expect(r.store.notice?.kind, AtlasNoticeKind.conflict);
     });
   });
 

@@ -78,6 +78,13 @@ class Preferences extends ChangeNotifier {
       }
       if (replacing != server.url) {
         await _moveAtlasMarkers(replacing, server.url);
+        final owner = _store.getString('beacon.atlas.owner.$replacing');
+        if (owner != null) {
+          if (!_store.containsKey('beacon.atlas.owner.${server.url}')) {
+            await _store.setString('beacon.atlas.owner.${server.url}', owner);
+          }
+          await _store.remove('beacon.atlas.owner.$replacing');
+        }
       }
       // The sign-in token follows too; a keystore failure must not block the edit.
       if (replacing != server.url) {
@@ -120,6 +127,14 @@ class Preferences extends ChangeNotifier {
   Future<void> markAtlasSynced(String url, String userId) =>
       _store.setBool('$_syncedPrefix$url.$userId', true);
 
+  /// The user the local Atlas copy was last synced to, so another account
+  /// signing in on this device never uploads it.
+  String? atlasOwnerFor(String url) =>
+      _store.getString('beacon.atlas.owner.$url');
+
+  Future<void> setAtlasOwner(String url, String userId) =>
+      _store.setString('beacon.atlas.owner.$url', userId);
+
   Future<void> selectServer(String url) async {
     if (!servers.any((e) => e.url == url)) return;
     _activeUrl = url;
@@ -134,6 +149,7 @@ class Preferences extends ChangeNotifier {
     await _store.remove('beacon.region.$url');
     await _store.remove('beacon.atlas.$url');
     await _moveAtlasMarkers(url, null);
+    await _store.remove('beacon.atlas.owner.$url');
     try {
       await _tokens?.delete(url);
     } catch (_) {}

@@ -7,10 +7,11 @@ import 'api.dart';
 import 'json.dart';
 import 'token_store.dart';
 
-/// A write on a stale revision; [current] is the collection the server holds.
+/// A write on a stale revision; [current] is the collection the server holds,
+/// null when the answer did not carry it.
 class AtlasConflict implements Exception {
   const AtlasConflict(this.current);
-  final Json current;
+  final Json? current;
   @override
   String toString() => 'Atlas was changed elsewhere';
 }
@@ -186,9 +187,9 @@ class AuthApi {
       );
     } on ApiException catch (e) {
       final body = e.body;
-      final current = body?['current'] ?? object(body?['error'])['current'];
-      if (e.status == 409 && e.code == 'atlas_conflict' && current is Map) {
-        throw AtlasConflict(object(current));
+      if (e.status == 409 && e.code == 'atlas_conflict') {
+        final current = body?['current'];
+        throw AtlasConflict(current is Map ? object(current) : null);
       }
       rethrow;
     }

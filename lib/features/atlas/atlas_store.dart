@@ -56,6 +56,10 @@ class AtlasStore extends ChangeNotifier {
   int _changes = 0;
   Future<void>? _job;
 
+  // User changes made before the first load finishes, replayed on top of it.
+  List<SavedAtlas Function(SavedAtlas)> _held = [];
+  SavedAtlas? _heldBase;
+
   /// Completes when no load or write is running or waiting.
   Future<void> get idle async {
     while (_job != null) {
@@ -65,11 +69,17 @@ class AtlasStore extends ChangeNotifier {
 
   void update(SavedAtlas Function(SavedAtlas value) change) {
     notice = null;
+    if (signedIn && _revision == null) {
+      _heldBase ??= saved;
+      _held.add(change);
+    }
     saved = change(saved);
     _changes++;
     _notify();
     _cache();
-    if (signedIn) {
+    if (signedIn && _revision == null) {
+      _start();
+    } else if (signedIn) {
       _dirty = true;
       _start();
     }
@@ -120,7 +130,7 @@ class AtlasStore extends ChangeNotifier {
         return;
       }
     }
-    if (_dirty && signedIn && notice == null) {
+    if ((_dirty || _held.isNotEmpty) && signedIn && notice == null) {
       notice = const AtlasNotice(AtlasNoticeKind.failed);
       _notify();
     }
@@ -135,9 +145,27 @@ class AtlasStore extends ChangeNotifier {
     _cache();
   }
 
+  /// Records that the local copy now belongs to [user]'s account.
+  void _own(String user) {
+    if (preferences.atlasOwnerFor(url) != user) {
+      unawaited(preferences.setAtlasOwner(url, user));
+    }
+  }
+
+  /// Puts the changes made before the first load on top of the loaded copy.
+  void _applyHeld(List<SavedAtlas Function(SavedAtlas)> held) {
+    if (held.isEmpty) return;
+    for (final change in held) {
+      saved = change(saved);
+    }
+    _changes++;
+    _dirty = true;
+    _notify();
+    _cache();
+  }
+
   /// False when the server could not be reached.
   Future<bool> _load(String user) async {
-    final started = _changes;
     ServerAtlas? server;
     try {
       server = parseServerAtlas(await account!.api.atlas());
@@ -146,10 +174,18 @@ class AtlasStore extends ChangeNotifier {
     }
     if (_currentUser != user) return true;
     if (server == null) return false;
+    // The local copy as it was before any held change.
+    final local = _heldBase ?? saved, held = _held;
+    _held = [];
+    _heldBase = null;
+    _revision = server.revision;
+    _observerKeys = {..._observerKeys, ...server.observerKeys};
+    final owner = preferences.atlasOwnerFor(url);
     if (!preferences.atlasSyncedFor(url, user)) {
-      final merged = mergeFirstSignIn(server, saved);
-      _revision = server.revision;
-      _observerKeys = {..._observerKeys, ...server.observerKeys};
+      // A copy another account synced is never merged into this one.
+      final merged = owner != null && owner != user
+          ? AtlasMerge(server.atlas, upload: false)
+          : mergeFirstSignIn(server, local);
       if (merged.upload) {
         saved = merged.atlas;
         _changes++;
@@ -164,14 +200,14 @@ class AtlasStore extends ChangeNotifier {
         _adopt(server);
         await preferences.markAtlasSynced(url, user);
       }
-    } else if (_dirty || _changes != started) {
+    } else if (_dirty) {
       // Local changes the server has not seen: push them over its revision.
-      _revision = server.revision;
-      _observerKeys = {..._observerKeys, ...server.observerKeys};
-      _dirty = true;
+      saved = local;
     } else {
       _adopt(server);
     }
+    _own(user);
+    _applyHeld(held);
     return true;
   }
 
@@ -189,7 +225,18 @@ class AtlasStore extends ChangeNotifier {
       );
     } on AtlasConflict catch (conflict) {
       if (_currentUser != user) return true;
-      final current = parseServerAtlas(conflict.current);
+      var doc = conflict.current;
+      if (doc == null) {
+        // The answer did not carry the document: fetch it.
+        try {
+          doc = await account!.api.atlas();
+        } catch (_) {
+          if (_currentUser == user) _dirty = true;
+          return false;
+        }
+        if (_currentUser != user) return true;
+      }
+      final current = parseServerAtlas(doc);
       if (current == null) {
         _dirty = true;
         return false;
@@ -237,6 +284,8 @@ class AtlasStore extends ChangeNotifier {
     _revision = null;
     _observerKeys = {};
     _dirty = false;
+    _held = [];
+    _heldBase = null;
     _markAfterWrite = false;
     notice = null;
     _notify();

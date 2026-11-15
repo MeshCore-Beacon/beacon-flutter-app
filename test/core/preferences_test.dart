@@ -57,6 +57,39 @@ void main() {
     });
   });
 
+  group('Atlas owner', () {
+    const home = 'https://home.invalid', moved = 'https://moved.invalid';
+
+    test('is kept per server', () async {
+      final prefs = await Preferences.load();
+      expect(prefs.atlasOwnerFor(home), isNull);
+      await prefs.setAtlasOwner(home, 'u1');
+      expect(prefs.atlasOwnerFor(home), 'u1');
+      expect(prefs.atlasOwnerFor(moved), isNull);
+      expect(
+        (await SharedPreferences.getInstance()).getString(
+          'beacon.atlas.owner.$home',
+        ),
+        'u1',
+      );
+    });
+
+    test('moves with an edited server and is deleted with it', () async {
+      SharedPreferences.setMockInitialValues({
+        'beacon.atlas.owner.$home': 'u1',
+      });
+      final prefs = await Preferences.load();
+      await prefs.saveServer(
+        BeaconInstance.create('Home', moved),
+        replacing: home,
+      );
+      expect(prefs.atlasOwnerFor(moved), 'u1');
+      expect(prefs.atlasOwnerFor(home), isNull);
+      await prefs.removeServer(moved);
+      expect(prefs.atlasOwnerFor(moved), isNull);
+    });
+  });
+
   test('persists duplicate-safe servers and active deletion', () async {
     final prefs = await Preferences.load();
     await prefs.saveServer(
