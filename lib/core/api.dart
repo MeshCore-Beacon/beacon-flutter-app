@@ -456,14 +456,27 @@ class ApiClient {
   }
 
   /// Server feature flags from /info; all off on any failure so nothing new shows.
-  /// The answer, off included, is kept for this client so an older server is asked once.
-  Future<ServerFeatures> features() => _features ??= _readFeatures();
+  /// A 404 (no flags on this server) is kept for the client's life, any other failure
+  /// for a minute, so a passing network error does not hide a feature until restart.
+  Future<ServerFeatures> features() {
+    final until = _featuresUntil;
+    if (_features == null || (until != null && !_now().isBefore(until))) {
+      _featuresUntil = null;
+      _features = _readFeatures();
+    }
+    return _features!;
+  }
+
   Future<ServerFeatures>? _features;
+  DateTime? _featuresUntil;
 
   Future<ServerFeatures> _readFeatures() async {
     try {
       return ServerFeatures.fromInfo(object(await getCached('/info')));
-    } catch (_) {
+    } catch (e) {
+      if (!(e is ApiException && e.status == 404)) {
+        _featuresUntil = _now().add(const Duration(seconds: 60));
+      }
       return const ServerFeatures.off();
     }
   }

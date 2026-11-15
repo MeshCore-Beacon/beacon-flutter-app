@@ -64,20 +64,43 @@ void main() {
       expect((await api.features()).polling, false);
     });
 
-    test('features() remembers a 404 and a failure', () async {
+    test('features() remembers a 404 for good', () async {
       var calls = 0;
-      final missing = client((r) async {
-        calls++;
-        return http.Response('{}', 404);
-      });
-      await missing.features();
-      await missing.features();
-      final down = client((r) async {
-        calls++;
-        throw http.ClientException('down');
-      });
-      await down.features();
-      await down.features();
+      var now = DateTime(2026, 1, 1);
+      final api = ApiClient(
+        Uri.parse('https://test.invalid'),
+        transientRetries: 0,
+        now: () => now,
+        client: MockClient((r) async {
+          calls++;
+          return http.Response('{}', 404);
+        }),
+      );
+      await api.features();
+      now = now.add(const Duration(hours: 1));
+      await api.features();
+      expect(calls, 1);
+    });
+
+    test('features() forgets a failure after a minute', () async {
+      var calls = 0;
+      var now = DateTime(2026, 1, 1);
+      final api = ApiClient(
+        Uri.parse('https://test.invalid'),
+        transientRetries: 0,
+        now: () => now,
+        client: MockClient((r) async {
+          calls++;
+          if (calls == 1) throw http.ClientException('down');
+          return http.Response('{"features":{"polling":true}}', 200);
+        }),
+      );
+      expect((await api.features()).polling, false);
+      now = now.add(const Duration(seconds: 30));
+      expect((await api.features()).polling, false);
+      expect(calls, 1);
+      now = now.add(const Duration(seconds: 31));
+      expect((await api.features()).polling, true);
       expect(calls, 2);
     });
 
