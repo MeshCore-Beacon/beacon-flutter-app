@@ -1,12 +1,15 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'app.dart';
+import 'core/auth_api.dart';
 import 'core/preferences.dart';
 import 'core/strings.dart';
 import 'core/theme.dart';
 import 'core/token_store.dart';
+import 'features/account/sign_in.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,6 +21,17 @@ Future<void> main() async {
       ], await rootBundle.loadString('assets/fonts/$family-LICENSE.txt'));
     }
   });
-  final preferences = await Preferences.load(tokens: SecureTokenStore());
-  runApp(BeaconApp(preferences: preferences));
+  final tokens = SecureTokenStore();
+  final preferences = await Preferences.load(tokens: tokens);
+  runApp(
+    BeaconApp(
+      preferences: preferences,
+      signInFlow: SignInFlow(
+        apiFor: (url) => AuthApi(url, tokens),
+        launch: (uri) => launchUrl(uri, mode: LaunchMode.externalApplication),
+        now: DateTime.now,
+      ),
+      linkSource: AppLinksSource(),
+    ),
+  );
 }

@@ -16,6 +16,7 @@ import 'core/runtime_config.dart';
 import 'core/strings.dart';
 import 'core/theme.dart';
 import 'core/version_gate.dart';
+import 'features/account/sign_in.dart';
 import 'features/analytics/analytics_screen.dart';
 import 'features/atlas/atlas_screen.dart';
 import 'features/directory/directory.dart';
@@ -31,6 +32,8 @@ class BeaconApp extends StatefulWidget {
     this.connectLive = true,
     this.apiFactory,
     this.versionGate,
+    this.signInFlow,
+    this.linkSource,
   });
   final Preferences preferences;
   final bool connectLive;
@@ -39,6 +42,12 @@ class BeaconApp extends StatefulWidget {
   /// Minimum-app-version checks. Defaults to one that reads `/api/v1/info`
   /// through [apiFactory].
   final VersionGate? versionGate;
+
+  /// Browser sign-in. Null leaves it off, as in tests.
+  final SignInFlow? signInFlow;
+
+  /// Where callback links come from; needed with [signInFlow] to receive any.
+  final LinkSource? linkSource;
   @override
   State<BeaconApp> createState() => _BeaconAppState();
 }
@@ -50,9 +59,17 @@ class _BeaconAppState extends State<BeaconApp> with WidgetsBindingObserver {
       VersionGate(fetchInfo: VersionGate.apiFetcher(widget.apiFactory));
   String? active;
   GateStatus? shown;
+  SignInLinks? _signInLinks;
   @override
   void initState() {
     super.initState();
+    final flow = widget.signInFlow;
+    final source = widget.linkSource;
+    // Here, not in a screen, so a callback is caught whichever one is open.
+    if (flow != null && source != null) {
+      _signInLinks = SignInLinks(flow, source);
+      unawaited(_signInLinks!.listen());
+    }
     active = widget.preferences.active?.url;
     widget.preferences.addListener(changed);
     final server = widget.preferences.active;
@@ -111,6 +128,7 @@ class _BeaconAppState extends State<BeaconApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     widget.preferences.removeListener(changed);
     gate.removeListener(gateChanged);
+    unawaited(_signInLinks?.dispose());
     if (widget.versionGate == null) gate.dispose();
     super.dispose();
   }
@@ -146,7 +164,7 @@ class _BeaconAppState extends State<BeaconApp> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     language = widget.preferences.language;
-    return VersionGateScope(
+    final app = VersionGateScope(
       gate: gate,
       child: MaterialApp(
         navigatorKey: navigator,
@@ -159,6 +177,8 @@ class _BeaconAppState extends State<BeaconApp> with WidgetsBindingObserver {
         home: home(),
       ),
     );
+    final flow = widget.signInFlow;
+    return flow == null ? app : SignInScope(flow: flow, child: app);
   }
 }
 
