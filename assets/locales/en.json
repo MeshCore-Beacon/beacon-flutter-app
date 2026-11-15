@@ -1300,6 +1300,7 @@
       "signOut": "Sign out",
       "browserFailed": "Could not open the browser.",
       "saveFailed": "Could not save the sign-in on this device.",
+      "callbackRejected": "That sign-in link was not expected or has expired. Start signing in again from this screen.",
       "sectionAccount": "Account",
       "sectionPassword": "Password",
       "sectionPortal": "Sign-in",

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:beacon/core/account.dart';
@@ -118,5 +119,80 @@ void main() {
     await state.signOut();
     expect(state.signedIn, false);
     expect(await tokens.read(_base), isNull);
+  });
+
+  test(
+    'a /me that finishes after logout does not restore the account',
+    () async {
+      await tokens.write(_base, 'abc');
+      final late = Completer<http.Response>();
+      final state = AccountState(
+        AuthApi(
+          _base,
+          tokens,
+          client: MockClient(
+            (r) => r.url.path.endsWith('/me')
+                ? late.future
+                : Future.value(http.Response('', 204)),
+          ),
+        ),
+      );
+      final pending = state.refresh();
+      await Future<void>.delayed(Duration.zero);
+      await state.signOut();
+      late.complete(
+        _json(200, {
+          'user': {'username': 'ridge'},
+        }),
+      );
+      await pending;
+      expect(state.signedIn, false);
+      expect(await tokens.read(_base), isNull);
+    },
+  );
+
+  test('a 5xx on a protected route keeps the token and the user', () async {
+    await tokens.write(_base, 'abc');
+    final state = make(
+      (r) => r.url.path.endsWith('/me')
+          ? _json(200, {
+              'user': {'username': 'ridge'},
+            })
+          : _json(503, {
+              'error': {'code': 'unavailable', 'message': 'x'},
+            }),
+    );
+    await state.refresh();
+    await expectLater(state.api.sessions(), throwsA(anything));
+    expect(state.signedIn, true);
+    expect(await tokens.read(_base), 'abc');
+  });
+
+  test('a late response from an old session is not adopted', () async {
+    await tokens.write(_base, 'A');
+    final late = Completer<http.Response>();
+    final other = AuthApi(
+      _base,
+      tokens,
+      client: MockClient(
+        (_) async => _json(200, {
+          'token': 'B',
+          'user': {'username': 'new'},
+        }),
+      ),
+    );
+    final state = AccountState(
+      AuthApi(_base, tokens, client: MockClient((_) => late.future)),
+    );
+    final pending = state.refresh();
+    await Future<void>.delayed(Duration.zero);
+    await other.exchangeAppCode('c', 'v');
+    late.complete(
+      _json(200, {
+        'user': {'username': 'old'},
+      }),
+    );
+    await pending;
+    expect(state.user, isNull);
   });
 }

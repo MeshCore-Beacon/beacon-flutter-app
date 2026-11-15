@@ -42,6 +42,10 @@ class AtlasStore extends ChangeNotifier {
 
   bool get signedIn => _currentUser != null;
 
+  /// True while [user]'s session, as noted at [epoch], is still the live one.
+  bool _live(String user, int epoch) =>
+      _currentUser == user && account?.epoch == epoch;
+
   String? get _currentUser {
     final id = account?.user?['id'];
     return id == null ? null : '$id';
@@ -121,11 +125,12 @@ class AtlasStore extends ChangeNotifier {
     while (true) {
       final user = _currentUser;
       if (user == null) return;
+      final epoch = account!.epoch;
       if (_wantLoad || _revision == null) {
         _wantLoad = false;
-        if (!await _load(user)) break;
+        if (!await _load(user, epoch)) break;
       } else if (_dirty) {
-        if (!await _write(user)) break;
+        if (!await _write(user, epoch)) break;
       } else {
         return;
       }
@@ -165,14 +170,14 @@ class AtlasStore extends ChangeNotifier {
   }
 
   /// False when the server could not be reached.
-  Future<bool> _load(String user) async {
+  Future<bool> _load(String user, int epoch) async {
     ServerAtlas? server;
     try {
       server = parseServerAtlas(await account!.api.atlas());
     } catch (_) {
-      return false;
+      return !_live(user, epoch);
     }
-    if (_currentUser != user) return true;
+    if (!_live(user, epoch)) return true;
     if (server == null) return false;
     // The local copy as it was before any held change.
     final local = _heldBase ?? saved, held = _held;
@@ -212,7 +217,7 @@ class AtlasStore extends ChangeNotifier {
   }
 
   /// False when the write failed, so the loop stops until the next change.
-  Future<bool> _write(String user) async {
+  Future<bool> _write(String user, int epoch) async {
     final snapshot = saved, changes = _changes;
     _dirty = false;
     Json doc;
@@ -224,17 +229,17 @@ class AtlasStore extends ChangeNotifier {
             .cast<Json>(),
       );
     } on AtlasConflict catch (conflict) {
-      if (_currentUser != user) return true;
+      if (!_live(user, epoch)) return true;
       var doc = conflict.current;
       if (doc == null) {
         // The answer did not carry the document: fetch it.
         try {
           doc = await account!.api.atlas();
         } catch (_) {
-          if (_currentUser == user) _dirty = true;
+          if (_live(user, epoch)) _dirty = true;
           return false;
         }
-        if (_currentUser != user) return true;
+        if (!_live(user, epoch)) return true;
       }
       final current = parseServerAtlas(doc);
       if (current == null) {
@@ -249,10 +254,10 @@ class AtlasStore extends ChangeNotifier {
       _notify();
       return true;
     } catch (_) {
-      if (_currentUser == user) _dirty = true;
+      if (_live(user, epoch)) _dirty = true;
       return false;
     }
-    if (_currentUser != user) return true;
+    if (!_live(user, epoch)) return true;
     final written = parseServerAtlas(doc);
     if (written == null) {
       _dirty = true;

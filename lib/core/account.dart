@@ -14,6 +14,10 @@ class AccountState extends ChangeNotifier {
   Json? user;
   bool get signedIn => user != null;
 
+  /// Bumped whenever the signed-in account changes or ends. A caller notes it
+  /// before an await and drops the result if it moved.
+  int epoch = 0;
+
   /// Keeps this phone's push token registered; removed on [signOut].
   PushRegistration? push;
   bool _disposed = false;
@@ -27,6 +31,7 @@ class AccountState extends ChangeNotifier {
 
   void _signedOut() {
     if (user == null || _disposed) return;
+    epoch++;
     user = null;
     notifyListeners();
   }
@@ -34,6 +39,7 @@ class AccountState extends ChangeNotifier {
   /// Takes a fresh user from a profile call.
   void adopt(Json? next) {
     if (_disposed) return;
+    if (user?['id'] != next?['id'] || signedIn != (next != null)) epoch++;
     user = next;
     notifyListeners();
   }

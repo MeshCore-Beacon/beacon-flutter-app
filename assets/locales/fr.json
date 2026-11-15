@@ -1347,6 +1347,7 @@
       "signOut": "Se déconnecter",
       "browserFailed": "Impossible d'ouvrir le navigateur.",
       "saveFailed": "Impossible d'enregistrer la connexion sur cet appareil.",
+      "callbackRejected": "Ce lien de connexion n'était pas attendu ou a expiré. Relancez la connexion depuis cet écran.",
       "sectionAccount": "Compte",
       "sectionPassword": "Mot de passe",
       "sectionPortal": "Connexion",

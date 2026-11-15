@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:beacon/core/api.dart';
@@ -166,6 +167,42 @@ void main() {
         expect(await tokens.read(_base), 'abc');
       },
     );
+  });
+
+  group('stale sessions', () {
+    test('a late 401 for an old token leaves a newer token alone', () async {
+      await tokens.write(_base, 'A');
+      final late = Completer<http.Response>();
+      var signedOut = 0;
+      final old = AuthApi(_base, tokens, client: MockClient((_) => late.future))
+        ..onSignedOut = () => signedOut++;
+      final signIn = AuthApi(
+        _base,
+        tokens,
+        client: MockClient((_) async => _json(200, {'token': 'B', 'user': {}})),
+      );
+      final pending = old.me();
+      await Future<void>.delayed(Duration.zero);
+      await signIn.exchangeAppCode('c', 'v');
+      late.complete(_error(401, 'not_signed_in'));
+      await expectLater(pending, throwsA(isA<ApiException>()));
+      expect(await tokens.read(_base), 'B');
+      expect(signedOut, 0);
+    });
+
+    test('a 503 never deletes the token', () async {
+      await tokens.write(_base, 'abc');
+      var signedOut = 0;
+      final api = make((_) => _error(503, 'unavailable'))
+        ..onSignedOut = () => signedOut++;
+      await expectLater(api.me(), throwsA(isA<ApiException>()));
+      await expectLater(
+        api.send('GET', '/me/sessions'),
+        throwsA(isA<ApiException>()),
+      );
+      expect(await tokens.read(_base), 'abc');
+      expect(signedOut, 0);
+    });
   });
 
   group('me', () {

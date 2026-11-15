@@ -73,6 +73,7 @@ class SignInFlow extends ChangeNotifier {
   static const _host = 'auth';
 
   PendingSignIn? pending;
+  String? _used;
 
   /// The latest success or failure, for the account section to show.
   SignInResult? lastResult;
@@ -112,18 +113,33 @@ class SignInFlow extends ChangeNotifier {
   Future<SignInResult> handleCallback(Uri link) async {
     const ignored = SignInResult(SignInOutcome.ignored);
     if (link.scheme != _scheme || link.host != _host) return ignored;
+    // The exchange is refused; the account section says why.
+    SignInResult reject() {
+      final result = SignInResult(
+        SignInOutcome.failed,
+        message: trKey('account.callbackRejected'),
+      );
+      lastResult = result;
+      notifyListeners();
+      return result;
+    }
+
     final current = pending;
-    if (current == null) return ignored;
+    // The same link delivered twice (cold start and stream) is not a new try.
+    if (current == null) {
+      return _used == link.queryParameters['state'] ? ignored : reject();
+    }
     if (!now().isBefore(current.expiresAt)) {
       pending = null;
-      return ignored;
+      return reject();
     }
     final code = link.queryParameters['code'];
     final state = link.queryParameters['state'];
     if (code == null || code.isEmpty || state == null) return ignored;
-    if (!constantTimeEquals(state, current.state)) return ignored;
+    if (!constantTimeEquals(state, current.state)) return reject();
     // One try per sign-in: a repeat of the same link finds nothing pending.
     pending = null;
+    _used = state;
     SignInResult result;
     try {
       final reply = await apiFor(current.serverUrl)

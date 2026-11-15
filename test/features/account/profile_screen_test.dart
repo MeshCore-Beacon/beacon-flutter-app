@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:beacon/core/theme.dart';
@@ -176,6 +177,59 @@ void main() {
     );
     expect(h.calls('GET', '/me/sessions').length, 2);
   });
+
+  for (final which in ['password', 'email', 'name']) {
+    testWidgets('leaving while the $which request is pending is safe', (
+      tester,
+    ) async {
+      final route = {
+        'password': 'POST /me/password',
+        'email': 'POST /me/email',
+        'name': 'PATCH /me',
+      }[which]!;
+      final h = make({
+        route: (_) => which == 'name'
+            ? json(200, {'user': user(name: 'New')})
+            : which == 'email'
+            ? json(202, {'status': 'check_email'})
+            : http.Response('', 204),
+      });
+      final release = Completer<http.Response>();
+      await open(tester, h);
+      h.hold = (r) =>
+          r.method == route.split(' ').first &&
+              r.url.path == '/api/v1${route.split(' ').last}'
+          ? release.future
+          : null;
+      if (which == 'password') {
+        await typeInto(tester, 'pw-current', 'old-password-1');
+        await typeInto(tester, 'pw-new', 'new-password-2');
+        await tester.ensureVisible(find.byKey(const ValueKey('pw-save')));
+        await tester.tap(find.byKey(const ValueKey('pw-save')));
+      } else if (which == 'email') {
+        await typeInto(tester, 'email-new', 'b@example.org');
+        await typeInto(tester, 'email-password', 'hunter2hunter2');
+        await tester.ensureVisible(find.byKey(const ValueKey('email-save')));
+        await tester.tap(find.byKey(const ValueKey('email-save')));
+      } else {
+        await typeInto(tester, 'display-name', 'New');
+        await tester.ensureVisible(find.byKey(const ValueKey('name-save')));
+        await tester.tap(find.byKey(const ValueKey('name-save')));
+      }
+      await tester.pump();
+      Navigator.of(tester.element(find.byType(ProfileScreen))).pop();
+      await tester.pumpAndSettle();
+      release.complete(
+        which == 'name'
+            ? json(200, {'user': user(name: 'New')})
+            : which == 'email'
+            ? json(202, {'status': 'check_email'})
+            : http.Response('', 204),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('a weak password shows the server reason', (tester) async {
     final h = make({

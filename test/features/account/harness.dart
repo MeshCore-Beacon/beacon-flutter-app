@@ -70,7 +70,8 @@ class Harness {
         tokens,
         client: MockClient((r) async {
           requests.add(r);
-          return handler(r);
+          final held = hold?.call(r);
+          return held != null ? await held : handler(r);
         }),
       ),
     );
@@ -78,6 +79,9 @@ class Harness {
   }
   final http.Response Function(http.Request) handler;
   final tokens = MemoryTokenStore();
+
+  /// Returns a future to keep a request pending until the test releases it.
+  Future<http.Response>? Function(http.Request)? hold;
   final requests = <http.Request>[];
   late final AccountState account;
 

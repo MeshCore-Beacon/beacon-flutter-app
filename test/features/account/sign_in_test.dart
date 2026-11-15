@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:beacon/core/account.dart';
 import 'package:beacon/core/auth_api.dart';
 import 'package:beacon/core/pkce.dart';
+import 'package:beacon/core/strings.dart';
 import 'package:beacon/core/token_store.dart';
 import 'package:beacon/features/account/sign_in.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -148,7 +149,8 @@ void main() {
     final flow = make();
     await flow.start(_server);
     final result = await flow.handleCallback(callback('nope'));
-    expect(result.outcome, SignInOutcome.ignored);
+    expect(result.outcome, SignInOutcome.failed);
+    expect(flow.lastResult?.message, isNotEmpty);
     expect(requests, isEmpty);
     expect(await tokens.read(_server), isNull);
     expect(flow.pending, isNotNull);
@@ -159,8 +161,12 @@ void main() {
     await flow.start(_server);
     final state = flow.pending!.state;
     now = now.add(const Duration(minutes: 10, seconds: 1));
+    var notified = 0;
+    flow.addListener(() => notified++);
     final result = await flow.handleCallback(callback(state));
-    expect(result.outcome, SignInOutcome.ignored);
+    expect(result.outcome, SignInOutcome.failed);
+    expect(flow.lastResult?.message, trKey('account.callbackRejected'));
+    expect(notified, 1);
     expect(requests, isEmpty);
     expect(flow.pending, isNull);
   });
@@ -177,7 +183,8 @@ void main() {
   test('an unsolicited callback does nothing', () async {
     final flow = make();
     final result = await flow.handleCallback(callback('anything'));
-    expect(result.outcome, SignInOutcome.ignored);
+    expect(result.outcome, SignInOutcome.failed);
+    expect(flow.lastResult?.message, isNotEmpty);
     expect(requests, isEmpty);
     expect(await tokens.read(_server), isNull);
   });
@@ -212,7 +219,7 @@ void main() {
     await flow.start(_other);
     expect(flow.pending!.serverUrl, _other);
     final result = await flow.handleCallback(callback(first.state));
-    expect(result.outcome, SignInOutcome.ignored);
+    expect(result.outcome, SignInOutcome.failed);
     expect(requests, isEmpty);
   });
 
@@ -237,11 +244,11 @@ void main() {
     var heard = 0;
     flow.addListener(() => heard++);
     await flow.handleCallback(callback('x'));
-    expect(flow.lastResult, isNull);
+    expect(flow.lastResult?.outcome, SignInOutcome.failed);
     await flow.start(_server);
     await flow.handleCallback(callback(flow.pending!.state));
     expect(flow.lastResult?.outcome, SignInOutcome.success);
-    expect(heard, 1);
+    expect(heard, 2);
   });
 
   group('SignInLinks', () {

@@ -37,17 +37,25 @@ class AuthApi {
   Future<Json> send(String method, String path, {Json? body}) =>
       _request(method, path, body: body, authorize: true);
 
+  /// The answer to a request sent with a token that is no longer this server's
+  /// session; its result must not be acted on.
+  static const sessionChangedCode = 'session_changed';
+
   Future<Json> _request(
     String method,
     String path, {
     Json? body,
     required bool authorize,
+    String? sentToken,
+    bool tokenKnown = false,
   }) async {
     final request = http.Request(method, _uri(path));
-    if (authorize) {
-      final token = await tokens.read(base);
-      if (token != null) request.headers['Authorization'] = 'Bearer $token';
-    }
+    // The stored token is the session generation: a request owns the one it
+    // sent, whichever AuthApi of this server made it.
+    final token = !authorize
+        ? null
+        : (tokenKnown ? sentToken : await tokens.read(base));
+    if (token != null) request.headers['Authorization'] = 'Bearer $token';
     if (body != null) {
       request.headers['Content-Type'] = 'application/json';
       request.body = jsonEncode(body);
@@ -66,6 +74,12 @@ class AuthApi {
         'Could not connect to this server. Check your connection and URL.',
       );
     }
+    if (authorize && await tokens.read(base) != token) {
+      throw const ApiException(
+        'The session changed while this was in progress.',
+        code: sessionChangedCode,
+      );
+    }
     dynamic decoded;
     try {
       decoded = response.body.isEmpty ? null : jsonDecode(response.body);
@@ -76,7 +90,7 @@ class AuthApi {
       final error = object(object(decoded)['error']);
       final code = error['code'] is String ? error['code'] as String : null;
       if (authorize && response.statusCode == 401 && code == 'not_signed_in') {
-        await _forget();
+        await _forget(token);
       }
       final seconds = int.tryParse(response.headers['retry-after'] ?? '');
       throw ApiException(
@@ -93,8 +107,11 @@ class AuthApi {
     return object(decoded);
   }
 
-  Future<void> _forget() async {
+  /// Deletes the stored token only while it is still [token], the one the
+  /// failed or ending request used.
+  Future<void> _forget(String? token) async {
     try {
+      if (await tokens.read(base) != token) return;
       await tokens.delete(base);
     } catch (_) {}
     onSignedOut?.call();
@@ -102,9 +119,16 @@ class AuthApi {
 
   /// The signed-in user; null when signed out or the server has no accounts.
   Future<Json?> me() async {
-    if (await tokens.read(base) == null) return null;
+    final token = await tokens.read(base);
+    if (token == null) return null;
     try {
-      final user = (await send('GET', '/me'))['user'];
+      final user = (await _request(
+        'GET',
+        '/me',
+        authorize: true,
+        sentToken: token,
+        tokenKnown: true,
+      ))['user'];
       return user is Map ? object(user) : null;
     } on ApiException catch (e) {
       if (e.code == 'accounts_disabled' || e.code == 'not_signed_in') {
@@ -132,12 +156,19 @@ class AuthApi {
 
   /// Ends the session on the server, but signs out here whatever the answer.
   Future<void> signOut() async {
+    final token = await tokens.read(base);
     try {
-      await send('POST', '/auth/logout');
+      await _request(
+        'POST',
+        '/auth/logout',
+        authorize: true,
+        sentToken: token,
+        tokenKnown: true,
+      );
     } on ApiException {
       // An offline or expired session still has to sign out locally.
     } finally {
-      await _forget();
+      await _forget(token);
     }
   }
 
@@ -164,15 +195,19 @@ class AuthApi {
     String? currentPassword,
     String? confirmUsername,
   }) async {
-    await send(
+    final token = await tokens.read(base);
+    await _request(
       'DELETE',
       '/me',
       body: {
         'currentPassword': ?currentPassword,
         'confirmUsername': ?confirmUsername,
       },
+      authorize: true,
+      sentToken: token,
+      tokenKnown: true,
     );
-    await _forget();
+    await _forget(token);
   }
 
   Future<List<Json>> sessions() async =>

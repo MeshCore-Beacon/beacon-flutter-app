@@ -27,13 +27,15 @@ class _TelemetryRequestsState extends State<_TelemetryRequests> {
   }
 
   Future<void> load() async {
+    final epoch = widget.account.epoch;
+    bool stale() => !mounted || widget.account.epoch != epoch;
     try {
       final features = await widget.api.features();
-      if (!mounted) return;
+      if (stale()) return;
       if (!features.telemetryRequests) return;
       setState(() => enabled = true);
       final data = await widget.account.api.telemetryRequests();
-      if (!mounted) return;
+      if (stale()) return;
       setState(() {
         loaded = true;
         failed = false;
@@ -41,7 +43,7 @@ class _TelemetryRequestsState extends State<_TelemetryRequests> {
         limit = (number(data['limit']) ?? 0).toInt();
       });
     } catch (_) {
-      if (mounted) setState(() => failed = true);
+      if (!stale()) setState(() => failed = true);
     }
   }
 
@@ -138,9 +140,9 @@ class _RequestRowState extends State<_RequestRow> with _Action {
       );
       return null;
     }, describe: requestError);
-    if (!ok) return;
+    if (!ok || !mounted) return;
     password.clear();
-    if (mounted) setState(() => editing = false);
+    setState(() => editing = false);
     await widget.changed();
   }
 

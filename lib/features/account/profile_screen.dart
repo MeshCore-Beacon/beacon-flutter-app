@@ -271,7 +271,7 @@ class _NameFormState extends State<_NameForm> with _Action {
   Future<void> save() => run(() async {
     final user = await widget.account.api.setDisplayName(name.text.trim());
     widget.account.adopt(user);
-    name.text = textOf(user['displayName'], name.text);
+    if (mounted) name.text = textOf(user['displayName'], name.text);
     return trKey('account.saved');
   });
 
@@ -321,7 +321,7 @@ class _EmailFormState extends State<_EmailForm> with _Action {
       return trKey('account.emailSent').replaceAll('{{email}}', address);
     });
     if (!ok) return;
-    password.clear();
+    if (mounted) password.clear();
     // The pending address shows once the server reports it.
     await widget.account.refresh();
   }
@@ -405,7 +405,7 @@ class _PasswordFormState extends State<_PasswordForm> with _Action {
       await widget.account.api.changePassword(current.text, next.text);
       return trKey('account.passwordChanged');
     });
-    if (!ok) return;
+    if (!ok || !mounted) return;
     current.clear();
     next.clear();
     // Every other session just ended, so the list is stale.
@@ -501,7 +501,7 @@ class _DevicesState extends State<_Devices> with _Action {
       return null;
     });
     if (mounted) setState(() => endingId = null);
-    if (ok && !current) await load();
+    if (ok && !current && mounted) await load();
   }
 
   Future<void> endOthers() async {
@@ -509,7 +509,7 @@ class _DevicesState extends State<_Devices> with _Action {
       await widget.account.api.endOtherSessions();
       return trKey('account.othersEnded');
     });
-    if (ok) await load();
+    if (ok && mounted) await load();
   }
 
   @override

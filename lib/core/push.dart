@@ -110,11 +110,14 @@ class PushRegistration extends ChangeNotifier {
   Future<void> refresh() async {
     if (!account.signedIn) return _set(PushStatus.off);
     final generation = ++_generation;
+    final epoch = account.epoch;
+    bool gone() => generation != _generation || account.epoch != epoch;
     try {
       final f = await features();
+      if (gone()) return;
       if (!f.alerts || f.alertDelivery != 'push') return _set(PushStatus.off);
       if (!await client.available()) return _set(PushStatus.notSetUp);
-      if (generation != _generation || !account.signedIn) return;
+      if (gone() || !account.signedIn) return;
       _listenForTaps();
       switch (await client.permission()) {
         case PushPermission.granted:
@@ -125,7 +128,7 @@ class PushRegistration extends ChangeNotifier {
           _set(PushStatus.needsPermission);
       }
     } catch (_) {
-      _set(PushStatus.failed);
+      if (!gone()) _set(PushStatus.failed);
     }
   }
 
@@ -147,19 +150,26 @@ class PushRegistration extends ChangeNotifier {
   }
 
   Future<void> _register() async {
+    // A result from a session that has since ended says nothing about this one.
+    final epoch = account.epoch;
+    bool gone() => _disposed || account.epoch != epoch || !account.signedIn;
     final token = await client.token();
+    if (gone()) return;
     if (token == null || token.isEmpty) return _set(PushStatus.failed);
     try {
       await account.api.registerDevice(client.platform, token);
     } on ApiException {
+      if (gone()) return;
       return _set(PushStatus.failed);
     }
+    if (gone()) return;
     _refreshes ??= client.tokenRefreshes.listen((next) async {
       if (!account.signedIn || next.isEmpty) return;
+      final at = account.epoch;
       try {
         await account.api.registerDevice(client.platform, next);
       } on ApiException {
-        _set(PushStatus.failed);
+        if (account.epoch == at) _set(PushStatus.failed);
       }
     });
     _set(PushStatus.registered);

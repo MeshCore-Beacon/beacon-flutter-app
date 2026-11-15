@@ -27,16 +27,19 @@ class _AlertsState extends State<_Alerts> {
   }
 
   Future<void> load() async {
+    final epoch = widget.account.epoch;
     try {
       final next = await widget.account.api.alerts();
-      if (mounted) {
+      if (mounted && widget.account.epoch == epoch) {
         setState(() {
           data = next;
           error = null;
         });
       }
     } catch (e) {
-      if (mounted) setState(() => error = e);
+      if (mounted && widget.account.epoch == epoch) {
+        setState(() => error = e);
+      }
     }
   }
 

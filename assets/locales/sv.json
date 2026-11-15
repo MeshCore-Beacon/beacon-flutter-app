@@ -1300,6 +1300,7 @@
       "signOut": "Logga ut",
       "browserFailed": "Det gick inte att öppna webbläsaren.",
       "saveFailed": "Det gick inte att spara inloggningen på den här enheten.",
+      "callbackRejected": "Den här inloggningslänken var oväntad eller har gått ut. Starta inloggningen igen från den här skärmen.",
       "sectionAccount": "Konto",
       "sectionPassword": "Lösenord",
       "sectionPortal": "Inloggning",

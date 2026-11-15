@@ -133,7 +133,9 @@ class _TelemetryRequestBlockState extends State<TelemetryRequestBlock> {
 
   Future<void> load() async {
     final token = ++generation;
-    bool stale() => !mounted || token != generation;
+    final epoch = widget.account.epoch;
+    bool stale() =>
+        !mounted || token != generation || widget.account.epoch != epoch;
     if (!widget.account.signedIn) {
       setState(() => enabled = loaded = false);
       return;
