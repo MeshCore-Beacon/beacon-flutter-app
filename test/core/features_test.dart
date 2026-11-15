@@ -64,6 +64,23 @@ void main() {
       expect((await api.features()).polling, false);
     });
 
+    test('features() remembers a 404 and a failure', () async {
+      var calls = 0;
+      final missing = client((r) async {
+        calls++;
+        return http.Response('{}', 404);
+      });
+      await missing.features();
+      await missing.features();
+      final down = client((r) async {
+        calls++;
+        throw http.ClientException('down');
+      });
+      await down.features();
+      await down.features();
+      expect(calls, 2);
+    });
+
     test('features() reads /info and caches it', () async {
       var calls = 0;
       final api = client((r) async {

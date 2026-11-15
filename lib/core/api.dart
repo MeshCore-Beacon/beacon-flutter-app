@@ -456,7 +456,11 @@ class ApiClient {
   }
 
   /// Server feature flags from /info; all off on any failure so nothing new shows.
-  Future<ServerFeatures> features() async {
+  /// The answer, off included, is kept for this client so an older server is asked once.
+  Future<ServerFeatures> features() => _features ??= _readFeatures();
+  Future<ServerFeatures>? _features;
+
+  Future<ServerFeatures> _readFeatures() async {
     try {
       return ServerFeatures.fromInfo(object(await getCached('/info')));
     } catch (_) {
