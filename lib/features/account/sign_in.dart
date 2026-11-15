@@ -111,6 +111,14 @@ class SignInFlow extends ChangeNotifier {
     }
   }
 
+  /// Gives up on the sign-in waiting for its callback.
+  void cancel() {
+    if (pending == null) return;
+    pending = null;
+    lastResult = null;
+    notifyListeners();
+  }
+
   Future<SignInResult> handleCallback(Uri link) async {
     const ignored = SignInResult(SignInOutcome.ignored);
     if (link.scheme != _scheme || link.host != _host) return ignored;

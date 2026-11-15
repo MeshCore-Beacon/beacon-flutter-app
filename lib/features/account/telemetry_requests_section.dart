@@ -7,10 +7,12 @@ class _TelemetryRequests extends StatefulWidget {
     required this.account,
     required this.api,
     this.onOpen,
+    this.refresh,
   });
   final AccountState account;
   final ApiClient api;
   final void Function(String, String)? onOpen;
+  final ValueNotifier<int>? refresh;
   @override
   State<_TelemetryRequests> createState() => _TelemetryRequestsState();
 }
@@ -23,7 +25,14 @@ class _TelemetryRequestsState extends State<_TelemetryRequests> {
   @override
   void initState() {
     super.initState();
+    widget.refresh?.addListener(load);
     load();
+  }
+
+  @override
+  void dispose() {
+    widget.refresh?.removeListener(load);
+    super.dispose();
   }
 
   Future<void> load() async {
@@ -60,34 +69,18 @@ class _TelemetryRequestsState extends State<_TelemetryRequests> {
           style: TextStyle(fontSize: 12, color: muted),
         ),
       if (failed && !loaded)
-        Row(
-          children: [
-            Expanded(child: Text(trKey('telemetryRequests.loadFailed'))),
-            TextButton(
-              onPressed: () {
-                setState(() => failed = false);
-                load();
-              },
-              child: Text(trKey('telemetryRequests.retry')),
-            ),
-          ],
+        _LoadFailed(
+          text: trKey('telemetryRequests.loadFailed'),
+          retry: trKey('telemetryRequests.retry'),
+          onRetry: () {
+            setState(() => failed = false);
+            load();
+          },
         )
       else if (!loaded)
-        const Padding(
-          padding: EdgeInsets.all(8),
-          child: Center(
-            child: SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-          ),
-        )
+        const _Loading()
       else if (requests.isEmpty)
-        Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: Text(trKey('telemetryRequests.empty')),
-        )
+        _Empty(trKey('telemetryRequests.empty'))
       else
         for (final request in requests)
           _RequestRow(
@@ -194,8 +187,19 @@ class _RequestRowState extends State<_RequestRow> with _Action {
       node['name'],
       trKey('telemetryRequests.unknownRepeater'),
     );
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+    final colors = BeaconColors.of(context);
+    final tone = switch (textOf(r['status'])) {
+      'active' => colors.success,
+      'login_failed' || 'admin_stopped' => colors.danger,
+      _ => colors.warning,
+    };
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+      decoration: BoxDecoration(
+        border: Border.all(color: colors.borderSubtle),
+        borderRadius: BorderRadius.circular(5),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -204,14 +208,39 @@ class _RequestRowState extends State<_RequestRow> with _Action {
             onTap: nodeId.isEmpty || widget.onOpen == null
                 ? null
                 : () => widget.onOpen!('node', nodeId),
-            child: Text(
-              name,
-              style: const TextStyle(fontWeight: FontWeight.w700),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 32),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  name,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                  ),
+                ),
+              ),
             ),
           ),
-          Text(requestStatusText(textOf(r['status']))),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 6, right: 8),
+                child: Icon(Icons.circle, size: 9, color: tone),
+              ),
+              Expanded(child: Text(requestStatusText(textOf(r['status'])))),
+            ],
+          ),
           if (reason.isNotEmpty) Text(reason, style: muted),
-          if (stopped) Text(trKey('telemetryRequests.adminStoppedHelp')),
+          if (stopped)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                trKey('telemetryRequests.adminStoppedHelp'),
+                style: TextStyle(fontSize: 13, color: colors.danger),
+              ),
+            ),
           if (poller.isNotEmpty)
             Text(
               trKey('telemetryRequests.polledBy')
@@ -234,6 +263,7 @@ class _RequestRowState extends State<_RequestRow> with _Action {
             style: muted,
           ),
           if (editing) ...[
+            const SizedBox(height: 8),
             GuestPasswordField(
               key: ValueKey('request-pw-field-$id'),
               controller: password,
@@ -250,6 +280,9 @@ class _RequestRowState extends State<_RequestRow> with _Action {
                   listenable: password,
                   builder: (_, _) => FilledButton(
                     key: ValueKey('request-pw-save-$id'),
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(48, 48),
+                    ),
                     onPressed: busy || (stopped && password.text.isEmpty)
                         ? null
                         : savePassword,
@@ -279,6 +312,7 @@ class _RequestRowState extends State<_RequestRow> with _Action {
                   label: trKey('telemetryRequests.remove'),
                   busy: busy,
                   danger: true,
+                  wide: false,
                   onPressed: remove,
                 ),
                 TextButton(
@@ -312,6 +346,9 @@ class _RequestRowState extends State<_RequestRow> with _Action {
                   ),
                 TextButton(
                   key: ValueKey('request-remove-$id'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Theme.of(context).colorScheme.error,
+                  ),
                   onPressed: busy
                       ? null
                       : () => setState(() => confirming = true),

@@ -107,9 +107,9 @@ void main() {
     final h = Harness((_) => json(200, {}), signedIn: false);
     final launched = await pump(tester, h, accountsOn('local'));
     expect(find.text('ACCOUNT ON HOME MESH'), findsOneWidget);
-    expect(find.textContaining('browser'), findsOneWidget);
+    expect(find.text('Sync your Atlas.'), findsOneWidget);
     await tester.tap(find.text('Sign in'));
-    await tester.pumpAndSettle();
+    await tester.pump();
     expect(launched.single.origin, server);
     expect(launched.single.queryParameters['view'], 'signin');
   });
@@ -120,7 +120,7 @@ void main() {
     expect(find.text('Sign in'), findsNothing);
     expect(find.text('Sign in with MeshMapper'), findsOneWidget);
     await tester.tap(find.text('Sign in with MeshMapper'));
-    await tester.pumpAndSettle();
+    await tester.pump();
     expect(launched.single.queryParameters['view'], 'signin');
     expect(launched.single.queryParameters['app'], '1');
   });
@@ -148,6 +148,14 @@ void main() {
     expect(find.text('Profile'), findsOneWidget);
     await tester.tap(find.text('Sign out'));
     await tester.pumpAndSettle();
+    expect(await h.tokens.read(server), 'tok');
+    await tester.tap(find.byKey(const ValueKey('confirm-cancel')));
+    await tester.pumpAndSettle();
+    expect(h.account.signedIn, isTrue);
+    await tester.tap(find.text('Sign out'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('confirm-yes')));
+    await tester.pumpAndSettle();
     expect(await h.tokens.read(server), isNull);
     expect(find.text('Sign in'), findsOneWidget);
   });
@@ -159,5 +167,68 @@ void main() {
     h.account.adopt(user());
     await tester.pumpAndSettle();
     expect(find.text('Ridge Walker'), findsOneWidget);
+  });
+
+  testWidgets('the intro line lists only the features the server has on', (
+    tester,
+  ) async {
+    Future<void> check(Map<String, Object> features, String line) async {
+      final h = Harness((_) => json(200, {}), signedIn: false);
+      await pump(
+        tester,
+        h,
+        apiWith(() async => json(200, {'features': features})),
+      );
+      expect(find.text(line), findsOneWidget);
+    }
+
+    await check({'accounts': 'local'}, 'Sync your Atlas.');
+    await check({
+      'accounts': 'local',
+      'telemetryRequests': true,
+    }, 'Sync your Atlas and request repeater telemetry.');
+    await check({
+      'accounts': 'local',
+      'alerts': true,
+    }, 'Sync your Atlas and get alerts.');
+    await check({
+      'accounts': 'local',
+      'telemetryRequests': true,
+      'alerts': true,
+    }, 'Sync your Atlas, request repeater telemetry and get alerts.');
+  });
+
+  testWidgets('waiting for the browser shows a spinner and Cancel', (
+    tester,
+  ) async {
+    final h = Harness((_) => json(200, {}), signedIn: false);
+    await pump(tester, h, accountsOn('local'));
+    final button = find.byKey(const ValueKey('account-sign-in'));
+    expect(tester.widget<FilledButton>(button).onPressed, isNotNull);
+    await tester.tap(button);
+    await tester.pump();
+    expect(find.text('Waiting for your browser'), findsOneWidget);
+    expect(find.byKey(const ValueKey('account-sign-in')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('account-cancel')));
+    await tester.pump();
+    expect(find.text('Waiting for your browser'), findsNothing);
+    expect(find.byKey(const ValueKey('account-sign-in')), findsOneWidget);
+  });
+
+  testWidgets('a rejected callback shows its message in the section', (
+    tester,
+  ) async {
+    final h = Harness((_) => json(200, {}), signedIn: false);
+    final flow = SignInFlow(
+      apiFor: (url) => h.account.api,
+      launch: (_) async => true,
+      now: DateTime.now,
+    );
+    await pump(tester, h, accountsOn('local'), flow: flow);
+    await flow.handleCallback(
+      Uri.parse('meshcorebeacon://auth?code=c&state=x'),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('not expected or has expired'), findsOneWidget);
   });
 }

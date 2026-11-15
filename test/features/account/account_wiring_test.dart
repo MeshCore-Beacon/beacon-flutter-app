@@ -112,7 +112,8 @@ void main() {
     expect(meCalls, 0);
     await openSettings(tester);
     await tester.tap(find.text('Sign in'));
-    await tester.pumpAndSettle();
+    // The waiting spinner never settles.
+    await tester.pump();
     expect(launched, hasLength(1));
     await flow.handleCallback(
       Uri.parse('meshcorebeacon://auth?code=c&state=${flow.pending!.state}'),
