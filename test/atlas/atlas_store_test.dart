@@ -145,7 +145,41 @@ Future<Rig> rig({
 List<dynamic> cachedPins(Preferences prefs) =>
     (jsonDecode(prefs.atlasFor(server)!) as Map)['pins'] as List;
 
+/// Another device commits right before this client's second PUT.
+class OtherDeviceServer extends FakeServer {
+  int puts_ = 0;
+  @override
+  Future<http.Response> handle(http.Request r) async {
+    if (r.method == 'PUT' && ++puts_ == 2) {
+      revision++;
+      pins.add(serverNode(keyN(3), 'Other device'));
+    }
+    return super.handle(r);
+  }
+}
+
 void main() {
+  test('a queued edit keeps the committed revision, so another device is not overwritten', () async {
+    final fake = OtherDeviceServer()
+      ..revision = 4
+      ..pins = [serverNode(keyN(1))];
+    final gate = Completer<void>();
+    fake.hold = gate;
+    final r = await rig(marked: true, fake: fake);
+    final store = r.store;
+    await Future<void>.delayed(Duration.zero);
+    store.update((v) => v.appended(node(keyN(2))));
+    await Future<void>.delayed(Duration.zero);
+    store.update((v) => v.copyWith(range: AtlasRange.threeDays));
+    gate.complete();
+    await store.idle;
+    final puts = fake.puts;
+    expect(jsonDecode(puts[0].body)['baseRevision'], 4);
+    expect(jsonDecode(puts[1].body)['baseRevision'], 5);
+    expect(fake.pins.any((p) => p['publicKey'] == keyN(3)), isTrue);
+    expect(store.saved.pins.any((p) => p.key == keyN(3)), isTrue);
+  });
+
   group('signed out', () {
     test('stored JSON after a sequence of actions is what it always was', () async {
       final r = await rig(signedIn: false);
