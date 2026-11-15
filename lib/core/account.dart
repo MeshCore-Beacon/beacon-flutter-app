@@ -46,16 +46,23 @@ class AccountState extends ChangeNotifier {
 
   /// A network error keeps what we know; only the server saying so signs out.
   Future<void> refresh() async {
+    final started = epoch;
     try {
-      adopt(await api.me());
+      final next = await api.me();
+      // A sign-in or sign-out finished while this was reading; it wins.
+      if (epoch == started) adopt(next);
     } on ApiException {
       // Keep the current user until the server answers.
     }
   }
 
   Future<void> signIn(String code, String verifier) async {
-    final result = await api.exchangeAppCode(code, verifier);
-    adopt(object(result['user']));
+    try {
+      final result = await api.exchangeAppCode(code, verifier);
+      adopt(object(result['user']));
+    } on SignInSuperseded {
+      // A newer sign-in or a sign-out owns the account now.
+    }
   }
 
   Future<void> signOut() async {

@@ -16,6 +16,14 @@ class AtlasConflict implements Exception {
   String toString() => 'Atlas was changed elsewhere';
 }
 
+/// A sign-in exchange that a newer sign-in attempt, a completed sign-in or a
+/// sign-out overtook; its session was dropped and nothing should be reported.
+class SignInSuperseded implements Exception {
+  const SignInSuperseded();
+  @override
+  String toString() => 'Sign-in was superseded';
+}
+
 /// Signed-in calls for one server. Separate from [ApiClient] so a token never
 /// rides on a cached read: no cache, no shared state, default User-Agent.
 class AuthApi {
@@ -25,6 +33,15 @@ class AuthApi {
   final String base;
   final TokenStore tokens;
   final http.Client _client;
+
+  // One generation per server, shared by every AuthApi for it.
+  static final _generations = <String, int>{};
+  int get _generation => _generations[base] ?? 0;
+  void _bump() => _generations[base] = _generation + 1;
+
+  /// Makes any exchange still in flight for this server give up. Called when
+  /// a new sign-in starts.
+  void supersedeSignIn() => _bump();
 
   /// Called when the server says the session is gone, after the token is deleted.
   void Function()? onSignedOut;
@@ -111,8 +128,7 @@ class AuthApi {
   /// failed or ending request used.
   Future<void> _forget(String? token) async {
     try {
-      if (await tokens.read(base) != token) return;
-      await tokens.delete(base);
+      if (token != null) await tokens.deleteIfEquals(base, token);
     } catch (_) {}
     onSignedOut?.call();
   }
@@ -140,6 +156,7 @@ class AuthApi {
 
   /// Trades the sign-in code for a session token and stores it.
   Future<Json> exchangeAppCode(String code, String verifier) async {
+    final generation = _generation;
     final result = await _request(
       'POST',
       '/auth/app/token',
@@ -150,12 +167,36 @@ class AuthApi {
     if (token is! String || token.isEmpty) {
       throw const ApiException('The server sent no session token.');
     }
+    if (generation != _generation) {
+      await _endDiscarded(token);
+      throw const SignInSuperseded();
+    }
     await tokens.write(base, token);
+    if (generation != _generation) {
+      // Overtaken while saving: take our token back out and end it.
+      await tokens.deleteIfEquals(base, token);
+      await _endDiscarded(token);
+      throw const SignInSuperseded();
+    }
+    _bump();
     return result;
+  }
+
+  /// Best effort: asks the server to end a session this device will not use.
+  Future<void> _endDiscarded(String token) async {
+    try {
+      await _client
+          .post(
+            _uri('/auth/logout'),
+            headers: {'Authorization': 'Bearer $token'},
+          )
+          .timeout(const Duration(seconds: 10));
+    } catch (_) {}
   }
 
   /// Ends the session on the server, but signs out here whatever the answer.
   Future<void> signOut() async {
+    _bump();
     final token = await tokens.read(base);
     try {
       await _request(

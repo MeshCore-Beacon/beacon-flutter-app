@@ -87,6 +87,7 @@ class SignInFlow extends ChangeNotifier {
       expiresAt: now().add(lifetime),
     );
     pending = next;
+    apiFor(serverUrl).supersedeSignIn();
     final base = Uri.parse(serverUrl);
     final url = base.replace(
       path: '${base.path.replaceFirst(RegExp(r'/+$'), '')}/',
@@ -146,6 +147,8 @@ class SignInFlow extends ChangeNotifier {
           .exchangeAppCode(code, current.verifier);
       accountFor?.call(current.serverUrl)?.adopt(object(reply['user']));
       result = const SignInResult(SignInOutcome.success);
+    } on SignInSuperseded {
+      return ignored;
     } on ApiException catch (e) {
       result = SignInResult(SignInOutcome.failed, message: e.message);
     } catch (_) {

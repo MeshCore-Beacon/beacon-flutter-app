@@ -6,6 +6,10 @@ abstract class TokenStore {
   Future<void> write(String serverUrl, String token);
   Future<void> delete(String serverUrl);
 
+  /// Deletes only while the stored token is still [token], so a newer sign-in
+  /// is never removed by a late 401 or logout.
+  Future<void> deleteIfEquals(String serverUrl, String token);
+
   /// Carries a token to an edited URL. A token the new URL already has wins.
   Future<void> move(String fromUrl, String toUrl);
 }
@@ -22,6 +26,11 @@ class MemoryTokenStore implements TokenStore {
 
   @override
   Future<void> delete(String serverUrl) async => _tokens.remove(serverUrl);
+
+  @override
+  Future<void> deleteIfEquals(String serverUrl, String token) async {
+    if (_tokens[serverUrl] == token) _tokens.remove(serverUrl);
+  }
 
   @override
   Future<void> move(String fromUrl, String toUrl) async {
@@ -44,6 +53,15 @@ class SecureTokenStore implements TokenStore {
           );
   final FlutterSecureStorage storage;
 
+  // The keychain has no compare-and-delete; this queue makes writes and
+  // conditional deletes in this process take turns.
+  Future<void> _tail = Future.value();
+  Future<T> _serial<T>(Future<T> Function() job) {
+    final done = _tail.then((_) => job());
+    _tail = done.then((_) {}, onError: (_) {});
+    return done;
+  }
+
   String _key(String serverUrl) => 'beacon.token.$serverUrl';
 
   /// A broken keystore reads as signed out, so the app still opens.
@@ -58,7 +76,15 @@ class SecureTokenStore implements TokenStore {
 
   @override
   Future<void> write(String serverUrl, String token) =>
-      storage.write(key: _key(serverUrl), value: token);
+      _serial(() => storage.write(key: _key(serverUrl), value: token));
+
+  @override
+  Future<void> deleteIfEquals(String serverUrl, String token) =>
+      _serial(() async {
+        if (await read(serverUrl) == token) {
+          await storage.delete(key: _key(serverUrl));
+        }
+      });
 
   @override
   Future<void> delete(String serverUrl) => storage.delete(key: _key(serverUrl));
