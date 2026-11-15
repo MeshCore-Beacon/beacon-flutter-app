@@ -683,11 +683,7 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
             ),
           ),
       ]),
-      if (const {
-        'repeater',
-        'room server',
-        'room_server',
-      }.contains(textOf(d['nodeTypeName']).toLowerCase()))
+      if (isPolledNodeType(textOf(d['nodeTypeName'])))
         NodeTelemetrySection(
           key: ValueKey('telemetry:${widget.id}'),
           api: widget.api,

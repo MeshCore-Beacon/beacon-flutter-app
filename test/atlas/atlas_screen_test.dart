@@ -63,6 +63,13 @@ class Server {
     'batteryLevel': 4.1,
   };
   bool activity404 = false;
+  bool polling = true;
+  List<Map<String, dynamic>> readings = [
+    {'t': tick - 7200000, 'batteryMv': 4100, 'temperatureC': 15.2},
+    {'t': tick - 3600000, 'batteryMv': 4226},
+    {'t': tick - 1800000, 'temperatureC': 16.54},
+    {'t': tick - 600000, 'readings': 1},
+  ];
 
   Object? reply(Uri url) {
     final path = url.path.replaceFirst('/api/v1', '');
@@ -81,6 +88,14 @@ class Server {
               ),
             );
       return {'items': found.toList(), 'hasMore': false};
+    }
+    if (path == '/info') {
+      return {
+        'features': {'polling': polling},
+      };
+    }
+    if (path == '/nodes/$nodeId/telemetry') {
+      return {'polled': readings.isNotEmpty, 'points': readings};
     }
     if (path == '/nodes/$nodeId') return hill;
     if (path == '/nodes/$otherId') return ridge;
@@ -320,6 +335,62 @@ void main() {
       '72h',
     );
     await close(tester);
+  });
+
+  group('repeater readings line', () {
+    bool telemetryAsked() =>
+        fake.requests.any((url) => url.path.endsWith('/telemetry'));
+
+    testWidgets('shows the newest battery and temperature', (tester) async {
+      final prefs = await pump(tester, pins: [nodePin()]);
+      expect(find.text('4.23 V · 16.5 °C'), findsOneWidget);
+      final asked = fake.requests.where(
+        (url) => url.path == '/api/v1/nodes/$nodeId/telemetry',
+      );
+      expect(asked.single.queryParameters['range'], '24h');
+      expect(prefs.atlasFor(server), stored([nodePin()]));
+      await close(tester);
+    });
+
+    testWidgets('shows battery alone when there is no temperature', (
+      tester,
+    ) async {
+      fake.readings = [
+        {'t': tick, 'batteryMv': 3900},
+      ];
+      await pump(tester, pins: [nodePin()]);
+      expect(find.text('3.90 V'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('shows nothing without readings', (tester) async {
+      fake.readings = [];
+      await pump(tester, pins: [nodePin()]);
+      expect(find.textContaining(' V'), findsNothing);
+      await close(tester);
+    });
+
+    testWidgets('shows nothing for a non-repeater', (tester) async {
+      await pump(
+        tester,
+        pins: [
+          nodePin({'id': otherId, 'publicKey': otherKey}),
+        ],
+      );
+      expect(telemetryAsked(), false);
+      expect(find.textContaining(' V'), findsNothing);
+      await close(tester);
+    });
+
+    testWidgets('shows nothing and asks nothing with polling off', (
+      tester,
+    ) async {
+      fake.polling = false;
+      await pump(tester, pins: [nodePin()]);
+      expect(telemetryAsked(), false);
+      expect(find.textContaining(' V'), findsNothing);
+      await close(tester);
+    });
   });
 
   testWidgets('says so when the server has no node activity', (tester) async {

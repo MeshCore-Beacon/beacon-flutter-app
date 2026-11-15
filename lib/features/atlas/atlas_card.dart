@@ -7,6 +7,7 @@ import '../../core/json.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
 import '../analytics/charts.dart';
+import '../directory/node_telemetry.dart';
 import 'atlas.dart';
 import 'atlas_widgets.dart';
 import 'observer_sample.dart';
@@ -260,6 +261,20 @@ class _AtlasCardState extends State<AtlasCard> {
         pollUnlessMissing,
       );
     }
+    // Only a repeater or room server on a polling server is asked; others read none.
+    final polled = isPolledNodeType(textOf(node?['nodeTypeName']));
+    _use<Json?>(
+      'readings',
+      polled && nodeId != null ? nodeId : null,
+      active && widget.view == AtlasView.analytics,
+      () async => (await api.features()).polling
+          ? await read('/nodes/$nodeId/telemetry', {
+              'range': '24h',
+              'interval': '1h',
+            })
+          : null,
+      pollUnlessMissing,
+    );
     final observerKey = pin.isNode ? null : _text(observer?['publicKey']);
     _use<Json?>(
       'upgrade',
@@ -481,6 +496,9 @@ class _AtlasCardState extends State<AtlasCard> {
         args: {'count': number(node['knownNeighborCount'])?.toInt() ?? 0},
       );
       final unsupported = isNotFound(activity?.error);
+      final readings = readingsLine(
+        rows((_queries['readings']?.data as Json?)?['points']),
+      );
       final window = sample.partial
           ? at('observerPartialCoverage')
           : at('ranges.${widget.range.id}');
@@ -535,6 +553,15 @@ class _AtlasCardState extends State<AtlasCard> {
                 presence: sample.present,
               ),
             ]),
+            if (readings != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                readings,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: atlasMono(11, BeaconColors.of(context).muted),
+              ),
+            ],
             const SizedBox(height: 12),
             _Footer(
               left: lastSeen > 0

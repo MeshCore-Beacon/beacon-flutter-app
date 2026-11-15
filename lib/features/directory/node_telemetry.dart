@@ -12,6 +12,33 @@ const _ranges = {'24h': '24h', '7d': '168h', '30d': '720h'};
 const _intervalMs = {'24h': hourMs, '168h': 6 * hourMs, '720h': 24 * hourMs};
 const hourMs = 3600000;
 
+/// Node types the poller reads, as the server names them.
+bool isPolledNodeType(String? typeName) => const {
+  'repeater',
+  'room server',
+  'room_server',
+}.contains((typeName ?? '').toLowerCase());
+
+/// The last point that carries [key]; fields come from different points.
+double? latestReading(List<Json> points, String key) {
+  for (final p in points.reversed) {
+    final v = number(p[key]);
+    if (v != null) return v;
+  }
+  return null;
+}
+
+/// "4.23 V · 16.5 °C" from the newest battery and temperature, or null for neither.
+String? readingsLine(List<Json> points) {
+  final mv = latestReading(points, 'batteryMv');
+  final c = latestReading(points, 'temperatureC');
+  final parts = [
+    if (mv != null) '${(mv / 1000).toStringAsFixed(2)} V',
+    if (c != null) '${c.toStringAsFixed(1)} °C',
+  ];
+  return parts.isEmpty ? null : parts.join(' · ');
+}
+
 /// One chart series. A bucket the server left out, or one without this field, is a
 /// null point, so the line breaks instead of bridging the gap.
 List<ChartPoint> telemetrySeries(
