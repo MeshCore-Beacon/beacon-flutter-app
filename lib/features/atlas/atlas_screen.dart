@@ -38,10 +38,15 @@ class AtlasScreen extends StatefulWidget {
     required this.api,
     required this.preferences,
     required this.onOpen,
+    this.store,
     this.clock = DateTime.now,
   });
   final ApiClient api;
   final Preferences preferences;
+
+  /// The server's shared store, so Settings and this screen see one Atlas.
+  /// Without it the screen keeps its own, local only.
+  final AtlasStore? store;
   final void Function(String kind, String id) onOpen;
   final DateTime Function() clock;
   @override
@@ -69,8 +74,12 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    store = AtlasStore(widget.preferences, widget.preferences.active!.url)
-      ..addListener(changed);
+    store =
+        widget.store ??
+        AtlasStore(widget.preferences, widget.preferences.active!.url);
+    store.addListener(changed);
+    // Pick up what another device changed since the last visit.
+    unawaited(store.sync());
     ticker = Timer.periodic(atlasRefresh, (_) {
       if (mounted) {
         setState(() => now = widget.clock().millisecondsSinceEpoch);
@@ -100,9 +109,8 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
     ticker.cancel();
     debounce?.cancel();
     search.dispose();
-    store
-      ..removeListener(changed)
-      ..dispose();
+    store.removeListener(changed);
+    if (widget.store == null) store.dispose();
     super.dispose();
   }
 
@@ -190,10 +198,13 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
       addFailed = false;
     });
     final id = textOf(row['id']), name = textOf(row['displayName']);
+    final epoch = store.epoch;
     try {
       final observer = object(await widget.api.getCached('/observers/$id'));
       final match = await resolveObserverNode(widget.api, observer);
       if (!mounted) return;
+      // Another account signed in while the lookup ran: it is not theirs to add.
+      if (!store.sameAccount(epoch)) return setState(() => adding = false);
       if (match == null) {
         store.update(
           (value) =>
@@ -232,15 +243,18 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
     }
   }
 
-  void replace(AtlasPin pin, AtlasPin Function(AtlasPin) change) =>
-      store.update(
-        (value) => value.copyWith(
-          pins: [
-            for (final other in value.pins)
-              other.key == pin.key ? change(other) : other,
-          ],
-        ),
-      );
+  void replace(
+    AtlasPin pin,
+    AtlasPin Function(AtlasPin) change, {
+    bool relink = false,
+  }) => (relink ? store.relink : store.update)(
+    (value) => value.copyWith(
+      pins: [
+        for (final other in value.pins)
+          other.key == pin.key ? change(other) : other,
+      ],
+    ),
+  );
 
   void remove(AtlasPin pin) => store.update(
     (value) => value.copyWith(
@@ -259,7 +273,7 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
   // An observer pin whose key now resolves to a node takes that node's place
   // in its own slot, and keeps opening on the Observer view it had.
   void upgrade(AtlasPin pin, Json match, String observerId) =>
-      store.update((value) {
+      store.relink((value) {
         final key = textOf(match['publicKey']).toLowerCase();
         final tiles = value.pins
             .where((other) => other.key == pin.key)
@@ -343,7 +357,7 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
               ),
               const SizedBox(width: 6),
               Tooltip(
-                message: at('localOnly'),
+                message: at(store.signedIn ? 'syncedToAccount' : 'localOnly'),
                 triggerMode: TooltipTriggerMode.tap,
                 child: Container(
                   padding: const EdgeInsets.symmetric(
@@ -389,6 +403,18 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    if (store.notice case final notice?)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 14),
+                        child: Text(switch (notice.kind) {
+                          AtlasNoticeKind.conflict => at('conflict'),
+                          AtlasNoticeKind.overflow => at(
+                            'overflow',
+                            count: notice.count,
+                          ),
+                          AtlasNoticeKind.failed => at('syncFailed'),
+                        }, style: atlasMono(11, c.warning)),
+                      ),
                     if (store.storageFailed)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 14),
@@ -434,6 +460,7 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
                               (other) => other.isNode
                                   ? other.relinked(id, observerId)
                                   : other,
+                              relink: true,
                             ),
                             onUpgrade: (match, observerId) =>
                                 upgrade(pin, match, observerId),

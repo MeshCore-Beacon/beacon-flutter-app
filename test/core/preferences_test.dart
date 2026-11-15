@@ -1,10 +1,95 @@
 import 'package:beacon/core/instance.dart';
 import 'package:beacon/core/preferences.dart';
+import 'package:beacon/core/token_store.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+  group('Atlas first sign-in marker', () {
+    const home = 'https://home.invalid', moved = 'https://moved.invalid';
+    const longer = 'https://home.invalid.au';
+
+    test('is kept per server and user', () async {
+      final prefs = await Preferences.load();
+      expect(prefs.atlasSyncedFor(home, 'u1'), false);
+      await prefs.markAtlasSynced(home, 'u1');
+      expect(prefs.atlasSyncedFor(home, 'u1'), true);
+      expect(prefs.atlasSyncedFor(home, 'u2'), false);
+      expect(prefs.atlasSyncedFor(moved, 'u1'), false);
+      expect(
+        (await SharedPreferences.getInstance()).containsKey(
+          'beacon.atlas.synced.$home.u1',
+        ),
+        true,
+      );
+    });
+
+    test(
+      'moves with an edited server and leaves other servers alone',
+      () async {
+        SharedPreferences.setMockInitialValues({
+          'beacon.atlas.synced.$home.u1': true,
+          'beacon.atlas.synced.$home.u2': true,
+          'beacon.atlas.synced.$longer.u1': true,
+        });
+        final prefs = await Preferences.load();
+        await prefs.saveServer(
+          BeaconInstance.create('Home', moved),
+          replacing: home,
+        );
+        expect(prefs.atlasSyncedFor(moved, 'u1'), true);
+        expect(prefs.atlasSyncedFor(moved, 'u2'), true);
+        expect(prefs.atlasSyncedFor(home, 'u1'), false);
+        expect(prefs.atlasSyncedFor(longer, 'u1'), true);
+      },
+    );
+
+    test('is deleted with the server', () async {
+      SharedPreferences.setMockInitialValues({
+        'beacon.atlas.synced.$home.u1': true,
+        'beacon.atlas.synced.$longer.u1': true,
+      });
+      final prefs = await Preferences.load();
+      await prefs.removeServer(home);
+      expect(prefs.atlasSyncedFor(home, 'u1'), false);
+      expect(prefs.atlasSyncedFor(longer, 'u1'), true);
+    });
+  });
+
+  group('Atlas owner', () {
+    const home = 'https://home.invalid', moved = 'https://moved.invalid';
+
+    test('is kept per server', () async {
+      final prefs = await Preferences.load();
+      expect(prefs.atlasOwnerFor(home), isNull);
+      await prefs.setAtlasOwner(home, 'u1');
+      expect(prefs.atlasOwnerFor(home), 'u1');
+      expect(prefs.atlasOwnerFor(moved), isNull);
+      expect(
+        (await SharedPreferences.getInstance()).getString(
+          'beacon.atlas.owner.$home',
+        ),
+        'u1',
+      );
+    });
+
+    test('moves with an edited server and is deleted with it', () async {
+      SharedPreferences.setMockInitialValues({
+        'beacon.atlas.owner.$home': 'u1',
+      });
+      final prefs = await Preferences.load();
+      await prefs.saveServer(
+        BeaconInstance.create('Home', moved),
+        replacing: home,
+      );
+      expect(prefs.atlasOwnerFor(moved), 'u1');
+      expect(prefs.atlasOwnerFor(home), isNull);
+      await prefs.removeServer(moved);
+      expect(prefs.atlasOwnerFor(moved), isNull);
+    });
+  });
+
   test('persists duplicate-safe servers and active deletion', () async {
     final prefs = await Preferences.load();
     await prefs.saveServer(
@@ -53,4 +138,33 @@ void main() {
     expect(store.getString('beacon.region.${old.url}'), isNull);
     expect(prefs.regionFor(renamed.url), {'iatas': 'YOW'});
   });
+  test('changing a server URL moves its token, removing deletes it', () async {
+    final tokens = MemoryTokenStore();
+    final prefs = await Preferences.load(tokens: tokens);
+    final old = BeaconInstance.create('Dev', 'https://old.example.com');
+    await prefs.saveServer(old);
+    await tokens.write(old.url, 'abc');
+    final renamed = BeaconInstance.create('Dev', 'https://new.example.com');
+    await prefs.saveServer(renamed, replacing: old.url);
+    expect(await tokens.read(old.url), isNull);
+    expect(await tokens.read(renamed.url), 'abc');
+    await prefs.removeServer(renamed.url);
+    expect(await tokens.read(renamed.url), isNull);
+  });
+  test('a failing token store does not block server edits', () async {
+    final prefs = await Preferences.load(tokens: _ThrowingStore());
+    final old = BeaconInstance.create('Dev', 'https://old.example.com');
+    await prefs.saveServer(old);
+    final next = BeaconInstance.create('Dev', 'https://new.example.com');
+    await prefs.saveServer(next, replacing: old.url);
+    await prefs.removeServer(next.url);
+    expect(prefs.servers, isEmpty);
+  });
+}
+
+class _ThrowingStore extends MemoryTokenStore {
+  @override
+  Future<void> move(String fromUrl, String toUrl) => throw StateError('x');
+  @override
+  Future<void> delete(String serverUrl) => throw StateError('x');
 }

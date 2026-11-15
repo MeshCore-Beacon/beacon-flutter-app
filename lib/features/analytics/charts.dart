@@ -235,12 +235,16 @@ class TimeChart extends StatefulWidget {
     this.timeAxis = true,
     this.stacked = false,
     this.showSingleSeriesToggle = true,
+    this.showDots = false,
   });
   final Map<String, List<ChartPoint>> series;
   final String unit;
   final bool timeAxis;
   final bool stacked;
   final bool showSingleSeriesToggle;
+
+  /// Mark every point, so a point between gaps is not invisible.
+  final bool showDots;
   @override
   State<TimeChart> createState() => _TimeChartState();
 }
@@ -350,7 +354,9 @@ class _TimeChartState extends State<TimeChart> {
                     color: _seriesColor(context, entries.indexOf(active[i])),
                     barWidth: 1.7,
                     isCurved: false,
-                    dotData: FlDotData(show: all.length <= 2),
+                    dotData: FlDotData(
+                      show: widget.showDots || all.length <= 2,
+                    ),
                     belowBarData: BarAreaData(
                       show: active.length == 1 || (widget.stacked && i == 0),
                       color: _seriesColor(

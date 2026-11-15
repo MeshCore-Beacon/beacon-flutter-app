@@ -1,11 +1,16 @@
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:beacon/core/account.dart';
 import 'package:beacon/core/api.dart';
+import 'package:beacon/core/auth_api.dart';
 import 'package:beacon/core/preferences.dart';
 import 'package:beacon/core/theme.dart';
+import 'package:beacon/core/token_store.dart';
 import 'package:beacon/features/atlas/atlas.dart';
 import 'package:beacon/features/atlas/atlas_grid.dart';
 import 'package:beacon/features/atlas/atlas_screen.dart';
+import 'package:beacon/features/atlas/atlas_store.dart';
 import 'package:beacon/features/atlas/atlas_widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -62,7 +67,17 @@ class Server {
     'radio': '910.525,62.5,7',
     'batteryLevel': 4.1,
   };
+
+  /// Holds the observer lookup, like a slow network.
+  Completer<void>? holdObserver;
   bool activity404 = false;
+  bool polling = true;
+  List<Map<String, dynamic>> readings = [
+    {'t': tick - 7200000, 'batteryMv': 4100, 'temperatureC': 15.2},
+    {'t': tick - 3600000, 'batteryMv': 4226},
+    {'t': tick - 1800000, 'temperatureC': 16.54},
+    {'t': tick - 600000, 'readings': 1},
+  ];
 
   Object? reply(Uri url) {
     final path = url.path.replaceFirst('/api/v1', '');
@@ -81,6 +96,14 @@ class Server {
               ),
             );
       return {'items': found.toList(), 'hasMore': false};
+    }
+    if (path == '/info') {
+      return {
+        'features': {'polling': polling},
+      };
+    }
+    if (path == '/nodes/$nodeId/telemetry') {
+      return {'polled': readings.isNotEmpty, 'points': readings};
     }
     if (path == '/nodes/$nodeId') return hill;
     if (path == '/nodes/$otherId') return ridge;
@@ -161,6 +184,9 @@ class Server {
     now: () => clock,
     client: MockClient((request) async {
       requests.add(request.url);
+      if (request.url.path.endsWith('/observers/$observerId')) {
+        await holdObserver?.future;
+      }
       final body = reply(request.url);
       return body == null
           ? http.Response('{"error":{"message":"not found"}}', 404)
@@ -320,6 +346,62 @@ void main() {
       '72h',
     );
     await close(tester);
+  });
+
+  group('repeater readings line', () {
+    bool telemetryAsked() =>
+        fake.requests.any((url) => url.path.endsWith('/telemetry'));
+
+    testWidgets('shows the newest battery and temperature', (tester) async {
+      final prefs = await pump(tester, pins: [nodePin()]);
+      expect(find.text('4.23 V · 16.5 °C'), findsOneWidget);
+      final asked = fake.requests.where(
+        (url) => url.path == '/api/v1/nodes/$nodeId/telemetry',
+      );
+      expect(asked.single.queryParameters['range'], '24h');
+      expect(prefs.atlasFor(server), stored([nodePin()]));
+      await close(tester);
+    });
+
+    testWidgets('shows battery alone when there is no temperature', (
+      tester,
+    ) async {
+      fake.readings = [
+        {'t': tick, 'batteryMv': 3900},
+      ];
+      await pump(tester, pins: [nodePin()]);
+      expect(find.text('3.90 V'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('shows nothing without readings', (tester) async {
+      fake.readings = [];
+      await pump(tester, pins: [nodePin()]);
+      expect(find.textContaining(' V'), findsNothing);
+      await close(tester);
+    });
+
+    testWidgets('shows nothing for a non-repeater', (tester) async {
+      await pump(
+        tester,
+        pins: [
+          nodePin({'id': otherId, 'publicKey': otherKey}),
+        ],
+      );
+      expect(telemetryAsked(), false);
+      expect(find.textContaining(' V'), findsNothing);
+      await close(tester);
+    });
+
+    testWidgets('shows nothing and asks nothing with polling off', (
+      tester,
+    ) async {
+      fake.polling = false;
+      await pump(tester, pins: [nodePin()]);
+      expect(telemetryAsked(), false);
+      expect(find.textContaining(' V'), findsNothing);
+      await close(tester);
+    });
   });
 
   testWidgets('says so when the server has no node activity', (tester) async {
@@ -614,5 +696,81 @@ void main() {
     final prefs = await Preferences.load();
     expect(parseAtlas(prefs.atlasFor(server)).pins, hasLength(1));
     expect(prefs.atlasFor('https://other.invalid'), isNull);
+  });
+
+  testWidgets('an observer add that outlives its sign-in writes nothing', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    SharedPreferences.setMockInitialValues({
+      'beacon.servers': jsonEncode([
+        {'name': 'Test', 'url': server},
+      ]),
+      'beacon.active': server,
+      'beacon.atlas.synced.$server.u1': true,
+      'beacon.atlas.synced.$server.u2': true,
+    });
+    final prefs = await Preferences.load();
+    final tokens = MemoryTokenStore();
+    await tokens.write(server, 'tok');
+    final puts = <Map<String, dynamic>>[];
+    final account = AccountState(
+      AuthApi(
+        server,
+        tokens,
+        client: MockClient((r) async {
+          if (r.method == 'PUT') {
+            puts.add(jsonDecode(r.body) as Map<String, dynamic>);
+          }
+          return http.Response(
+            jsonEncode({
+              'revision': 1,
+              'range': '24h',
+              'limit': 12,
+              'pins': [],
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }),
+      ),
+    )..adopt({'id': 'u1'});
+    final store = AtlasStore(prefs, server, account: account);
+    await store.idle;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: BeaconTheme.all.first.data,
+        home: Scaffold(
+          body: AtlasScreen(
+            api: fake.api,
+            preferences: prefs,
+            store: store,
+            onOpen: (_, _) {},
+            clock: () => now,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('atlas-search-field')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Observer').last);
+    await tester.pumpAndSettle();
+    await search(tester, 'roof');
+    fake.holdObserver = Completer();
+    await tester.tap(find.text('Add'));
+    await tester.pump();
+    account.adopt(null);
+    account.adopt({'id': 'u2'});
+    await store.idle;
+    fake.holdObserver!.complete();
+    await tester.pumpAndSettle();
+    await store.idle;
+    expect(puts, isEmpty);
+    expect(store.saved.pins, isEmpty);
+    await close(tester);
   });
 }

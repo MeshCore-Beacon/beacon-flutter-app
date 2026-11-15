@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/preferences.dart';
 import 'atlas.dart';
+import 'atlas_store.dart';
 import 'atlas_widgets.dart';
 
 /// Where an Atlas file is read from and saved to.
@@ -52,8 +53,13 @@ class AtlasSettings extends StatelessWidget {
     super.key,
     required this.preferences,
     this.files = const DeviceAtlasFiles(),
+    this.store,
   });
   final Preferences preferences;
+
+  /// The active server's shared store; a signed-in import goes through it so
+  /// it reaches the account.
+  final AtlasStore? store;
   final AtlasFiles files;
 
   void _say(BuildContext context, String text) => ScaffoldMessenger.of(context)
@@ -70,6 +76,7 @@ class AtlasSettings extends StatelessWidget {
   }
 
   Future<void> _import(BuildContext context, String url) async {
+    final epoch = store?.epoch;
     String? text;
     try {
       text = await files.pick();
@@ -109,7 +116,14 @@ class AtlasSettings extends StatelessWidget {
       );
       if (replace != true || !context.mounted) return;
     }
-    await preferences.saveAtlas(url, result.atlas.encode());
+    final shared = store;
+    // The account that picked the file may be gone by now.
+    if (shared != null && epoch != null && !shared.sameAccount(epoch)) return;
+    if (shared != null && shared.url == url && shared.signedIn) {
+      shared.update((_) => result.atlas);
+    } else {
+      await preferences.saveAtlas(url, result.atlas.encode());
+    }
     if (!context.mounted) return;
     _say(
       context,
