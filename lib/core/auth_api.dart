@@ -7,6 +7,14 @@ import 'api.dart';
 import 'json.dart';
 import 'token_store.dart';
 
+/// A write on a stale revision; [current] is the collection the server holds.
+class AtlasConflict implements Exception {
+  const AtlasConflict(this.current);
+  final Json current;
+  @override
+  String toString() => 'Atlas was changed elsewhere';
+}
+
 /// Signed-in calls for one server. Separate from [ApiClient] so a token never
 /// rides on a cached read: no cache, no shared state, default User-Agent.
 class AuthApi {
@@ -78,6 +86,7 @@ class AuthApi {
         status: response.statusCode,
         retryAfter: seconds == null ? null : Duration(seconds: seconds),
         code: code,
+        body: decoded is Map ? object(decoded) : null,
       );
     }
     return object(decoded);
@@ -162,5 +171,26 @@ class AuthApi {
 
   Future<void> endOtherSessions() async {
     await send('DELETE', '/me/sessions');
+  }
+
+  /// The account Atlas as the server holds it.
+  Future<Json> atlas() => send('GET', '/me/atlas');
+
+  /// Replaces the whole collection; throws [AtlasConflict] on a stale revision.
+  Future<Json> putAtlas(int baseRevision, String range, List<Json> pins) async {
+    try {
+      return await send(
+        'PUT',
+        '/me/atlas',
+        body: {'baseRevision': baseRevision, 'range': range, 'pins': pins},
+      );
+    } on ApiException catch (e) {
+      final body = e.body;
+      final current = body?['current'] ?? object(body?['error'])['current'];
+      if (e.status == 409 && e.code == 'atlas_conflict' && current is Map) {
+        throw AtlasConflict(object(current));
+      }
+      rethrow;
+    }
   }
 }

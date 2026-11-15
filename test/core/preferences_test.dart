@@ -6,6 +6,57 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+  group('Atlas first sign-in marker', () {
+    const home = 'https://home.invalid', moved = 'https://moved.invalid';
+    const longer = 'https://home.invalid.au';
+
+    test('is kept per server and user', () async {
+      final prefs = await Preferences.load();
+      expect(prefs.atlasSyncedFor(home, 'u1'), false);
+      await prefs.markAtlasSynced(home, 'u1');
+      expect(prefs.atlasSyncedFor(home, 'u1'), true);
+      expect(prefs.atlasSyncedFor(home, 'u2'), false);
+      expect(prefs.atlasSyncedFor(moved, 'u1'), false);
+      expect(
+        (await SharedPreferences.getInstance()).containsKey(
+          'beacon.atlas.synced.$home.u1',
+        ),
+        true,
+      );
+    });
+
+    test(
+      'moves with an edited server and leaves other servers alone',
+      () async {
+        SharedPreferences.setMockInitialValues({
+          'beacon.atlas.synced.$home.u1': true,
+          'beacon.atlas.synced.$home.u2': true,
+          'beacon.atlas.synced.$longer.u1': true,
+        });
+        final prefs = await Preferences.load();
+        await prefs.saveServer(
+          BeaconInstance.create('Home', moved),
+          replacing: home,
+        );
+        expect(prefs.atlasSyncedFor(moved, 'u1'), true);
+        expect(prefs.atlasSyncedFor(moved, 'u2'), true);
+        expect(prefs.atlasSyncedFor(home, 'u1'), false);
+        expect(prefs.atlasSyncedFor(longer, 'u1'), true);
+      },
+    );
+
+    test('is deleted with the server', () async {
+      SharedPreferences.setMockInitialValues({
+        'beacon.atlas.synced.$home.u1': true,
+        'beacon.atlas.synced.$longer.u1': true,
+      });
+      final prefs = await Preferences.load();
+      await prefs.removeServer(home);
+      expect(prefs.atlasSyncedFor(home, 'u1'), false);
+      expect(prefs.atlasSyncedFor(longer, 'u1'), true);
+    });
+  });
+
   test('persists duplicate-safe servers and active deletion', () async {
     final prefs = await Preferences.load();
     await prefs.saveServer(

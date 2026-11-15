@@ -343,6 +343,62 @@ void main() {
     });
   });
 
+  group('Atlas', () {
+    test(
+      'atlas() reads the account collection with the Bearer token',
+      () async {
+        await tokens.write(_base, 'abc');
+        final api = make((_) => _json(200, {'revision': 2, 'pins': []}));
+        expect((await api.atlas())['revision'], 2);
+        expect(seen.single.method, 'GET');
+        expect(seen.single.url.path, '/api/v1/me/atlas');
+        expect(seen.single.headers['authorization'], 'Bearer abc');
+      },
+    );
+
+    test('putAtlas sends the revision, range and pins', () async {
+      await tokens.write(_base, 'abc');
+      final api = make((_) => _json(200, {'revision': 8, 'pins': []}));
+      final pins = [
+        {'kind': 'observer', 'observerId': 'o', 'name': 'Roof'},
+      ];
+      final doc = await api.putAtlas(7, '3d', pins);
+      expect(doc['revision'], 8);
+      expect(seen.single.method, 'PUT');
+      expect(seen.single.url.path, '/api/v1/me/atlas');
+      expect(jsonDecode(seen.single.body), {
+        'baseRevision': 7,
+        'range': '3d',
+        'pins': pins,
+      });
+    });
+
+    test('a 409 surfaces the current document', () async {
+      await tokens.write(_base, 'abc');
+      final api = make(
+        (_) => _json(409, {
+          'error': {'code': 'atlas_conflict', 'message': 'changed'},
+          'current': {'revision': 9, 'pins': []},
+        }),
+      );
+      await expectLater(
+        api.putAtlas(7, '24h', []),
+        throwsA(
+          isA<AtlasConflict>().having((e) => e.current['revision'], 'rev', 9),
+        ),
+      );
+    });
+
+    test('other failures stay ApiExceptions', () async {
+      await tokens.write(_base, 'abc');
+      final api = make((_) => _error(422, 'invalid_input'));
+      await expectLater(
+        api.putAtlas(7, '24h', []),
+        throwsA(isA<ApiException>().having((e) => e.status, 'status', 422)),
+      );
+    });
+  });
+
   test('authenticated responses never enter ApiClient\'s cache', () async {
     await tokens.write(_base, 'abc');
     final api = make(

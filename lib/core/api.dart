@@ -10,13 +10,22 @@ import 'features.dart';
 import 'json.dart';
 
 class ApiException implements Exception {
-  const ApiException(this.message, {this.status, this.retryAfter, this.code});
+  const ApiException(
+    this.message, {
+    this.status,
+    this.retryAfter,
+    this.code,
+    this.body,
+  });
   final String message;
   final int? status;
   final Duration? retryAfter;
 
   /// The server's `error.code`, set by [AuthApi] so screens can branch on it.
   final String? code;
+
+  /// The decoded error response, set by [AuthApi] for answers that carry data.
+  final Map<String, dynamic>? body;
   @override
   String toString() => message;
 }

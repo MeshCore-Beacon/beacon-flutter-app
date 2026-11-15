@@ -22,6 +22,7 @@ import 'core/version_gate.dart';
 import 'features/account/sign_in.dart';
 import 'features/analytics/analytics_screen.dart';
 import 'features/atlas/atlas_screen.dart';
+import 'features/atlas/atlas_store.dart';
 import 'features/directory/directory.dart';
 import 'features/map/map_screen.dart';
 import 'features/packets/packet_detail.dart';
@@ -207,6 +208,7 @@ Future<void> showServerSwitcher(
   Preferences preferences, {
   AccountState? account,
   ApiClient? api,
+  AtlasStore? atlas,
 }) async {
   final manage = await showModalBottomSheet<bool>(
     context: context,
@@ -253,8 +255,12 @@ Future<void> showServerSwitcher(
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) =>
-            SettingsPage(preferences: preferences, account: account, api: api),
+        builder: (_) => SettingsPage(
+          preferences: preferences,
+          account: account,
+          api: api,
+          atlas: atlas,
+        ),
       ),
     );
   }
@@ -480,6 +486,9 @@ class BeaconHome extends StatefulWidget {
 class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
   late final ApiClient api;
   late final AccountState account;
+
+  // One store for this server, so the Atlas tab and Settings share it.
+  late final AtlasStore atlas;
   late LiveConnection live;
   StreamSubscription<Json>? liveEvents;
   late Map<String, dynamic> region;
@@ -497,6 +506,7 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
           AuthApi(instance.url, widget.tokens),
     );
     widget.accounts.register(instance.url, account);
+    atlas = AtlasStore(widget.preferences, instance.url, account: account);
     unawaited(account.refresh());
     region = widget.preferences.regionFor(instance.url);
     selection = RegionSelection.restore(
@@ -527,6 +537,7 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
     live.dispose();
     api.close();
     widget.accounts.unregister(account.api.base, account);
+    atlas.dispose();
     account.dispose();
     super.dispose();
   }
@@ -606,6 +617,7 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
     widget.preferences,
     account: account,
     api: api,
+    atlas: atlas,
   );
 
   void settings() => Navigator.push(
@@ -615,6 +627,7 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
         preferences: widget.preferences,
         account: account,
         api: api,
+        atlas: atlas,
       ),
     ),
   );
@@ -706,7 +719,12 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
         : tab == 'Analytics'
         ? AnalyticsScreen(api: api, region: region, onOpen: open)
         : tab == 'Atlas'
-        ? AtlasScreen(api: api, preferences: widget.preferences, onOpen: open)
+        ? AtlasScreen(
+            api: api,
+            preferences: widget.preferences,
+            store: atlas,
+            onOpen: open,
+          )
         : DirectoryScreen(
             kind: tab.toLowerCase(),
             api: api,

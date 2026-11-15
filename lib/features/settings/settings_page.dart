@@ -10,6 +10,7 @@ import '../../core/theme.dart';
 import '../../core/version_gate.dart';
 import '../account/account_section.dart';
 import '../atlas/atlas_settings.dart';
+import '../atlas/atlas_store.dart';
 
 /// "Version 0.2.0" for releases, "Beta build 1791597587" for dev/beta builds.
 String versionLabel(String? version) {
@@ -27,6 +28,7 @@ class SettingsPage extends StatelessWidget {
     this.atlasFiles = const DeviceAtlasFiles(),
     this.account,
     this.api,
+    this.atlas,
   });
   final Preferences preferences;
   final Future<String?> Function() appVersion;
@@ -36,6 +38,9 @@ class SettingsPage extends StatelessWidget {
   /// screen (welcome, update required), which hides the account section.
   final AccountState? account;
   final ApiClient? api;
+
+  /// The active server's shared Atlas store, so a signed-in import is synced.
+  final AtlasStore? atlas;
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: preferences,
@@ -105,7 +110,11 @@ class SettingsPage extends StatelessWidget {
             const SizedBox(height: 12),
             const Divider(),
             _heading(context, tr('Atlas')),
-            AtlasSettings(preferences: preferences, files: atlasFiles),
+            AtlasSettings(
+              preferences: preferences,
+              files: atlasFiles,
+              store: atlas,
+            ),
             if (account != null &&
                 api != null &&
                 account!.api.base == preferences.active!.url)

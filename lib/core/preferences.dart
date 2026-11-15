@@ -76,6 +76,9 @@ class Preferences extends ChangeNotifier {
         }
         await _store.remove('beacon.atlas.$replacing');
       }
+      if (replacing != server.url) {
+        await _moveAtlasMarkers(replacing, server.url);
+      }
       // The sign-in token follows too; a keystore failure must not block the edit.
       if (replacing != server.url) {
         try {
@@ -88,6 +91,34 @@ class Preferences extends ChangeNotifier {
     _activeUrl = server.url;
     await _persist();
   }
+
+  static const _syncedPrefix = 'beacon.atlas.synced.';
+
+  /// Marker keys are `<prefix><url>.<userId>`; a user id has no dot, so the
+  /// last dot ends the URL and `https://a.com` never matches `https://a.com.au`.
+  List<(String key, String user)> _markersOf(String url) => [
+    for (final key in _store.getKeys())
+      if (key.startsWith(_syncedPrefix) && key.lastIndexOf('.') > 0)
+        if (key.substring(_syncedPrefix.length, key.lastIndexOf('.')) == url)
+          (key, key.substring(key.lastIndexOf('.') + 1)),
+  ];
+
+  /// Carries the markers to an edited URL, or drops them when [to] is null.
+  Future<void> _moveAtlasMarkers(String from, String? to) async {
+    for (final (key, user) in _markersOf(from)) {
+      if (to != null && !_store.containsKey('$_syncedPrefix$to.$user')) {
+        await _store.setBool('$_syncedPrefix$to.$user', true);
+      }
+      await _store.remove(key);
+    }
+  }
+
+  /// Whether this user's first sign-in merge already ran on this server.
+  bool atlasSyncedFor(String url, String userId) =>
+      _store.getBool('$_syncedPrefix$url.$userId') ?? false;
+
+  Future<void> markAtlasSynced(String url, String userId) =>
+      _store.setBool('$_syncedPrefix$url.$userId', true);
 
   Future<void> selectServer(String url) async {
     if (!servers.any((e) => e.url == url)) return;
@@ -102,6 +133,7 @@ class Preferences extends ChangeNotifier {
     }
     await _store.remove('beacon.region.$url');
     await _store.remove('beacon.atlas.$url');
+    await _moveAtlasMarkers(url, null);
     try {
       await _tokens?.delete(url);
     } catch (_) {}
