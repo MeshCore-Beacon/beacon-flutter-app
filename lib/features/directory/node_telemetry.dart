@@ -39,6 +39,15 @@ String? readingsLine(List<Json> points) {
   return parts.isEmpty ? null : parts.join(' · ');
 }
 
+/// Whether any point carries a value a chart in this section draws.
+bool hasChartData(List<Json> points) => const [
+  'batteryMv',
+  'temperatureC',
+  'noiseFloorDb',
+  'airtimeTxSecs',
+  'airtimeRxSecs',
+].any((k) => points.any((p) => number(p[k]) != null));
+
 /// One chart series. A bucket the server left out, or one without this field, is a
 /// null point, so the line breaks instead of bridging the gap.
 List<ChartPoint> telemetrySeries(
@@ -101,6 +110,8 @@ class NodeTelemetrySection extends StatefulWidget {
 class _NodeTelemetrySectionState extends State<NodeTelemetrySection> {
   String range = '7d';
   bool enabled = false, hidden = false, loaded = false, failed = false;
+  // Once a chart has shown, a failed reload keeps the section instead of hiding it.
+  bool chartShown = false;
   Json telemetry = {}, polling = {};
   int generation = 0, rangeToken = 0;
 
@@ -114,7 +125,7 @@ class _NodeTelemetrySectionState extends State<NodeTelemetrySection> {
   void didUpdateWidget(covariant NodeTelemetrySection old) {
     super.didUpdateWidget(old);
     if (old.api != widget.api || old.nodeId != widget.nodeId) {
-      loaded = hidden = enabled = failed = false;
+      loaded = hidden = enabled = failed = chartShown = false;
       polling = telemetry = {};
       start();
     }
@@ -153,6 +164,7 @@ class _NodeTelemetrySectionState extends State<NodeTelemetrySection> {
       setState(() {
         telemetry = t;
         hidden = failed = false;
+        chartShown = chartShown || hasChartData(rows(t['points']));
         loaded = true;
       });
     } catch (e) {
@@ -169,7 +181,10 @@ class _NodeTelemetrySectionState extends State<NodeTelemetrySection> {
 
   @override
   Widget build(BuildContext context) {
-    if (!enabled || hidden || !loaded) return const SizedBox.shrink();
+    // A first-load failure stays quiet: nothing has shown, so there is nothing to keep.
+    if (!enabled || hidden || !loaded || (failed && !chartShown)) {
+      return const SizedBox.shrink();
+    }
     final points = rows(telemetry['points']);
     final poller = object(polling['poller']);
     final standbys = rows(polling['standbys']);
@@ -182,17 +197,17 @@ class _NodeTelemetrySectionState extends State<NodeTelemetrySection> {
     final colors = BeaconColors.of(context);
     final bucketMs = _intervalMs[_ranges[range]]!;
     bool has(String key) => points.any((p) => number(p[key]) != null);
+    // Readings come hours apart, so a lone point needs its dot to be seen.
     Widget chart(
       String title,
       Map<String, List<ChartPoint>> series,
-      String unit, {
-      bool dots = false,
-    }) => AnalyticsCard(
+      String unit,
+    ) => AnalyticsCard(
       title: title,
       child: TimeChart(
         unit: unit,
         showSingleSeriesToggle: false,
-        showDots: dots,
+        showDots: true,
         series: series,
       ),
     );
@@ -270,15 +285,10 @@ class _NodeTelemetrySectionState extends State<NodeTelemetrySection> {
           ),
         }, ' dBm'),
       if (has('airtimeTxSecs') || has('airtimeRxSecs'))
-        chart(
-          trKey('nodeTelemetry.airtime'),
-          {
-            'RX': airtimeSeries(points, 'airtimeRxSecs', bucketMs),
-            'TX': airtimeSeries(points, 'airtimeTxSecs', bucketMs),
-          },
-          '%',
-          dots: true,
-        ),
+        chart(trKey('nodeTelemetry.airtime'), {
+          'RX': airtimeSeries(points, 'airtimeRxSecs', bucketMs),
+          'TX': airtimeSeries(points, 'airtimeTxSecs', bucketMs),
+        }, '%'),
       if (poller.isNotEmpty)
         ListTile(
           dense: true,

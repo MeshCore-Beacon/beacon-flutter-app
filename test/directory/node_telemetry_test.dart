@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:beacon/core/api.dart';
 import 'package:beacon/core/strings.dart';
+import 'package:beacon/features/analytics/charts.dart';
 import 'package:beacon/features/directory/directory.dart';
 import 'package:beacon/features/directory/node_telemetry.dart';
 import 'package:flutter/material.dart';
@@ -225,12 +226,41 @@ void main() {
       expect(find.text('TELEMETRY'), findsNothing);
     });
 
-    testWidgets('a failed load keeps the section with a retry', (tester) async {
+    testWidgets('a failed first load renders nothing', (tester) async {
       await pump(tester, telemetryStatus: 500, pollingBody: poller);
+      expect(find.text('TELEMETRY'), findsNothing);
+      expect(find.byType(DropdownButtonFormField<String>), findsNothing);
+      expect(find.text(trKey('nodeTelemetry.failed')), findsNothing);
+      expect(find.text('Retry'), findsNothing);
+    });
+
+    testWidgets('a failed later load keeps the section, dropdown and retry', (
+      tester,
+    ) async {
+      var fail = false;
+      await pump(
+        tester,
+        telemetry: data(),
+        pollingBody: poller,
+        statusFor: (_) => fail ? 500 : 200,
+      );
+      expect(find.text('BATTERY (V)'), findsOneWidget);
+      fail = true;
+      await tester.tap(find.byType(DropdownButtonFormField<String>).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(trKey('nodeTelemetry.range24h')).last);
+      await tester.pumpAndSettle();
       expect(find.text('TELEMETRY'), findsOneWidget);
       expect(find.byType(DropdownButtonFormField<String>), findsOneWidget);
       expect(find.text(trKey('nodeTelemetry.failed')), findsOneWidget);
       expect(find.text('Retry'), findsOneWidget);
+    });
+
+    testWidgets('every chart in the section draws dots', (tester) async {
+      await pump(tester, telemetry: data(), pollingBody: poller);
+      final charts = tester.widgetList<TimeChart>(find.byType(TimeChart));
+      expect(charts.length, 4);
+      expect(charts.every((c) => c.showDots), isTrue);
     });
 
     testWidgets('a failure after a range change recovers on retry', (
