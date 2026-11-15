@@ -74,6 +74,24 @@ void main() {
         }),
       );
 
+  testWidgets('typed passwords are dropped when the account changes', (
+    tester,
+  ) async {
+    final h = make({});
+    await open(tester, h);
+    await typeInto(tester, 'pw-current', 'A-secret');
+    await typeInto(tester, 'email-password', 'A-secret');
+    h.account.adopt({...user(), 'id': 'u2'});
+    await tester.pumpAndSettle();
+    for (final key in ['pw-current', 'email-password']) {
+      final field = find.descendant(
+        of: find.byKey(ValueKey(key)),
+        matching: find.byType(TextField),
+      );
+      expect(tester.widget<TextField>(field).controller!.text, isEmpty);
+    }
+  });
+
   testWidgets('shows the account, email state and devices', (tester) async {
     final h = make({});
     await open(tester, h);

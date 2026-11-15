@@ -86,6 +86,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
         final portal = features.portal;
         return ListView(
+          // New account, new forms: typed passwords never carry over.
+          key: ValueKey('profile-${widget.account.epoch}'),
           padding: const EdgeInsets.all(12),
           children: [
             section(trKey('account.sectionAccount'), [

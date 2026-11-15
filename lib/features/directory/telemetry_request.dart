@@ -100,6 +100,7 @@ class _TelemetryRequestBlockState extends State<TelemetryRequestBlock> {
   bool enabled = false, loaded = false, failed = false, busy = false;
   List<Json> requests = [];
   int limit = 0, generation = 0;
+  late int seenEpoch = widget.account.epoch;
   String? note;
 
   @override
@@ -134,6 +135,13 @@ class _TelemetryRequestBlockState extends State<TelemetryRequestBlock> {
   Future<void> load() async {
     final token = ++generation;
     final epoch = widget.account.epoch;
+    if (epoch != seenEpoch) {
+      // A different account must not inherit a typed guest password.
+      seenEpoch = epoch;
+      password.clear();
+      busy = false;
+      note = null;
+    }
     bool stale() =>
         !mounted || token != generation || widget.account.epoch != epoch;
     if (!widget.account.signedIn) {
@@ -186,16 +194,18 @@ class _TelemetryRequestBlockState extends State<TelemetryRequestBlock> {
       note = null;
     });
     final typed = password.text;
+    final epoch = widget.account.epoch;
     try {
       await widget.account.api.createTelemetryRequest(
         widget.nodeId,
         password: typed,
       );
+      if (!mounted || widget.account.epoch != epoch) return;
       password.clear();
       busy = false;
       await load();
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || widget.account.epoch != epoch) return;
       setState(() {
         busy = false;
         note = requestError(e);

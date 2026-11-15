@@ -51,6 +51,7 @@ void main() {
   late int limit;
   late http.Response Function(http.Request)? onPost;
   late List<http.Request> sent;
+  late AccountState shown;
 
   Future<void> pump(
     WidgetTester tester, {
@@ -80,6 +81,7 @@ void main() {
       }),
     );
     final state = account ?? AccountState(authApi);
+    shown = state;
     if (signedIn) state.adopt({'id': 'u1', 'username': 'ridge'});
     final api = ApiClient(
       Uri.parse(base),
@@ -144,6 +146,23 @@ void main() {
   });
 
   Finder field() => find.byKey(const ValueKey('request-password'));
+
+  testWidgets(
+    'a typed guest password does not carry over to the next account',
+    (tester) async {
+      await pump(tester);
+      final account = shown;
+      await tester.enterText(field(), 'A-secret');
+      account.adopt(null);
+      await tester.pumpAndSettle();
+      account.adopt({'id': 'u2', 'username': 'valley'});
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextField>(inner(field())).controller!.text,
+        isEmpty,
+      );
+    },
+  );
 
   testWidgets('a repeater with no readings gets the block on its own', (
     tester,
