@@ -1265,6 +1265,24 @@
       "exported": "Atlas exported.",
       "exportFailed": "Could not save the file.",
       "settingsFor": "Cards saved for {{name}}"
+    },
+    "nodeTelemetry": {
+      "title": "Telemetry",
+      "range24h": "24 hours",
+      "range7d": "7 days",
+      "range30d": "30 days",
+      "battery": "Battery (V)",
+      "batterySeries": "Battery",
+      "temperature": "Temperature (°C)",
+      "temperatureSeries": "Temperature",
+      "noiseFloor": "Noise floor (dBm)",
+      "noiseFloorSeries": "Noise floor",
+      "airtime": "Airtime TX and RX (%)",
+      "polledBy": "Polled by {{name}}",
+      "lastReading": "Last reading",
+      "standbys_one": "{{count}} standby observer",
+      "standbys_other": "{{count}} standby observers",
+      "waiting": "Waiting for the first reading from this node."
     }
   }
 }

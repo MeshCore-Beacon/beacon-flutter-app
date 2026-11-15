@@ -1265,6 +1265,24 @@
       "exported": "Atlas exporterad.",
       "exportFailed": "Det gick inte att spara filen.",
       "settingsFor": "Kort sparade för {{name}}"
+    },
+    "nodeTelemetry": {
+      "title": "Telemetri",
+      "range24h": "24 timmar",
+      "range7d": "7 dagar",
+      "range30d": "30 dagar",
+      "battery": "Batteri (V)",
+      "batterySeries": "Batteri",
+      "temperature": "Temperatur (°C)",
+      "temperatureSeries": "Temperatur",
+      "noiseFloor": "Brusnivå (dBm)",
+      "noiseFloorSeries": "Brusnivå",
+      "airtime": "Sändtid TX och RX (%)",
+      "polledBy": "Avläses av {{name}}",
+      "lastReading": "Senaste avläsning",
+      "standbys_one": "{{count}} reservobservatör",
+      "standbys_other": "{{count}} reservobservatörer",
+      "waiting": "Väntar på första avläsningen från den här noden."
     }
   }
 }

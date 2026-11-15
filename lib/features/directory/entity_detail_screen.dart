@@ -12,6 +12,7 @@ import '../analytics/charts.dart';
 import '../analytics/observer_charts.dart';
 import 'directory_widgets.dart';
 import 'meshmapper_section.dart';
+import 'node_telemetry.dart';
 import 'observation_row.dart';
 import 'observer_info.dart';
 import 'paging.dart';
@@ -682,6 +683,17 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
             ),
           ),
       ]),
+      if (const {
+        'repeater',
+        'room server',
+        'room_server',
+      }.contains(textOf(d['nodeTypeName']).toLowerCase()))
+        NodeTelemetrySection(
+          key: ValueKey('telemetry:${widget.id}'),
+          api: widget.api,
+          nodeId: widget.id,
+          onOpen: widget.onOpen,
+        ),
       if (rows(d['iatas']).isNotEmpty)
         section('Heard in regions', [
           Wrap(

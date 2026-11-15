@@ -1312,6 +1312,24 @@
       "exported": "Atlas exporté.",
       "exportFailed": "Impossible d’enregistrer le fichier.",
       "settingsFor": "Fiches enregistrées pour {{name}}"
+    },
+    "nodeTelemetry": {
+      "title": "Télémétrie",
+      "range24h": "24 heures",
+      "range7d": "7 jours",
+      "range30d": "30 jours",
+      "battery": "Batterie (V)",
+      "batterySeries": "Batterie",
+      "temperature": "Température (°C)",
+      "temperatureSeries": "Température",
+      "noiseFloor": "Bruit de fond (dBm)",
+      "noiseFloorSeries": "Bruit de fond",
+      "airtime": "Temps d’antenne TX et RX (%)",
+      "polledBy": "Interrogé par {{name}}",
+      "lastReading": "Dernière mesure",
+      "standbys_one": "{{count}} observateur de réserve",
+      "standbys_other": "{{count}} observateurs de réserve",
+      "waiting": "En attente de la première mesure de ce nœud."
     }
   }
 }

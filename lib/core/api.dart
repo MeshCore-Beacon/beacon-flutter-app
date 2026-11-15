@@ -6,6 +6,7 @@ import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
+import 'features.dart';
 import 'json.dart';
 
 class ApiException implements Exception {
@@ -150,7 +151,7 @@ class ApiClient {
   }
 
   bool _reference(String path) =>
-      {'/iatas', '/regions', '/scopes', '/brokers'}.contains(path) ||
+      {'/iatas', '/regions', '/scopes', '/brokers', '/info'}.contains(path) ||
       RegExp(r'^/iatas/[^/]+/border$').hasMatch(path);
 
   Duration _ttl(String path, Map<String, dynamic> params) {
@@ -453,6 +454,32 @@ class ApiClient {
     if (seconds == null) return unparsable;
     return Duration(seconds: seconds.clamp(1, 300));
   }
+
+  /// Server feature flags from /info; all off on any failure so nothing new shows.
+  Future<ServerFeatures> features() async {
+    try {
+      return ServerFeatures.fromInfo(object(await getCached('/info')));
+    } catch (_) {
+      return const ServerFeatures.off();
+    }
+  }
+
+  /// Polled readings for a repeater or room server; the server picks the bucket
+  /// size from [range] (24h, 168h or 720h).
+  Future<Json> nodeTelemetry(String id, {String range = '168h'}) async =>
+      object(
+        await getCached('/nodes/${Uri.encodeComponent(id)}/telemetry', {
+          'range': range,
+          'interval': switch (range) {
+            '24h' => '1h',
+            '720h' => '24h',
+            _ => '6h',
+          },
+        }),
+      );
+
+  Future<Json> nodePolling(String id) async =>
+      object(await getCached('/nodes/${Uri.encodeComponent(id)}/polling'));
 
   /// A short-lived ticket that lets this app open /ws on servers requiring an Origin.
   Future<String> wsTicket() async =>
