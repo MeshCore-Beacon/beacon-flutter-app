@@ -1560,12 +1560,16 @@
       "temperature": "Temperature",
       "packets": "Packets",
       "signal": "Signal",
-      "errors": "Receive errors",
+      "errors": "Errors",
       "noReadings": "No readings in this window",
+      "needsPair": "Needs two status readings",
+      "restarted": "Restarted",
+      "sentPerHour": "sent {{value}}",
       "polledBy": "Polled by {{name}}",
+      "polled": "Being polled",
       "notPolled": "Not being polled right now",
-      "lastReading": "last reading {{age}}",
-      "help": "Readings Beacon took from this repeater over the selected window. Dots mean there are only a few readings. Dashed lines connect missing hours and are not measurements. Airtime, packets and receive errors are rates over the time their counters cover."
+      "lastReading": "Last reading",
+      "help": "Readings Beacon polled from this repeater, over the selected window. Airtime is the share of time spent transmitting and receiving. Packets and errors are per hour. Signal is the last SNR and RSSI the repeater reported. With only a few readings the points are drawn as dots."
     }
   }
 }

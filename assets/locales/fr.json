@@ -1609,12 +1609,16 @@
       "temperature": "Température",
       "packets": "Paquets",
       "signal": "Signal",
-      "errors": "Erreurs de réception",
-      "noReadings": "Aucune mesure dans cette période",
+      "errors": "Erreurs",
+      "noReadings": "Aucune mesure sur cette période",
+      "needsPair": "Il faut deux relevés d’état",
+      "restarted": "Redémarré",
+      "sentPerHour": "envoyés {{value}}",
       "polledBy": "Interrogé par {{name}}",
-      "notPolled": "Pas interrogé en ce moment",
-      "lastReading": "dernière mesure {{age}}",
-      "help": "Les mesures que Beacon a relevées sur ce répéteur pendant la période choisie. Des points signifient qu’il y a peu de mesures. Les lignes pointillées relient les heures manquantes et ne sont pas des mesures. Le temps radio, les paquets et les erreurs de réception sont des taux sur la durée que couvrent leurs compteurs."
+      "polled": "Interrogé",
+      "notPolled": "Pas interrogé pour le moment",
+      "lastReading": "Dernière mesure",
+      "help": "Mesures relevées par Beacon sur ce répéteur, sur la période choisie. Le temps radio est la part du temps passée à émettre et à recevoir. Les paquets et les erreurs sont par heure. Le signal est le dernier SNR et RSSI rapporté par le répéteur. Avec peu de mesures, les points sont dessinés isolés."
     }
   }
 }

@@ -429,10 +429,39 @@ void main() {
       expect(find.text('BATTERY'), findsOneWidget);
       expect(find.text('4.23V'), findsOneWidget);
       expect(find.text('NOISE FLOOR'), findsOneWidget);
-      expect(find.text('No readings in this window'), findsNWidgets(3));
-      expect(find.text('Polled by Roof · last reading 12m ago'), findsOne);
+      // Readings exist but no counter pair: the counter tile says so.
+      expect(find.text('No readings in this window'), findsNWidgets(2));
+      expect(find.text('Needs two status readings'), findsOneWidget);
+      expect(find.text('Polled by Roof'), findsOneWidget);
+      expect(find.text('Last reading 12m ago'), findsOneWidget);
       await close(tester);
     });
+
+    for (final width in [390.0, 320.0]) {
+      testWidgets('a long poller name wraps and never cuts the age ($width)', (
+        tester,
+      ) async {
+        fake.pollingDoc = {
+          'polled': true,
+          'latestReadingAt': tick - 49 * 60000,
+          'poller': {'observerId': observerId, 'name': 'MrAlders0n_G3_R1'},
+          'standbys': <dynamic>[],
+        };
+        await pump(tester, pins: [nodePin()], size: Size(width, 844));
+        await tester.tap(find.text('Telemetry'));
+        await tester.pumpAndSettle();
+        final poll = find.text('Polled by MrAlders0n_G3_R1');
+        final last = find.text('Last reading 49m ago');
+        expect(poll, findsOneWidget);
+        expect(last, findsOneWidget);
+        expect(
+          tester.getTopLeft(last).dy,
+          greaterThan(tester.getBottomLeft(poll).dy - 1),
+        );
+        expect(tester.takeException(), isNull);
+        await close(tester);
+      });
+    }
 
     testWidgets('says when nobody is polling', (tester) async {
       fake.pollingDoc = {
@@ -444,10 +473,8 @@ void main() {
       await pump(tester, pins: [nodePin()]);
       await tester.tap(find.text('Telemetry'));
       await tester.pumpAndSettle();
-      expect(
-        find.text('Not being polled right now · last reading 3d ago'),
-        findsOneWidget,
-      );
+      expect(find.text('Not being polled right now'), findsOneWidget);
+      expect(find.text('Last reading 3d ago'), findsOneWidget);
       await close(tester);
     });
 

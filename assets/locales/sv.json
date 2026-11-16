@@ -1560,12 +1560,16 @@
       "temperature": "Temperatur",
       "packets": "Paket",
       "signal": "Signal",
-      "errors": "Mottagningsfel",
-      "noReadings": "Inga avläsningar i det här fönstret",
+      "errors": "Fel",
+      "noReadings": "Inga värden i det här fönstret",
+      "needsPair": "Kräver två statusvärden",
+      "restarted": "Startades om",
+      "sentPerHour": "skickade {{value}}",
       "polledBy": "Avläses av {{name}}",
-      "notPolled": "Läses inte just nu",
-      "lastReading": "senaste avläsning {{age}}",
-      "help": "Avläsningar som Beacon har gjort på den här repeatern under det valda fönstret. Punkter betyder att det bara finns några få avläsningar. Streckade linjer binder ihop saknade timmar och är inte mätningar. Sändningstid, paket och mottagningsfel är takter över den tid deras räknare täcker."
+      "polled": "Avläses",
+      "notPolled": "Avläses inte just nu",
+      "lastReading": "Senaste värdet",
+      "help": "Värden som Beacon har hämtat från den här repeatern, över det valda fönstret. Sändtid är andelen av tiden som gått åt till att sända och ta emot. Paket och fel räknas per timme. Signal är det senaste SNR och RSSI som repeatern rapporterade. Med få värden ritas punkterna som prickar."
     }
   }
 }

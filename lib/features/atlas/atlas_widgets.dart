@@ -51,6 +51,10 @@ String average(double? value, [String unit = '']) => value == null
 String percent(double v) => '${v < 10 ? v.toStringAsFixed(1) : v.round()}%';
 String formatBattery(double volts) => '${volts.toStringAsFixed(2)}V';
 
+/// At most two units, for a tile: "164d 12h", "12h 7m", "7m".
+String shortUptime(double seconds) =>
+    formatUptime(seconds).split(' ').take(2).join(' ');
+
 String formatUptime(double seconds) {
   final s = seconds.floor();
   final d = s ~/ 86400, h = s % 86400 ~/ 3600, m = s % 3600 ~/ 60;
@@ -516,8 +520,10 @@ class SparklinePainter extends CustomPainter {
             ? _sparkWidth / 2
             : i / (values.length - 1) * _sparkWidth) *
         scale;
-    double y(double v) =>
-        sparkHeight - 1 - (v - min) / range * (sparkHeight - 2);
+    // A lone reading sits mid-height, not on the floor.
+    double y(double v) => known.length == 1
+        ? sparkHeight / 2
+        : sparkHeight - 1 - (v - min) / range * (sparkHeight - 2);
     Paint stroke(double width, [double alpha = 1]) => Paint()
       ..color = color.withValues(alpha: color.a * alpha)
       ..style = PaintingStyle.stroke
@@ -720,6 +726,8 @@ class AtlasStatTile extends StatelessWidget {
     this.sublabel,
     this.interpolateGaps = false,
     this.dots = false,
+    this.wrapSublabel = false,
+    this.valueTooltip,
     this.visual,
   });
   final Widget label;
@@ -727,6 +735,12 @@ class AtlasStatTile extends StatelessWidget {
   final Color accent;
   final List<double?>? spark;
   final bool markPeak, interpolateGaps, dots;
+
+  /// Lets a long sub-label run to a second line instead of cutting it.
+  final bool wrapSublabel;
+
+  /// The full value when the tile shows a shortened one.
+  final String? valueTooltip;
   final List<bool>? presence;
   final String? sublabel;
 
@@ -744,6 +758,31 @@ class AtlasStatTile extends StatelessWidget {
     letterSpacing: .5,
     color: BeaconColors.of(context).muted,
   );
+
+  Widget _value(BeaconColors c) {
+    final text = Text(
+      value,
+      maxLines: 1,
+      softWrap: false,
+      overflow: TextOverflow.fade,
+      style: TextStyle(
+        fontFamily: _mono,
+        fontSize: 20,
+        height: 1.4,
+        fontWeight: FontWeight.w700,
+        fontFeatures: const [FontFeature.tabularFigures()],
+        color: c.bright,
+      ),
+    );
+    final full = valueTooltip;
+    return full == null
+        ? text
+        : Tooltip(
+            message: full,
+            triggerMode: TooltipTriggerMode.tap,
+            child: Semantics(label: full, excludeSemantics: true, child: text),
+          );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -787,8 +826,8 @@ class AtlasStatTile extends StatelessWidget {
               if (sublabel != null)
                 Text(
                   sublabel!,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  maxLines: wrapSublabel ? null : 1,
+                  overflow: wrapSublabel ? null : TextOverflow.ellipsis,
                   style: TextStyle(
                     fontFamily: _mono,
                     fontSize: 9,
@@ -799,20 +838,7 @@ class AtlasStatTile extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 2),
-          Text(
-            value,
-            maxLines: 1,
-            softWrap: false,
-            overflow: TextOverflow.fade,
-            style: TextStyle(
-              fontFamily: _mono,
-              fontSize: 20,
-              height: 1.4,
-              fontWeight: FontWeight.w700,
-              fontFeatures: const [FontFeature.tabularFigures()],
-              color: c.bright,
-            ),
-          ),
+          _value(c),
           const Spacer(),
           const SizedBox(height: 6),
           chart,

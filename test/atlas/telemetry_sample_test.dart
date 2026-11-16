@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:beacon/features/atlas/atlas.dart';
 import 'package:beacon/features/atlas/atlas_sync.dart';
+import 'package:beacon/features/atlas/atlas_widgets.dart';
 import 'package:beacon/features/atlas/telemetry_sample.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -48,37 +49,54 @@ Map<String, dynamic> fixture() => {
 void main() {
   group('tile values from readings', () {
     final sample = summarizeTelemetry(fixture(), AtlasRange.day, tick);
+    double? at(String id) => sample.latest(id);
 
     test('the latest value of each field, in its unit', () {
-      expect(sample.battery, closeTo(4.226, 1e-9));
-      expect(sample.noise, -97);
-      expect(sample.uptime, 1800);
-      expect(sample.temperature, 15.2);
-      expect(sample.snr, 12);
+      expect(at('battery'), closeTo(4.226, 1e-9));
+      expect(at('noise'), -97);
+      expect(at('uptime'), 1800);
+      expect(at('temperature'), 15.2);
+      expect(at('signal'), 12);
       expect(sample.rssi, -20);
       expect(sample.latestAt, hour(4));
+      expect(sample.readings, 2);
     });
 
     test('counters are rates over counterSpanSecs, not the bucket', () {
       expect(sample.airtimeTx, closeTo(1, 1e-9));
       expect(sample.airtimeRx, closeTo(10, 1e-9));
-      expect(sample.airtime, closeTo(11, 1e-9));
-      expect(sample.received, closeTo(600, 1e-9));
+      expect(at('airtime'), closeTo(11, 1e-9));
+      expect(at('packets'), closeTo(600, 1e-9));
       expect(sample.sent, closeTo(60, 1e-9));
-      expect(sample.errors, closeTo(18, 1e-9));
+      expect(at('errors'), closeTo(18, 1e-9));
     });
 
     test(
       'a point without counters adds no airtime, and a reboot shows as a drop',
       () {
-        final airtime = sample.hourly['airtime']!;
-        expect(airtime.whereType<double>(), hasLength(1));
-        final uptime = sample.hourly['uptime']!;
-        expect(uptime[13], 500000);
-        expect(uptime[19], 1800);
-        expect(uptime.length, 24);
+        expect(sample.values['airtime'], hasLength(1));
+        expect(sample.values['uptime'], [500000, 1800]);
+        expect(sample.rebooted, true);
       },
     );
+
+    test('readings with no counter pair have a count but no counter value', () {
+      final none = summarizeTelemetry(
+        {
+          'points': [
+            {'t': hour(1), 'batteryMv': 4000},
+            {'t': hour(2), 'batteryMv': 4010},
+          ],
+        },
+        AtlasRange.day,
+        tick,
+      );
+      expect(none.readings, 2);
+      expect(none.latest('airtime'), isNull);
+      expect(none.latest('packets'), isNull);
+      expect(none.latest('errors'), isNull);
+      expect(none.rebooted, false);
+    });
 
     test('a share over 100 percent has no value', () {
       final bad = summarizeTelemetry(
@@ -95,7 +113,7 @@ void main() {
         AtlasRange.day,
         tick,
       );
-      expect(bad.airtime, isNull);
+      expect(bad.latest('airtime'), isNull);
     });
 
     test('no temperature is offered when no reading has one', () {
@@ -111,31 +129,29 @@ void main() {
         tick,
       );
       expect(without.hasTemperature, false);
-      expect(without.temperature, isNull);
+      expect(without.latest('temperature'), isNull);
     });
 
     test('readings older than the window are left out', () {
-      final old = summarizeTelemetry(
-        {
-          'points': [
-            {'t': hour(30), 'batteryMv': 4000},
-          ],
-        },
-        AtlasRange.day,
-        tick,
+      final old = {
+        'points': [
+          {'t': hour(30), 'batteryMv': 4000},
+        ],
+      };
+      final out = summarizeTelemetry(old, AtlasRange.day, tick);
+      expect(out.latest('battery'), isNull);
+      expect(out.latestAt, isNull);
+      expect(out.readings, 0);
+      expect(
+        summarizeTelemetry(old, AtlasRange.threeDays, tick).latest('battery'),
+        4,
       );
-      expect(old.battery, isNull);
-      expect(old.latestAt, isNull);
-      final kept = summarizeTelemetry(
-        {
-          'points': [
-            {'t': hour(30), 'batteryMv': 4000},
-          ],
-        },
-        AtlasRange.threeDays,
-        tick,
-      );
-      expect(kept.battery, 4);
+    });
+
+    test('uptime shows at most two units', () {
+      expect(shortUptime(164 * 86400 + 12 * 3600 + 7 * 60), '164d 12h');
+      expect(shortUptime(12 * 3600 + 7 * 60), '12h 7m');
+      expect(shortUptime(7 * 60), '7m');
     });
   });
 
@@ -165,8 +181,7 @@ void main() {
         ],
       };
       final sample = summarizeTelemetry(week, AtlasRange.threeDays, tick);
-      expect(sample.battery, 3.9);
-      expect(sample.hourly['battery']!.whereType<double>().toList(), [3.9]);
+      expect(sample.values['battery'], [3.9]);
     });
   });
 

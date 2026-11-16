@@ -943,44 +943,49 @@ class _AtlasCardState extends State<AtlasCard> {
       String rate(double v) =>
           '${v < 10 ? v.toStringAsFixed(1) : formatCount(v.roundToDouble())}/h';
       Widget telemetryTile(String tile, int slot) {
-        final hourly = sample.hourly[tile]!;
-        String? value, sub;
-        var gaps = true, peak = false;
+        final values = sample.values[tile]!;
+        final latest = values.lastOrNull;
+        String? value, sub, tip;
+        var peak = false, counter = false;
         switch (tile) {
           case 'battery':
-            if (sample.battery != null) value = formatBattery(sample.battery!);
+            if (latest != null) value = formatBattery(latest);
           case 'noise':
-            if (sample.noise != null) value = '${sample.noise!.round()} dBm';
+            if (latest != null) value = '${latest.round()} dBm';
           case 'uptime':
-            gaps = false;
-            if (sample.uptime != null) value = formatUptime(sample.uptime!);
+            if (latest != null) {
+              value = shortUptime(latest);
+              tip = formatUptime(latest);
+              if (sample.rebooted) sub = trKey('atlasTelemetry.restarted');
+            }
           case 'airtime':
-            if (sample.airtime != null) {
-              value = percent(sample.airtime!);
+            peak = counter = true;
+            if (latest != null) {
+              value = percent(latest);
               sub =
                   'TX ${percent(sample.airtimeTx!)} · RX ${percent(sample.airtimeRx!)}';
             }
           case 'temperature':
-            if (sample.temperature != null) {
-              value = '${sample.temperature!.toStringAsFixed(1)} °C';
-            }
+            if (latest != null) value = '${latest.toStringAsFixed(1)} °C';
           case 'packets':
-            gaps = false;
-            peak = true;
-            if (sample.received != null) {
-              value = 'RX ${rate(sample.received!)}';
-              if (sample.sent != null) sub = 'TX ${rate(sample.sent!)}';
+            peak = counter = true;
+            if (latest != null) {
+              value = rate(latest);
+              if (sample.sent != null) {
+                sub = trKey('atlasTelemetry.sentPerHour')
+                    .replaceAll('{{value}}', rate(sample.sent!));
+              }
             }
           case 'signal':
-            if (sample.snr != null) {
-              value = average(sample.snr, 'dB');
+            if (latest != null) {
+              value = average(latest, 'dB');
               if (sample.rssi != null) sub = '${sample.rssi!.round()} dBm';
             }
           default:
-            gaps = false;
-            peak = true;
-            if (sample.errors != null) value = rate(sample.errors!);
+            peak = counter = true;
+            if (latest != null) value = rate(latest);
         }
+        final dots = values.length < dotsBelow;
         return AtlasStatTile(
           key: ValueKey('telemetry-$tile'),
           label: TilePicker(
@@ -994,32 +999,37 @@ class _AtlasCardState extends State<AtlasCard> {
                 : () => widget.onTelemetryTilesChange(defaultTelemetryTiles),
           ),
           value: value ?? _dash,
+          valueTooltip: tip,
           accent: series[_slotAccent[slot]],
-          spark: value == null ? null : hourly,
-          markPeak: peak,
-          interpolateGaps: gaps,
-          dots: useDots(hourly),
-          sublabel: value == null ? trKey('atlasTelemetry.noReadings') : sub,
+          spark: value == null ? null : values,
+          markPeak: peak && !dots,
+          dots: dots,
+          wrapSublabel: true,
+          sublabel: value != null
+              ? sub
+              : trKey(
+                  counter && sample.readings > 0
+                      ? 'atlasTelemetry.needsPair'
+                      : 'atlasTelemetry.noReadings',
+                ),
         );
       }
 
       final polling = object(tabState?['polling']);
-      final pollerName = textOf(
-        object(polling['poller'])['name'],
-        tr('Unknown'),
-      );
+      final pollerName = textOf(object(polling['poller'])['name']);
       final latestAt =
           number(polling['latestReadingAt'])?.toInt() ?? sample.latestAt;
-      final line = [
-        if (polling.isNotEmpty)
-          polling['poller'] is Map
-              ? trKey('atlasTelemetry.polledBy')
-                    .replaceAll('{{name}}', pollerName)
-              : trKey('atlasTelemetry.notPolled'),
-        if (latestAt != null)
-          trKey('atlasTelemetry.lastReading')
-              .replaceAll('{{age}}', ago(latestAt, widget.now)),
-      ].join(' · ');
+      final pollLine = polling.isEmpty
+          ? null
+          : polling['poller'] is Map
+          ? (pollerName.isEmpty
+                ? trKey('atlasTelemetry.polled')
+                : trKey('atlasTelemetry.polledBy')
+                      .replaceAll('{{name}}', pollerName))
+          : trKey('atlasTelemetry.notPolled');
+      final lastLine = latestAt == null
+          ? null
+          : '${trKey('atlasTelemetry.lastReading')} ${ago(latestAt, widget.now)}';
       body.add(
         Column(
           key: _body,
@@ -1031,12 +1041,17 @@ class _AtlasCardState extends State<AtlasCard> {
                 telemetryTile(tiles[slot], slot),
             ]),
             const SizedBox(height: 12),
-            _Footer(
-              left: line.isEmpty ? null : line,
-              right: '',
+            _TelemetryFooter(
+              poll: pollLine,
+              last: lastLine,
               loading: feed?.loading ?? false,
               failed: feed?.error != null && !isNotFound(feed?.error),
-              tip: [?line.isEmpty ? null : line, trKey('atlasTelemetry.help')],
+              tip: [
+                ?pollLine,
+                if (latestAt != null)
+                  '${trKey('atlasTelemetry.lastReading')} ${formatAbsolute(latestAt)}',
+                trKey('atlasTelemetry.help'),
+              ],
             ),
           ],
         ),
@@ -1194,4 +1209,50 @@ class _FooterLayout extends MultiChildLayoutDelegate {
 
   @override
   bool shouldRelayout(_FooterLayout old) => old.height != height;
+}
+
+/// The poller on the first line and the reading age on the second, so a long
+/// poller name wraps and never cuts the age.
+class _TelemetryFooter extends StatelessWidget {
+  const _TelemetryFooter({
+    required this.poll,
+    required this.last,
+    required this.loading,
+    required this.failed,
+    required this.tip,
+  });
+  final String? poll, last;
+  final bool loading, failed;
+  final List<String> tip;
+  @override
+  Widget build(BuildContext context) {
+    final c = BeaconColors.of(context);
+    final style = atlasMono(11, c.muted);
+    final state = failed
+        ? tr('Failed to load')
+        : loading
+        ? tr('Loading…')
+        : null;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (poll != null) Text(poll!, style: style),
+              if (last != null) Text(last!, style: style, softWrap: false),
+              if (state != null)
+                Text(
+                  state,
+                  style: style.copyWith(color: failed ? c.danger : null),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 12),
+        AtlasInfoTip(tip),
+      ],
+    );
+  }
 }

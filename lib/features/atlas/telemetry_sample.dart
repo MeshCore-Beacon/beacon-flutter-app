@@ -34,66 +34,51 @@ bool useDots(List<double?> values) =>
 
 class TelemetrySample {
   const TelemetrySample({
-    required this.hourly,
-    required this.battery,
-    required this.noise,
-    required this.uptime,
-    required this.temperature,
-    required this.airtime,
+    required this.values,
     required this.airtimeTx,
     required this.airtimeRx,
-    required this.received,
     required this.sent,
-    required this.snr,
     required this.rssi,
-    required this.errors,
+    required this.rebooted,
+    required this.readings,
     required this.latestAt,
   });
 
-  /// Per tile id: one value per hour of the window, oldest first, null where
-  /// there was none.
-  final Map<String, List<double?>> hourly;
+  /// Per tile id: one value per reading that carried it, oldest first. Battery
+  /// is volts, airtime a percent of time, packets and errors per hour, signal
+  /// the SNR.
+  final Map<String, List<double>> values;
 
-  /// Latest value in the window. Battery is volts, airtime a percent of time,
-  /// packets and errors per hour.
-  final double? battery,
-      noise,
-      uptime,
-      temperature,
-      airtime,
-      airtimeTx,
-      airtimeRx,
-      received,
-      sent,
-      snr,
-      rssi,
-      errors;
+  /// At the reading airtime's latest value came from.
+  final double? airtimeTx, airtimeRx;
+
+  /// Packets sent per hour, at the reading the received value came from.
+  final double? sent;
+  final double? rssi;
+
+  /// Uptime fell somewhere in the window.
+  final bool rebooted;
+
+  /// Points in the window, whatever they carry.
+  final int readings;
 
   /// Newest reading in the window, epoch ms.
   final int? latestAt;
-  bool get hasTemperature => temperature != null;
+
+  double? latest(String tile) => values[tile]!.lastOrNull;
+  bool get hasTemperature => values['temperature']!.isNotEmpty;
 }
 
 /// Reads [telemetry] (the node readings route) into the window of [range]
 /// ending at [now]. Counters become rates over their own `counterSpanSecs`,
 /// never over the bucket length.
 TelemetrySample summarizeTelemetry(Json? telemetry, AtlasRange range, int now) {
-  final slots = HourSlots(range, now);
+  final from = now - range.hours * hourMs;
   final points = [
     for (final p in rows(telemetry?['points']))
-      if (slots.inWindow(finite(p['t']))) p,
+      if (finite(p['t']) case final t? when t >= from && t <= now + hourMs) p,
   ]..sort((a, b) => finite(a['t'])!.compareTo(finite(b['t'])!));
-  final hourly = {
-    for (final id in telemetryTileIds)
-      id: List<double?>.filled(slots.hours, null),
-  };
-  final latest = <String, double>{};
-  void put(String id, Json p, double? value) {
-    if (value == null) return;
-    hourly[id]![slots.bin(finite(p['t'])!)] = value;
-    latest[id] = value;
-  }
-
+  final values = {for (final id in telemetryTileIds) id: <double>[]};
   double? rate(Json p, String key, double scale) {
     final value = finite(p[key]), span = finite(p['counterSpanSecs']);
     return value == null || span == null || span <= 0
@@ -104,42 +89,44 @@ TelemetrySample summarizeTelemetry(Json? telemetry, AtlasRange range, int now) {
   // A share over 100% cannot be real: no value, as the telemetry screen does.
   // The same goes for transmit and receive together.
   double? share(double? v) => v == null || v > 100 ? null : v;
-  double? txShare, rxShare;
+  double? txShare, rxShare, sent, rssi;
   for (final p in points) {
+    void put(String id, double? value) {
+      if (value != null) values[id]!.add(value);
+    }
+
     final mv = finite(p['batteryMv']);
-    put('battery', p, mv != null && mv > 0 ? mv / 1000 : null);
-    put('noise', p, finite(p['noiseFloorDb']));
-    put('uptime', p, finite(p['uptimeSeconds']));
-    put('temperature', p, finite(p['temperatureC']));
-    put('signal', p, finite(p['lastSnrDb']));
+    put('battery', mv != null && mv > 0 ? mv / 1000 : null);
+    put('noise', finite(p['noiseFloorDb']));
+    final up = finite(p['uptimeSeconds']);
+    put('uptime', up != null && up >= 0 ? up : null);
+    put('temperature', finite(p['temperatureC']));
+    put('signal', finite(p['lastSnrDb']));
     final tx = share(rate(p, 'airtimeTxSecs', 100));
     final rx = share(rate(p, 'airtimeRxSecs', 100));
     if (tx != null && rx != null && tx + rx <= 100) {
-      put('airtime', p, tx + rx);
+      put('airtime', tx + rx);
       txShare = tx;
       rxShare = rx;
     }
-    put('packets', p, rate(p, 'packetsReceived', 3600));
-    put('errors', p, rate(p, 'receiveErrors', 3600));
-    final sent = rate(p, 'packetsSent', 3600);
-    if (sent != null) latest['sent'] = sent;
-    final rssi = finite(p['lastRssiDb']);
-    if (rssi != null) latest['rssi'] = rssi;
+    final received = rate(p, 'packetsReceived', 3600);
+    put('packets', received);
+    if (received != null) sent = rate(p, 'packetsSent', 3600);
+    put('errors', rate(p, 'receiveErrors', 3600));
+    if (finite(p['lastSnrDb']) != null) rssi = finite(p['lastRssiDb']);
   }
+  final uptime = values['uptime']!;
   return TelemetrySample(
-    hourly: hourly,
-    battery: latest['battery'],
-    noise: latest['noise'],
-    uptime: latest['uptime'],
-    temperature: latest['temperature'],
-    airtime: latest['airtime'],
+    values: values,
     airtimeTx: txShare,
     airtimeRx: rxShare,
-    received: latest['packets'],
-    sent: latest['sent'],
-    snr: latest['signal'],
-    rssi: latest['rssi'],
-    errors: latest['errors'],
+    sent: sent,
+    rssi: rssi,
+    rebooted: [
+      for (var i = 1; i < uptime.length; i++)
+        if (uptime[i] < uptime[i - 1]) i,
+    ].isNotEmpty,
+    readings: points.length,
     latestAt: points.isEmpty ? null : finite(points.last['t'])?.toInt(),
   );
 }
