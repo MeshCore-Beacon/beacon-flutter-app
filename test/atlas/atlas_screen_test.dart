@@ -646,6 +646,24 @@ void main() {
     await close(tester);
   });
 
+  testWidgets('every card keeps the view it was switched to', (tester) async {
+    await pump(
+      tester,
+      pins: [
+        nodePin(),
+        nodePin({'id': otherId, 'publicKey': otherKey}),
+      ],
+      size: const Size(1200, 1600),
+    );
+    expect(find.text('OBSERVATIONS'), findsNWidgets(2));
+    await tester.tap(find.text('Heard by').at(0));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Heard by').at(1));
+    await tester.pumpAndSettle();
+    expect(find.text('OBSERVATIONS'), findsNothing);
+    await close(tester);
+  });
+
   testWidgets('an observer with no node is saved as an observer card', (
     tester,
   ) async {

@@ -59,8 +59,8 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
   final search = TextEditingController();
   Timer? debounce;
   String field = 'name', typed = '';
-  // One card at a time is away from the view it opens on.
-  ({String key, AtlasView view})? open;
+  // Each card keeps the view picked this session; only the pin saves it as where the card opens.
+  final open = <String, AtlasView>{};
   bool resumed = true;
   late int now = widget.clock().millisecondsSinceEpoch;
 
@@ -90,10 +90,8 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
 
   void changed() {
     if (!mounted) return;
-    // An import replaced the cards, so no card is away from its home view.
-    if (open != null && !saved.pins.any((pin) => pin.key == open!.key)) {
-      open = null;
-    }
+    // An import replaced the cards, so views of cards that are gone go too.
+    open.removeWhere((key, _) => !saved.pins.any((pin) => pin.key == key));
     setState(() {});
   }
 
@@ -114,10 +112,9 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
     super.dispose();
   }
 
-  AtlasView viewOf(AtlasPin pin) =>
-      open?.key == pin.key ? open!.view : pin.homeView;
+  AtlasView viewOf(AtlasPin pin) => open[pin.key] ?? pin.homeView;
   void setView(AtlasPin pin, AtlasView view) => setState(
-    () => open = view == pin.homeView ? null : (key: pin.key, view: view),
+    () => view == pin.homeView ? open.remove(pin.key) : open[pin.key] = view,
   );
 
   void typing(String value) {
@@ -267,7 +264,7 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
 
   void pinView(AtlasPin pin, AtlasView view) {
     replace(pin, (other) => other.isNode ? other.withView(view) : other);
-    if (open?.key == pin.key) setState(() => open = null);
+    if (open.containsKey(pin.key)) setState(() => open.remove(pin.key));
   }
 
   // An observer pin whose key now resolves to a node takes that node's place
