@@ -1325,7 +1325,7 @@
       "range30d": "30 jours",
       "battery": "Batterie (V)",
       "batterySeries": "Batterie",
-      "temperature": "Température (°C)",
+      "temperature": "Température ({{unit}})",
       "temperatureSeries": "Température",
       "noiseFloor": "Bruit de fond (dBm)",
       "noiseFloorSeries": "Bruit de fond",

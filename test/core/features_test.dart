@@ -65,6 +65,29 @@ void main() {
       expect(ServerFeatures.fromInfo(null).alertDelivery, isNull);
     });
 
+    test('display units and mapTelemetry default and parse', () {
+      final none = ServerFeatures.fromInfo({'features': {}});
+      expect(none.temperatureUnit, 'c');
+      expect(none.distanceUnit, 'metric');
+      expect(none.mapTelemetry, false);
+      final f = ServerFeatures.fromInfo({
+        'features': {'mapTelemetry': true},
+        'display': {'temperatureUnit': 'f', 'distanceUnit': 'imperial'},
+      });
+      expect(f.temperatureUnit, 'f');
+      expect(f.distanceUnit, 'imperial');
+      expect(f.mapTelemetry, true);
+      final odd = ServerFeatures.fromInfo({
+        'display': {'temperatureUnit': 'k', 'distanceUnit': 'furlongs'},
+      });
+      expect(odd.temperatureUnit, 'c');
+      expect(odd.distanceUnit, 'metric');
+      const off = ServerFeatures.off();
+      expect(off.temperatureUnit, 'c');
+      expect(off.distanceUnit, 'metric');
+      expect(off.mapTelemetry, false);
+    });
+
     test('wrong types fall back to off', () {
       final f = ServerFeatures.fromInfo({
         'features': {'polling': 'yes', 'accounts': 3},

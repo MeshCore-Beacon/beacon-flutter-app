@@ -1278,7 +1278,7 @@
       "range30d": "30 dagar",
       "battery": "Batteri (V)",
       "batterySeries": "Batteri",
-      "temperature": "Temperatur (°C)",
+      "temperature": "Temperatur ({{unit}})",
       "temperatureSeries": "Temperatur",
       "noiseFloor": "Brusnivå (dBm)",
       "noiseFloorSeries": "Brusnivå",
