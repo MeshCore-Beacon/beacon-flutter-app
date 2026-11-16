@@ -131,21 +131,27 @@ class StatsQuery extends StatefulWidget {
   State<StatsQuery> createState() => _StatsQueryState();
 }
 
-class _StatsQueryState extends State<StatsQuery> {
+class _StatsQueryState extends State<StatsQuery> with WidgetsBindingObserver {
   late Future<dynamic> future;
   Timer? timer;
   int generation = 0;
   int? lastStatus;
+  bool visible = true, refreshPending = true, freshPending = false;
+  bool resumed =
+      WidgetsBinding.instance.lifecycleState == null ||
+      WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+  bool get active => visible && resumed;
   @override
   void initState() {
     super.initState();
-    load();
+    WidgetsBinding.instance.addObserver(this);
     if (widget.pollInterval != null) {
       timer = Timer.periodic(widget.pollInterval!, (_) {
-        if (mounted &&
-            lastStatus != 404 &&
-            WidgetsBinding.instance.lifecycleState ==
-                AppLifecycleState.resumed) {
+        if (mounted && lastStatus != 404) {
+          if (!active) {
+            load(fresh: true);
+            return;
+          }
           setState(() => load(fresh: true));
         }
       });
@@ -153,13 +159,51 @@ class _StatsQueryState extends State<StatsQuery> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final next = TickerMode.valuesOf(context).enabled;
+    if (visible == next && !refreshPending) return;
+    visible = next;
+    activityChanged();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final next = state == AppLifecycleState.resumed;
+    if (!mounted || resumed == next) return;
+    setState(() {
+      resumed = next;
+      activityChanged();
+    });
+  }
+
+  void activityChanged() {
+    if (!active) {
+      generation++;
+      refreshPending = refreshPending || lastStatus != 404;
+    } else if (refreshPending) {
+      final fresh = freshPending;
+      refreshPending = freshPending = false;
+      load(fresh: fresh);
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     generation++;
     timer?.cancel();
     super.dispose();
   }
 
   void load({bool fresh = false}) {
+    if (!active) {
+      generation++;
+      refreshPending = true;
+      freshPending = freshPending || fresh;
+      return;
+    }
+    refreshPending = freshPending = false;
     final token = ++generation;
     future =
         (fresh ? widget.api.get : widget.api.getCached)(
@@ -192,7 +236,7 @@ class _StatsQueryState extends State<StatsQuery> {
 
   @override
   Widget build(BuildContext context) => FutureBuilder<dynamic>(
-    future: future,
+    future: refreshPending ? null : future,
     builder: (context, s) {
       if (s.connectionState != ConnectionState.done) {
         final cached = widget.api.peekCache(widget.path, widget.params);
