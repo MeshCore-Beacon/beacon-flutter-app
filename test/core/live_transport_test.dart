@@ -6,7 +6,15 @@ import 'package:beacon/core/api.dart';
 import 'package:beacon/core/live.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+class _RealHttp extends HttpOverrides {}
+
+void transportTest(String name, FutureOr<void> Function() body) {
+  test(name, () => HttpOverrides.runWithHttpOverrides(body, _RealHttp()));
+}
+
 void main() {
+  // Socket integration tests need real loopback networking, not the binding fake.
+  final test = transportTest;
   test('empty configured region opens no all-regions socket', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     var connections = 0;
