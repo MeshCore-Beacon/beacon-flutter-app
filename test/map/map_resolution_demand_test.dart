@@ -88,4 +88,49 @@ void main() {
     await tester.pump();
     api.close();
   });
+  testWidgets('standalone maps retain their single-subscription event stream', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final events = StreamController<Json>();
+    final api = ApiClient(
+      Uri.parse('https://beacon.example.com'),
+      client: MockClient(
+        (r) async => http.Response(
+          jsonEncode(
+            r.url.path.endsWith('/iatas')
+                ? []
+                : {'items': [], 'hasMore': false},
+          ),
+          200,
+        ),
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: BeaconTheme.all.first.data,
+        home: Scaffold(
+          body: MapScreen(
+            api: api,
+            region: const {},
+            events: events.stream,
+            onOpen: (_, _) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Play live map packet flow'));
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(events.hasListener, isTrue);
+    await tester.tap(find.byTooltip('Stop live map packet flow'));
+    await tester.pump();
+    expect(events.hasListener, isTrue);
+    await tester.pumpWidget(const SizedBox());
+    expect(events.hasListener, isFalse);
+    unawaited(events.close());
+    await tester.pump();
+    api.close();
+  });
 }

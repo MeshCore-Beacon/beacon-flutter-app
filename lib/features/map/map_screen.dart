@@ -48,6 +48,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   List<Map<String, dynamic>> _readings = const [];
   bool _resumed = true;
   bool _flow = false;
+  bool get _flowAllowed => _flow && _resumed;
   final _flows = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _nodes = [],
       _neighbors = [],
@@ -144,6 +145,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
           }
         });
       }
+      if (widget.flowEvents == null) _onFlow(event);
     });
     _listenFlow();
   }
@@ -151,26 +153,25 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   void _listenFlow() {
     _flowEvents?.cancel();
     _flowEvents = null;
-    if (!_flow || !_resumed) return;
-    _flowEvents = (widget.flowEvents ?? widget.events)?.listen((event) {
-      if (!mounted || !_resumed || !_flow || _codes?.isEmpty == true) return;
-      final d = object(event['data']);
-      if (event['event'] == 'packetObservation') {
-        final ns = flowNodes(object(d['observation']));
-        if (ns.length < 2) return;
-        while (_flows.length >= 120) {
-          _flows.removeAt(0);
-        }
-        _flows.add({
-          'nodes': ns,
-          'start': DateTime.now().millisecondsSinceEpoch,
-        });
-        _flowTimer ??= Timer.periodic(
-          const Duration(milliseconds: 50),
-          (_) => _tick(),
-        );
+    if (!_flowAllowed) return;
+    _flowEvents = widget.flowEvents?.listen(_onFlow);
+  }
+
+  void _onFlow(Json event) {
+    if (!mounted || !_flowAllowed || _codes?.isEmpty == true) return;
+    final d = object(event['data']);
+    if (event['event'] == 'packetObservation') {
+      final ns = flowNodes(object(d['observation']));
+      if (ns.length < 2) return;
+      while (_flows.length >= 120) {
+        _flows.removeAt(0);
       }
-    });
+      _flows.add({'nodes': ns, 'start': DateTime.now().millisecondsSinceEpoch});
+      _flowTimer ??= Timer.periodic(
+        const Duration(milliseconds: 50),
+        (_) => _tick(),
+      );
+    }
   }
 
   void _tick() {
