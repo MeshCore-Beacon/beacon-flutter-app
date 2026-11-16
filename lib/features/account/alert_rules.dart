@@ -72,9 +72,8 @@ int? parseDbm(String text) {
   return v >= -130 && v <= -50 ? v.round() : null;
 }
 
-/// Degrees in [unit] as typed to tenths of a degree C; null when not a number,
-/// or a fraction of a degree F (those do not survive the round trip). An empty
-/// text is a side left open and is the caller's to handle.
+/// Degrees in [unit] as typed to tenths of a degree C; null when not a number
+/// or a fraction of a degree F (those do not survive the round trip).
 int? parseTenths(String text, [String unit = 'c']) {
   final v = _parse(text);
   if (v == null) return null;

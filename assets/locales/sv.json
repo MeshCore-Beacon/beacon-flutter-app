@@ -1463,6 +1463,7 @@
         "dbm": "Ange ett heltal mellan -130 och -50 dBm.",
         "temperatureNone": "Ange en nedre eller övre gräns.",
         "temperature": "Ange en temperatur i grader {{unit}}, till exempel {{example}}.",
+        "temperatureWhole": "Ange ett helt antal grader {{unit}}, till exempel {{example}}.",
         "not_found": "Den aviseringen finns inte längre.",
         "app_session_required": "Bara Beacon-appen kan registrera en telefon för aviseringar.",
         "temperatureRange": "Ange gränser mellan {{min}} och {{max}} grader {{unit}}.",

@@ -684,6 +684,12 @@ void main() {
       await type(tester, 'alert-input-aabb-temperature-high', '17');
       await tap(tester, 'alert-switch-aabb-temperature');
       expect(find.textContaining('at least 4 degrees'), findsOneWidget);
+      await type(tester, 'alert-input-aabb-temperature-high', '95.5');
+      await tap(tester, 'alert-switch-aabb-temperature');
+      expect(
+        find.textContaining('whole number of degrees F, such as 95'),
+        findsOneWidget,
+      );
       expect(puts, hasLength(1));
     });
 

@@ -370,7 +370,22 @@ class _AlertRowState extends State<_AlertRow> with _Action {
         final a = l.isEmpty ? null : _limitTenths(l, _stored('threshold'));
         final b = h.isEmpty ? null : _limitTenths(h, _stored('thresholdHigh'));
         if ((l.isNotEmpty && a == null) || (h.isNotEmpty && b == null)) {
-          _complain(_tempText('alerts.errors.temperature'));
+          // A number that failed in F is a fraction of a degree.
+          final fraction =
+              widget.unit == 'f' &&
+              [(l, a), (h, b)].any(
+                (t) =>
+                    t.$1.isNotEmpty &&
+                    t.$2 == null &&
+                    parseTenths(t.$1) != null,
+              );
+          _complain(
+            _tempText(
+              fraction
+                  ? 'alerts.errors.temperatureWhole'
+                  : 'alerts.errors.temperature',
+            ),
+          );
           return null;
         }
         if ((a != null && !tenthsInRange(a)) ||

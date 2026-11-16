@@ -39,9 +39,11 @@ class MapScreen extends StatefulWidget {
 
 class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   StreamSubscription<Json>? _events;
-  Timer? _flowTimer, _telemetryTimer;
+  Timer? _flowTimer, _telemetryTimer, _ageTimer;
   ServerFeatures _features = const ServerFeatures.off();
   Map<String, TelemetryLabel> _labels = const {};
+  List<Map<String, dynamic>> _readings = const [];
+  bool _resumed = true;
   bool _flow = false;
   final _flows = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _nodes = [],
@@ -178,13 +180,14 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
+    _resumed = state == AppLifecycleState.resumed;
+    if (_resumed) {
+      // _load refetches the telemetry, so the sync only restarts the timers.
       _load();
-      _syncTelemetry();
+      _syncTelemetry(fetch: false);
     } else {
       _clearFlow();
-      _telemetryTimer?.cancel();
-      _telemetryTimer = null;
+      _stopTelemetryTimers();
     }
   }
 
@@ -201,13 +204,13 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         _borders = [];
         _airports = [];
         _labels = const {};
+        _readings = const [];
       }
       _loading = true;
       _error = null;
     });
     // An explicitly empty region must not silently broaden to every region.
-    final iatas = widget.region['iatas'];
-    if (iatas is List && iatas.isEmpty || iatas == '') {
+    if (_emptyRegion) {
       setState(() => _loading = false);
       return;
     }
@@ -230,12 +233,17 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       _frame();
       if (_selected != null) unawaited(_select(_selected));
       if (_showBorders) unawaited(_loadBorders());
-      unawaited(_loadTelemetry());
+      unawaited(_loadTelemetry(userAction: true));
     } catch (e) {
       if (_current(gen)) setState(() => _error = e.toString());
     } finally {
       if (_current(gen)) setState(() => _loading = false);
     }
+  }
+
+  bool get _emptyRegion {
+    final iatas = widget.region['iatas'];
+    return iatas is List && iatas.isEmpty || iatas == '';
   }
 
   List<String>? get _codes {
@@ -274,12 +282,23 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     _syncTelemetry();
   }
 
-  /// Runs the five minute refetch only while the labels are on.
-  void _syncTelemetry() {
+  void _stopTelemetryTimers() {
+    _telemetryTimer?.cancel();
+    _telemetryTimer = null;
+    _ageTimer?.cancel();
+    _ageTimer = null;
+  }
+
+  /// Runs the five minute refetch and the minute label refresh while the labels are on and the app is resumed.
+  void _syncTelemetry({bool fetch = true}) {
     if (!_telemetryOn) {
-      _telemetryTimer?.cancel();
-      _telemetryTimer = null;
+      _stopTelemetryTimers();
+      _readings = const [];
       if (_labels.isNotEmpty) setState(() => _labels = const {});
+      return;
+    }
+    if (!_resumed) {
+      _stopTelemetryTimers();
       return;
     }
     if (_telemetryTimer == null) {
@@ -287,12 +306,36 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         const Duration(minutes: 5),
         (_) => unawaited(_loadTelemetry()),
       );
-      unawaited(_loadTelemetry());
+      _ageTimer = Timer.periodic(
+        const Duration(minutes: 1),
+        (_) => _rebuildLabels(),
+      );
+      if (fetch) unawaited(_loadTelemetry(userAction: true));
     }
   }
 
-  Future<void> _loadTelemetry() async {
-    if (!_telemetryOn) return;
+  /// Ages and dimming move with the clock, so rebuild from the last readings.
+  void _rebuildLabels() {
+    if (!mounted || !_telemetryOn) return;
+    final next = keepLabels(
+      _labels,
+      telemetryLabels(
+        _readings,
+        _features.temperatureUnit,
+        DateTime.now().millisecondsSinceEpoch,
+      ),
+    );
+    if (!identical(next, _labels)) setState(() => _labels = next);
+  }
+
+  /// Only a load the user caused (toggle, region) shows an error; a timer refetch keeps the labels.
+  Future<void> _loadTelemetry({bool userAction = false}) async {
+    if (!_telemetryOn || !_resumed) return;
+    if (_emptyRegion) {
+      _readings = const [];
+      if (_labels.isNotEmpty) setState(() => _labels = const {});
+      return;
+    }
     final gen = _generation;
     try {
       final items = rows(
@@ -301,15 +344,12 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         )['items'],
       );
       if (!_current(gen) || !_telemetryOn) return;
-      setState(() {
-        _labels = telemetryLabels(
-          items,
-          _features.temperatureUnit,
-          DateTime.now().millisecondsSinceEpoch,
-        );
-      });
+      _readings = items;
+      _rebuildLabels();
     } catch (e) {
-      if (_current(gen)) setState(() => _error = '${tr('Telemetry')}: $e');
+      if (userAction && _current(gen)) {
+        setState(() => _error = '${tr('Telemetry')}: $e');
+      }
     }
   }
 
@@ -769,6 +809,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     _events?.cancel();
     _flowTimer?.cancel();
     _telemetryTimer?.cancel();
+    _ageTimer?.cancel();
     super.dispose();
   }
 }

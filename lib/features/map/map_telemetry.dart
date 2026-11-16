@@ -44,3 +44,18 @@ Map<String, TelemetryLabel> telemetryLabels(
   }
   return out;
 }
+
+/// The previous map when nothing visible changed, so an idle tick pushes no data.
+Map<String, TelemetryLabel> keepLabels(
+  Map<String, TelemetryLabel> previous,
+  Map<String, TelemetryLabel> next,
+) {
+  if (previous.length != next.length) return next;
+  for (final e in next.entries) {
+    final p = previous[e.key];
+    if (p == null || p.text != e.value.text || p.old != e.value.old) {
+      return next;
+    }
+  }
+  return previous;
+}

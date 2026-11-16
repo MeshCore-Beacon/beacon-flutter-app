@@ -1463,6 +1463,7 @@
         "dbm": "Enter a whole number between -130 and -50 dBm.",
         "temperatureNone": "Enter a low or a high limit.",
         "temperature": "Enter a temperature in degrees {{unit}}, such as {{example}}.",
+        "temperatureWhole": "Enter a whole number of degrees {{unit}}, such as {{example}}.",
         "not_found": "That alert no longer exists.",
         "app_session_required": "Only the Beacon app can register a phone for alerts.",
         "temperatureRange": "Enter limits between {{min}} and {{max}} degrees {{unit}}.",
