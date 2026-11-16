@@ -1571,6 +1571,15 @@
       "notPolled": "Not being polled right now",
       "lastReading": "Last reading",
       "help": "Readings Beacon polled from this repeater, over the selected window. Airtime is the share of time spent transmitting and receiving. Packets and errors are per hour. Signal is the last SNR and RSSI the repeater reported. With only a few readings the points are drawn as dots."
+    },
+    "atlasFooter": {
+      "heard": "Heard",
+      "hops": "{{value}} hops",
+      "neighbors_one": "{{count}} neighbor",
+      "neighbors_other": "{{count}} neighbors",
+      "polled": "Polled",
+      "notPolled": "Not polled",
+      "byPoller": "by {{name}}"
     }
   }
 }
