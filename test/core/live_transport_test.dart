@@ -14,7 +14,7 @@ void transportTest(String name, FutureOr<void> Function() body) {
 
 void main() {
   // Socket integration tests need real loopback networking, not the binding fake.
-  final test = transportTest;
+  const test = transportTest;
   test('empty configured region opens no all-regions socket', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     var connections = 0;
