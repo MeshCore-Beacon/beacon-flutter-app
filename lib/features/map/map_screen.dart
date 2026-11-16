@@ -43,7 +43,10 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   ServerFeatures _features = const ServerFeatures.off();
   Map<String, TelemetryLabel> _labels = const {};
   List<Map<String, dynamic>> _readings = const [];
-  bool _resumed = true;
+  bool _resumed =
+      WidgetsBinding.instance.lifecycleState == null ||
+      WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+  bool _visible = true;
   bool _flow = false;
   final _flows = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _nodes = [],
@@ -60,6 +63,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       _terrain = false,
       _telemetry = false;
   int _generation = 0;
+  int _telemetryGeneration = 0;
   final _canvas = GlobalKey<_NativeMapState>();
   final _layers = MapLayers();
   @override
@@ -87,6 +91,15 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       _telemetry = p.getString('beacon-map-telemetry') == 'on';
     });
     if (_showBorders) unawaited(_loadBorders());
+    _syncTelemetry();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final visible = TickerMode.valuesOf(context).enabled;
+    if (_visible == visible) return;
+    _visible = visible;
     _syncTelemetry();
   }
 
@@ -233,11 +246,13 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       _frame();
       if (_selected != null) unawaited(_select(_selected));
       if (_showBorders) unawaited(_loadBorders());
-      unawaited(_loadTelemetry(userAction: true));
     } catch (e) {
       if (_current(gen)) setState(() => _error = e.toString());
     } finally {
-      if (_current(gen)) setState(() => _loading = false);
+      if (_current(gen)) {
+        setState(() => _loading = false);
+        unawaited(_loadTelemetry(userAction: _error == null));
+      }
     }
   }
 
@@ -283,13 +298,14 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   }
 
   void _stopTelemetryTimers() {
+    _telemetryGeneration++;
     _telemetryTimer?.cancel();
     _telemetryTimer = null;
     _ageTimer?.cancel();
     _ageTimer = null;
   }
 
-  /// Runs the five minute refetch and the minute label refresh while the labels are on and the app is resumed.
+  /// Refetch and age labels only while enabled, resumed and visible.
   void _syncTelemetry({bool fetch = true}) {
     if (!_telemetryOn) {
       _stopTelemetryTimers();
@@ -297,7 +313,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       if (_labels.isNotEmpty) setState(() => _labels = const {});
       return;
     }
-    if (!_resumed) {
+    if (!_resumed || !_visible) {
       _stopTelemetryTimers();
       return;
     }
@@ -310,13 +326,15 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         const Duration(minutes: 1),
         (_) => _rebuildLabels(),
       );
-      if (fetch) unawaited(_loadTelemetry(userAction: true));
+      _rebuildLabels();
+      // An active map load performs the initial read when it settles.
+      if (fetch && !_loading) unawaited(_loadTelemetry(userAction: true));
     }
   }
 
   /// Ages and dimming move with the clock, so rebuild from the last readings.
   void _rebuildLabels() {
-    if (!mounted || !_telemetryOn) return;
+    if (!mounted || !_telemetryOn || !_resumed || !_visible) return;
     final next = keepLabels(
       _labels,
       telemetryLabels(
@@ -330,24 +348,35 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
 
   /// Only a load the user caused (toggle, region) shows an error; a timer refetch keeps the labels.
   Future<void> _loadTelemetry({bool userAction = false}) async {
-    if (!_telemetryOn || !_resumed) return;
+    if (!_telemetryOn || !_resumed || !_visible) return;
     if (_emptyRegion) {
       _readings = const [];
       if (_labels.isNotEmpty) setState(() => _labels = const {});
       return;
     }
     final gen = _generation;
+    final request = ++_telemetryGeneration;
+    bool current() =>
+        _current(gen) &&
+        request == _telemetryGeneration &&
+        _telemetryOn &&
+        _resumed &&
+        _visible;
     try {
       final items = rows(
         object(
-          await widget.api.get('/nodes/telemetry/latest', widget.region),
+          await widget.api.get(
+            '/nodes/telemetry/latest',
+            widget.region,
+            current,
+          ),
         )['items'],
       );
-      if (!_current(gen) || !_telemetryOn) return;
+      if (!current()) return;
       _readings = items;
       _rebuildLabels();
     } catch (e) {
-      if (userAction && _current(gen)) {
+      if (userAction && current()) {
         setState(() => _error = '${tr('Telemetry')}: $e');
       }
     }

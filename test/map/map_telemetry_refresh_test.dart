@@ -18,6 +18,9 @@ class Harness {
   final requests = <Uri>[];
   final infoGate = Completer<void>();
   bool gateInfo = false, failTelemetry = false;
+  int busyTelemetryReplies = 0;
+  bool withReading = false;
+  final sampledAt = DateTime.now().millisecondsSinceEpoch;
   int get telemetryCalls =>
       requests.where((u) => u.path.endsWith('/nodes/telemetry/latest')).length;
 
@@ -28,8 +31,33 @@ class Harness {
       if (gateInfo) await infoGate.future;
       return http.Response(jsonEncode(info), 200);
     }
+    if (path.endsWith('/nodes/telemetry/latest') && busyTelemetryReplies > 0) {
+      busyTelemetryReplies--;
+      return http.Response('busy', 503, headers: {'retry-after': '5'});
+    }
+    if (withReading && path.endsWith('/nodes')) {
+      return http.Response(
+        jsonEncode({
+          'items': [
+            {'id': 'sample', 'lat': 43, 'lng': -80, 'nodeTypeName': 'repeater'},
+          ],
+          'hasMore': false,
+        }),
+        200,
+      );
+    }
     if (path.endsWith('/nodes/telemetry/latest') && failTelemetry) {
       return http.Response('boom', 500);
+    }
+    if (withReading && path.endsWith('/nodes/telemetry/latest')) {
+      return http.Response(
+        jsonEncode({
+          'items': [
+            {'nodeId': 'sample', 'batteryMv': 4100, 'sampledAt': sampledAt},
+          ],
+        }),
+        200,
+      );
     }
     return http.Response(
       jsonEncode(
@@ -112,4 +140,122 @@ void main() {
     expect(find.textContaining('Telemetry:'), findsNothing);
     await unmount(tester, api);
   });
+  testWidgets('covered maps suspend telemetry refresh until visible again', (
+    tester,
+  ) async {
+    final h = Harness()..withReading = true;
+    final api = await pump(tester, h);
+    String label() =>
+        (tester
+                        .widget<NativeMap>(
+                          find.byType(NativeMap, skipOffstage: false),
+                        )
+                        .points['features']
+                    as List)
+                .single['properties']['telemetry']
+            as String;
+    final originalLabel = label();
+    expect(originalLabel, contains('4.10V'));
+    final navigator = Navigator.of(tester.element(find.byType(MapScreen)));
+    final before = h.telemetryCalls;
+    expect(before, greaterThan(0));
+    unawaited(
+      navigator.push<void>(
+        MaterialPageRoute(
+          builder: (_) => const Scaffold(body: Text('Covered')),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(minutes: 11));
+    await tester.pumpAndSettle();
+    expect(h.telemetryCalls, before);
+    expect(label(), originalLabel);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(minutes: 6));
+    expect(h.telemetryCalls, before);
+    navigator.pop();
+    await tester.pumpAndSettle();
+    expect(h.telemetryCalls, before + 1);
+    await tester.pump(const Duration(minutes: 5));
+    await tester.pumpAndSettle();
+    expect(h.telemetryCalls, before + 2);
+    await unmount(tester, api);
+  });
+  testWidgets(
+    'returning to a map does not revive an obsolete telemetry retry',
+    (tester) async {
+      final h = Harness()
+        ..gateInfo = true
+        ..busyTelemetryReplies = 1;
+      final api = await pump(tester, h);
+      h.infoGate.complete();
+      await tester.pump(const Duration(milliseconds: 1));
+      expect(h.telemetryCalls, 1);
+      final navigator = Navigator.of(tester.element(find.byType(MapScreen)));
+      unawaited(
+        navigator.push<void>(
+          MaterialPageRoute(
+            builder: (_) => const Scaffold(body: Text('Covered')),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      navigator.pop();
+      await tester.pumpAndSettle();
+      expect(h.telemetryCalls, 2);
+      await tester.pump(const Duration(seconds: 6));
+      await tester.pumpAndSettle();
+      expect(h.telemetryCalls, 2);
+      expect(find.textContaining('Telemetry:'), findsNothing);
+      await unmount(tester, api);
+    },
+  );
+  testWidgets('features completing under a cover start no telemetry work', (
+    tester,
+  ) async {
+    final h = Harness()..gateInfo = true;
+    final api = await pump(tester, h);
+    final navigator = Navigator.of(tester.element(find.byType(MapScreen)));
+    unawaited(
+      navigator.push<void>(
+        MaterialPageRoute(
+          builder: (_) => const Scaffold(body: Text('Covered')),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    h.infoGate.complete();
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(minutes: 11));
+    expect(h.telemetryCalls, 0);
+    navigator.pop();
+    await tester.pumpAndSettle();
+    expect(h.telemetryCalls, 1);
+    await unmount(tester, api);
+  });
+  for (final initialState in [
+    AppLifecycleState.paused,
+    AppLifecycleState.inactive,
+  ]) {
+    testWidgets(
+      'mounting while $initialState does not start telemetry polling',
+      (tester) async {
+        tester.binding.handleAppLifecycleStateChanged(initialState);
+        final h = Harness();
+        final api = await pump(tester, h);
+        await tester.pump(const Duration(minutes: 11));
+        expect(h.telemetryCalls, 0);
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+        await tester.pumpAndSettle();
+        expect(h.telemetryCalls, 1);
+        await unmount(tester, api);
+      },
+    );
+  }
 }
