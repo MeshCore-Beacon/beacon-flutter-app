@@ -781,7 +781,21 @@
       "ping": "Ping",
       "empty": "Inga spårningar",
       "iataCount_one": "{{count}} IATA",
-      "iataCount_other": "{{count}} IATA"
+      "iataCount_other": "{{count}} IATA",
+      "quality": {
+        "suspect": "Misstänkt observation",
+        "ambiguous": "Möjlig prefixkollision",
+        "evidenceOnly": "Rådata bevaras. Detta fastställer inte en verklig rutt eller bekräftar en kollision.",
+        "unsupported_version": "Paketversionen stöds inte",
+        "non_direct_trace": "TRACE stöder inte flood-routing",
+        "incomplete_payload": "Ofullständig spårningsnyttolast",
+        "payload_too_large": "Nyttolasten överskrider protokollets gräns",
+        "unsupported_flags": "Okända spårningsflaggor",
+        "misaligned_hashes": "Hashbyten stämmer inte med den angivna bredden",
+        "too_many_hops": "Rutten överskrider antalet hopp som stöds för spårning",
+        "invalid_snr_path": "SNR-sökvägen kan inte stämma med denna spårning",
+        "ambiguous_prefix": "Ett hopp matchar flera kända noder"
+      }
     },
     "loadingPill": {
       "nodes": {
