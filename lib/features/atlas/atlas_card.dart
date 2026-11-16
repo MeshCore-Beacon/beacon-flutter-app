@@ -11,6 +11,7 @@ import '../directory/node_telemetry.dart';
 import 'atlas.dart';
 import 'atlas_widgets.dart';
 import 'observer_sample.dart';
+import 'telemetry_sample.dart';
 
 const atlasRefresh = Duration(minutes: 1);
 
@@ -83,6 +84,8 @@ class AtlasQuery<T> extends ChangeNotifier {
   }
 }
 
+const _telemetryTileCount = 4;
+
 const _tileLabel = {
   'airtime': 'atlas.airtime',
   'battery': 'atlas.battery',
@@ -117,6 +120,7 @@ class AtlasCard extends StatefulWidget {
     required this.onResolved,
     required this.onUpgrade,
     required this.onTilesChange,
+    required this.onTelemetryTilesChange,
     required this.onOpen,
     this.handle,
   });
@@ -132,7 +136,7 @@ class AtlasCard extends StatefulWidget {
   final VoidCallback onRemove;
   final void Function(String id, String? observerId) onResolved;
   final void Function(Json node, String observerId) onUpgrade;
-  final ValueChanged<List<String>> onTilesChange;
+  final ValueChanged<List<String>> onTilesChange, onTelemetryTilesChange;
   final void Function(String kind, String id) onOpen;
 
   /// Wraps the grip so the page can start a reorder from it.
@@ -261,18 +265,54 @@ class _AtlasCardState extends State<AtlasCard> {
         pollUnlessMissing,
       );
     }
-    // Only a repeater or room server on a polling server is asked; others read none.
+    // Only a repeater or room server on a polling server is asked; others read
+    // none. The tab shows when Beacon has readings for it or is polling it.
     final polled = isPolledNodeType(textOf(node?['nodeTypeName']));
-    _use<Json?>(
-      'readings',
+    _use<Json>(
+      'tab',
       polled && nodeId != null ? nodeId : null,
-      active && widget.view == AtlasView.analytics,
-      () async => (await api.features()).polling
-          ? await read('/nodes/$nodeId/telemetry', {
-              'range': '24h',
-              'interval': '1h',
-            })
-          : null,
+      active,
+      () async {
+        if (!(await api.features()).polling) return {'tab': false};
+        Future<Json?> soft(Future<Json> call) =>
+            call.then<Json?>((v) => v).catchError((Object _) => null);
+        final (readings, poller) = await (
+          soft(
+            read('/nodes/$nodeId/telemetry', {
+              'range': '720h',
+              'interval': '24h',
+            }),
+          ),
+          soft(read('/nodes/$nodeId/polling')),
+        ).wait;
+        return {
+          'tab': hasTelemetryTab(
+            typeName: 'repeater',
+            polling: true,
+            readings: readings,
+            poller: poller,
+          ),
+          'polling': poller ?? <String, dynamic>{},
+        };
+      },
+      pollUnlessMissing,
+    );
+    // The readings load only while the Telemetry view is open or pinned.
+    final tab = _queries['tab']?.data as Json?;
+    _use<Json>(
+      'telemetry',
+      polled && nodeId != null ? '$nodeId/${widget.range.id}' : null,
+      active && widget.view == AtlasView.telemetry && tab?['tab'] != false,
+      () async {
+        final ask = telemetryRequest(
+          widget.range,
+          (await api.features()).atlasTelemetry,
+        );
+        return read('/nodes/$nodeId/telemetry', {
+          'range': ask.range,
+          'interval': ask.interval,
+        });
+      },
       pollUnlessMissing,
     );
     final observerKey = pin.isNode ? null : _text(observer?['publicKey']);
@@ -328,13 +368,23 @@ class _AtlasCardState extends State<AtlasCard> {
       widget.now,
     );
     final id = observerId;
-    final view = widget.view;
+    final tabState = _queries['tab']?.data as Json?;
+    final telemetryTab = tabState?['tab'] as bool?;
+    // A pinned Telemetry view waits for the check; if it fails the card falls back.
+    final showTelemetry =
+        pin.isNode &&
+        (telemetryTab == true ||
+            (telemetryTab == null && widget.view == AtlasView.telemetry));
+    final view = widget.view == AtlasView.telemetry && !showTelemetry
+        ? AtlasView.analytics
+        : widget.view;
     final views = !pin.isNode
         ? const [AtlasView.observer]
         : [
             AtlasView.analytics,
             AtlasView.heard,
             if (id != null) AtlasView.observer,
+            if (showTelemetry) AtlasView.telemetry,
           ];
     final home = pin.homeView;
     final status = observer == null
@@ -464,11 +514,12 @@ class _AtlasCardState extends State<AtlasCard> {
             onChanged: _changeView,
             options: {
               for (final option in views)
-                option: at(switch (option) {
-                  AtlasView.analytics => 'viewAnalytics',
-                  AtlasView.heard => 'viewHeard',
-                  AtlasView.observer => 'viewObserver',
-                }),
+                option: switch (option) {
+                  AtlasView.analytics => at('viewAnalytics'),
+                  AtlasView.heard => at('viewHeard'),
+                  AtlasView.observer => at('viewObserver'),
+                  AtlasView.telemetry => trKey('atlasTelemetry.tab'),
+                },
             },
           ),
         ),
@@ -496,9 +547,6 @@ class _AtlasCardState extends State<AtlasCard> {
         args: {'count': number(node['knownNeighborCount'])?.toInt() ?? 0},
       );
       final unsupported = isNotFound(activity?.error);
-      final readings = readingsLine(
-        rows((_queries['readings']?.data as Json?)?['points']),
-      );
       final window = sample.partial
           ? at('observerPartialCoverage')
           : at('ranges.${widget.range.id}');
@@ -553,15 +601,6 @@ class _AtlasCardState extends State<AtlasCard> {
                 presence: sample.present,
               ),
             ]),
-            if (readings != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                readings,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: atlasMono(11, BeaconColors.of(context).muted),
-              ),
-            ],
             const SizedBox(height: 12),
             _Footer(
               left: lastSeen > 0
@@ -881,6 +920,123 @@ class _AtlasCardState extends State<AtlasCard> {
                 if (unsupported) at('observerUnsupported'),
                 at('observerHelp'),
               ],
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (view == AtlasView.telemetry && node != null) {
+      final feed = _queries['telemetry'];
+      final sample = summarizeTelemetry(
+        feed?.data as Json?,
+        widget.range,
+        widget.now,
+      );
+      final tiles = pin.telemetryTiles ?? defaultTelemetryTiles;
+      final free = {
+        for (final tile in telemetryTileIds)
+          if (!tiles.contains(tile) &&
+              (tile != 'temperature' || sample.hasTemperature))
+            tile: trKey('atlasTelemetry.$tile'),
+      };
+      String rate(double v) =>
+          '${v < 10 ? v.toStringAsFixed(1) : formatCount(v.roundToDouble())}/h';
+      Widget telemetryTile(String tile, int slot) {
+        final hourly = sample.hourly[tile]!;
+        String? value, sub;
+        var gaps = true, peak = false;
+        switch (tile) {
+          case 'battery':
+            if (sample.battery != null) value = formatBattery(sample.battery!);
+          case 'noise':
+            if (sample.noise != null) value = '${sample.noise!.round()} dBm';
+          case 'uptime':
+            gaps = false;
+            if (sample.uptime != null) value = formatUptime(sample.uptime!);
+          case 'airtime':
+            if (sample.airtime != null) {
+              value = percent(sample.airtime!);
+              sub =
+                  'TX ${percent(sample.airtimeTx!)} · RX ${percent(sample.airtimeRx!)}';
+            }
+          case 'temperature':
+            if (sample.temperature != null) {
+              value = '${sample.temperature!.toStringAsFixed(1)} °C';
+            }
+          case 'packets':
+            gaps = false;
+            peak = true;
+            if (sample.received != null) {
+              value = 'RX ${rate(sample.received!)}';
+              if (sample.sent != null) sub = 'TX ${rate(sample.sent!)}';
+            }
+          case 'signal':
+            if (sample.snr != null) {
+              value = average(sample.snr, 'dB');
+              if (sample.rssi != null) sub = '${sample.rssi!.round()} dBm';
+            }
+          default:
+            gaps = false;
+            peak = true;
+            if (sample.errors != null) value = rate(sample.errors!);
+        }
+        return AtlasStatTile(
+          key: ValueKey('telemetry-$tile'),
+          label: TilePicker(
+            label: trKey('atlasTelemetry.$tile'),
+            options: free,
+            onPick: (next) => widget.onTelemetryTilesChange([
+              for (final (i, old) in tiles.indexed) i == slot ? next : old,
+            ]),
+            onReset: pin.telemetryTiles == null
+                ? null
+                : () => widget.onTelemetryTilesChange(defaultTelemetryTiles),
+          ),
+          value: value ?? _dash,
+          accent: series[_slotAccent[slot]],
+          spark: value == null ? null : hourly,
+          markPeak: peak,
+          interpolateGaps: gaps,
+          dots: useDots(hourly),
+          sublabel: value == null ? trKey('atlasTelemetry.noReadings') : sub,
+        );
+      }
+
+      final polling = object(tabState?['polling']);
+      final pollerName = textOf(
+        object(polling['poller'])['name'],
+        tr('Unknown'),
+      );
+      final latestAt =
+          number(polling['latestReadingAt'])?.toInt() ?? sample.latestAt;
+      final line = [
+        if (polling.isNotEmpty)
+          polling['poller'] is Map
+              ? trKey('atlasTelemetry.polledBy')
+                    .replaceAll('{{name}}', pollerName)
+              : trKey('atlasTelemetry.notPolled'),
+        if (latestAt != null)
+          trKey('atlasTelemetry.lastReading')
+              .replaceAll('{{age}}', ago(latestAt, widget.now)),
+      ].join(' · ');
+      body.add(
+        Column(
+          key: _body,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _TileGrid([
+              for (var slot = 0; slot < _telemetryTileCount; slot++)
+                telemetryTile(tiles[slot], slot),
+            ]),
+            const SizedBox(height: 12),
+            _Footer(
+              left: line.isEmpty ? null : line,
+              right: '',
+              loading: feed?.loading ?? false,
+              failed: feed?.error != null && !isNotFound(feed?.error),
+              tip: [?line.isEmpty ? null : line, trKey('atlasTelemetry.help')],
             ),
           ],
         ),

@@ -496,10 +496,13 @@ class SparklinePainter extends CustomPainter {
     this.color, {
     this.markPeak = false,
     this.interpolateGaps = false,
+    this.dots = false,
   });
   final List<double?> values;
   final Color color;
-  final bool markPeak, interpolateGaps;
+
+  /// [dots]: one dot per reading and no line, for a series too short to trace.
+  final bool markPeak, interpolateGaps, dots;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -532,6 +535,12 @@ class SparklinePainter extends CustomPainter {
         runs.last.add(Offset(x(i), y(v)));
         samples.add((i, v));
       }
+    }
+    if (dots) {
+      canvas.drawPoints(PointMode.points, [
+        for (final run in runs) ...run,
+      ], stroke(4));
+      return;
     }
     final line = stroke(1.5)..strokeCap = StrokeCap.butt;
     for (final run in runs) {
@@ -571,6 +580,7 @@ class SparklinePainter extends CustomPainter {
       old.color != color ||
       old.markPeak != markPeak ||
       old.interpolateGaps != interpolateGaps ||
+      old.dots != dots ||
       !_same(old.values, values);
 }
 
@@ -709,13 +719,14 @@ class AtlasStatTile extends StatelessWidget {
     this.presence,
     this.sublabel,
     this.interpolateGaps = false,
+    this.dots = false,
     this.visual,
   });
   final Widget label;
   final String value;
   final Color accent;
   final List<double?>? spark;
-  final bool markPeak, interpolateGaps;
+  final bool markPeak, interpolateGaps, dots;
   final List<bool>? presence;
   final String? sublabel;
 
@@ -751,6 +762,7 @@ class AtlasStatTile extends StatelessWidget {
                     accent,
                     markPeak: markPeak,
                     interpolateGaps: interpolateGaps,
+                    dots: dots,
                   ),
                 )
               : null,

@@ -1550,6 +1550,22 @@
       "noReply": "{{name}} is asking, but the repeater is not answering.",
       "notClaimed": "Assigned to {{name}}. Waiting for it to pick this up.",
       "passwordProblem": "{{name}} reported a password problem. Checking."
+    },
+    "atlasTelemetry": {
+      "tab": "Telemetry",
+      "battery": "Battery",
+      "noise": "Noise floor",
+      "uptime": "Uptime",
+      "airtime": "Airtime",
+      "temperature": "Temperature",
+      "packets": "Packets",
+      "signal": "Signal",
+      "errors": "Receive errors",
+      "noReadings": "No readings in this window",
+      "polledBy": "Polled by {{name}}",
+      "notPolled": "Not being polled right now",
+      "lastReading": "last reading {{age}}",
+      "help": "Readings Beacon took from this repeater over the selected window. Dots mean there are only a few readings. Dashed lines connect missing hours and are not measurements. Airtime, packets and receive errors are rates over the time their counters cover."
     }
   }
 }

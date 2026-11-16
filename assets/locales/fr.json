@@ -1599,6 +1599,22 @@
       "noReply": "{{name}} interroge, mais le répéteur ne répond pas.",
       "notClaimed": "Attribué à {{name}}. En attente qu'il le prenne en charge.",
       "passwordProblem": "{{name}} a signalé un problème de mot de passe. Vérification en cours."
+    },
+    "atlasTelemetry": {
+      "tab": "Télémétrie",
+      "battery": "Batterie",
+      "noise": "Plancher de bruit",
+      "uptime": "Disponibilité",
+      "airtime": "Temps radio",
+      "temperature": "Température",
+      "packets": "Paquets",
+      "signal": "Signal",
+      "errors": "Erreurs de réception",
+      "noReadings": "Aucune mesure dans cette période",
+      "polledBy": "Interrogé par {{name}}",
+      "notPolled": "Pas interrogé en ce moment",
+      "lastReading": "dernière mesure {{age}}",
+      "help": "Les mesures que Beacon a relevées sur ce répéteur pendant la période choisie. Des points signifient qu’il y a peu de mesures. Les lignes pointillées relient les heures manquantes et ne sont pas des mesures. Le temps radio, les paquets et les erreurs de réception sont des taux sur la durée que couvrent leurs compteurs."
     }
   }
 }

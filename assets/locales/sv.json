@@ -1550,6 +1550,22 @@
       "noReply": "{{name}} frågar, men repeatern svarar inte.",
       "notClaimed": "Tilldelad {{name}}. Väntar på att den ska ta över.",
       "passwordProblem": "{{name}} rapporterade ett lösenordsproblem. Kontrollerar."
+    },
+    "atlasTelemetry": {
+      "tab": "Telemetri",
+      "battery": "Batteri",
+      "noise": "Brusgolv",
+      "uptime": "Drifttid",
+      "airtime": "Sändningstid",
+      "temperature": "Temperatur",
+      "packets": "Paket",
+      "signal": "Signal",
+      "errors": "Mottagningsfel",
+      "noReadings": "Inga avläsningar i det här fönstret",
+      "polledBy": "Avläses av {{name}}",
+      "notPolled": "Läses inte just nu",
+      "lastReading": "senaste avläsning {{age}}",
+      "help": "Avläsningar som Beacon har gjort på den här repeatern under det valda fönstret. Punkter betyder att det bara finns några få avläsningar. Streckade linjer binder ihop saknade timmar och är inte mätningar. Sändningstid, paket och mottagningsfel är takter över den tid deras räknare täcker."
     }
   }
 }

@@ -9,6 +9,7 @@ class ServerFeatures {
     required this.telemetryRequests,
     required this.alerts,
     this.registration = false,
+    this.atlasTelemetry = false,
     this.alertDelivery,
     this.portalUrl,
   });
@@ -18,6 +19,7 @@ class ServerFeatures {
       telemetryRequests = false,
       alerts = false,
       registration = false,
+      atlasTelemetry = false,
       alertDelivery = null,
       portalUrl = null;
 
@@ -29,6 +31,7 @@ class ServerFeatures {
       telemetryRequests: f['telemetryRequests'] == true,
       alerts: f['alerts'] == true,
       registration: f['registration'] == true,
+      atlasTelemetry: f['atlasTelemetry'] == true,
       alertDelivery:
           f['alertDelivery'] == 'push' || f['alertDelivery'] == 'email'
           ? f['alertDelivery'] as String
@@ -44,6 +47,10 @@ class ServerFeatures {
   final bool telemetryRequests;
   final bool alerts;
   final bool registration;
+
+  /// The account Atlas stores Telemetry tiles and a pinned Telemetry view, and
+  /// the readings route takes range=72h.
+  final bool atlasTelemetry;
 
   /// "push" or "email" when alerts are on.
   final String? alertDelivery;

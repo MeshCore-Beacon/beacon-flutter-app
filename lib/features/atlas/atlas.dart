@@ -17,7 +17,7 @@ enum AtlasRange {
   final String duration;
 }
 
-enum AtlasView { analytics, heard, observer }
+enum AtlasView { analytics, heard, observer, telemetry }
 
 /// The metrics an Observer view tile can show. A pin stores its four only when
 /// they differ from the default.
@@ -35,6 +35,19 @@ const observerTiles = [
 ];
 const defaultTiles = ['airtime', 'battery', 'types', 'noise'];
 
+/// The metrics a Telemetry view tile can show; same storage rule as the Observer tiles.
+const telemetryTileIds = [
+  'battery',
+  'noise',
+  'uptime',
+  'airtime',
+  'temperature',
+  'packets',
+  'signal',
+  'errors',
+];
+const defaultTelemetryTiles = ['battery', 'noise', 'uptime', 'airtime'];
+
 final _uuid = RegExp(
   r'^[\da-f]{8}(-[\da-f]{4}){3}-[\da-f]{12}$',
   caseSensitive: false,
@@ -49,6 +62,7 @@ class AtlasPin {
     required this.name,
     this.observerId,
     this.tiles,
+    this.telemetryTiles,
     this.view,
   }) : isNode = true;
   const AtlasPin.observer({
@@ -58,6 +72,7 @@ class AtlasPin {
   }) : isNode = false,
        id = null,
        publicKey = null,
+       telemetryTiles = null,
        view = null;
 
   final bool isNode;
@@ -66,6 +81,9 @@ class AtlasPin {
 
   /// Four tile ids in slot order; null for the default layout.
   final List<String>? tiles;
+
+  /// The Telemetry view's four tiles; null for the default layout.
+  final List<String>? telemetryTiles;
 
   /// The tab a node card opens on; null for Analytics.
   final AtlasView? view;
@@ -81,6 +99,7 @@ class AtlasPin {
           'name': name,
           'observerId': ?observerId,
           'tiles': ?tiles,
+          'telemetryTiles': ?telemetryTiles,
           'view': ?view?.name,
         }
       : {
@@ -91,7 +110,7 @@ class AtlasPin {
         };
 
   AtlasPin withTiles(List<String> next) {
-    final kept = _tiles(next);
+    final kept = _tiles(next, observerTiles, defaultTiles);
     return isNode
         ? AtlasPin.node(
             id: id!,
@@ -99,10 +118,21 @@ class AtlasPin {
             name: name,
             observerId: observerId,
             tiles: kept,
+            telemetryTiles: telemetryTiles,
             view: view,
           )
         : AtlasPin.observer(observerId: observerId!, name: name, tiles: kept);
   }
+
+  AtlasPin withTelemetryTiles(List<String> next) => AtlasPin.node(
+    id: id!,
+    publicKey: publicKey!,
+    name: name,
+    observerId: observerId,
+    tiles: tiles,
+    telemetryTiles: _tiles(next, telemetryTileIds, defaultTelemetryTiles),
+    view: view,
+  );
 
   AtlasPin withView(AtlasView next) => AtlasPin.node(
     id: id!,
@@ -110,6 +140,7 @@ class AtlasPin {
     name: name,
     observerId: observerId,
     tiles: tiles,
+    telemetryTiles: telemetryTiles,
     view: next == AtlasView.analytics ? null : next,
   );
 
@@ -120,6 +151,7 @@ class AtlasPin {
     name: name,
     observerId: observer,
     tiles: tiles,
+    telemetryTiles: telemetryTiles,
     view: view,
   );
 
@@ -153,12 +185,12 @@ class SavedAtlas {
 }
 
 /// Four distinct known ids in slot order; null for anything else and for the default layout.
-List<String>? _tiles(dynamic raw) {
-  if (raw is! List || raw.length != defaultTiles.length) return null;
+List<String>? _tiles(dynamic raw, List<String> known, List<String> fallback) {
+  if (raw is! List || raw.length != fallback.length) return null;
   if (raw.toSet().length != raw.length) return null;
-  if (!raw.every(observerTiles.contains)) return null;
+  if (!raw.every(known.contains)) return null;
   for (var i = 0; i < raw.length; i++) {
-    if (raw[i] != defaultTiles[i]) return List<String>.from(raw);
+    if (raw[i] != fallback[i]) return List<String>.from(raw);
   }
   return null;
 }
@@ -169,7 +201,7 @@ AtlasPin? _pin(dynamic raw) {
   final name = rawName is String
       ? (rawName.length > 160 ? rawName.substring(0, 160) : rawName)
       : '';
-  final tiles = _tiles(raw['tiles']);
+  final tiles = _tiles(raw['tiles'], observerTiles, defaultTiles);
   final observerId = raw['observerId'];
   if (raw['kind'] == 'observer') {
     return _isUuid(observerId)
@@ -193,9 +225,15 @@ AtlasPin? _pin(dynamic raw) {
     name: name,
     observerId: _isUuid(observerId) ? observerId as String : null,
     tiles: tiles,
+    telemetryTiles: _tiles(
+      raw['telemetryTiles'],
+      telemetryTileIds,
+      defaultTelemetryTiles,
+    ),
     view: switch (raw['view']) {
       'heard' => AtlasView.heard,
       'observer' => AtlasView.observer,
+      'telemetry' => AtlasView.telemetry,
       _ => null,
     },
   );
