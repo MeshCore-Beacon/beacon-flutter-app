@@ -77,6 +77,7 @@ void main() {
     String mode = 'email',
     FakePush? push,
     bool collapsed = false,
+    String unit = 'c',
   }) async {
     tester.view.physicalSize = const Size(600, 6000);
     tester.view.devicePixelRatio = 1;
@@ -102,6 +103,7 @@ void main() {
             'alerts': alerts,
             'alertDelivery': ?(alerts ? mode : null),
           },
+          'display': {'temperatureUnit': unit},
         }),
       ),
     );
@@ -638,7 +640,7 @@ void main() {
       await tap(tester, 'alert-switch-aabb-temperature');
       expect(
         find.text(
-          'The high limit must be at least 2 degrees above the low limit.',
+          'The high limit must be at least 2.0 degrees above the low limit.',
         ),
         findsOneWidget,
       );
@@ -647,6 +649,42 @@ void main() {
       await tap(tester, 'alert-switch-aabb-temperature');
       expect(body(0)['threshold'], 100);
       expect(body(0)['thresholdHigh'], 120);
+    });
+
+    testWidgets('an f instance shows and sends whole degrees F', (
+      tester,
+    ) async {
+      data['targets'] = [
+        target(
+          rules: [
+            rule('temperature', threshold: 100, high: 350, enabled: false),
+          ],
+        ),
+      ];
+      await open(tester, unit: 'f');
+      expect(find.text('Low (°F)'), findsOneWidget);
+      expect(
+        tester
+            .widget<TextField>(k('alert-input-aabb-temperature-low'))
+            .controller!
+            .text,
+        '50',
+      );
+      await type(tester, 'alert-input-aabb-temperature-low', '14');
+      await type(tester, 'alert-input-aabb-temperature-high', '95');
+      await tap(tester, 'alert-switch-aabb-temperature');
+      expect(body(0)['threshold'], -100);
+      expect(body(0)['thresholdHigh'], 350);
+      await type(tester, 'alert-input-aabb-temperature-high', '303');
+      await tap(tester, 'alert-switch-aabb-temperature');
+      expect(
+        find.textContaining('between -58 and 302 degrees F'),
+        findsOneWidget,
+      );
+      await type(tester, 'alert-input-aabb-temperature-high', '17');
+      await tap(tester, 'alert-switch-aabb-temperature');
+      expect(find.textContaining('at least 4 degrees'), findsOneWidget);
+      expect(puts, hasLength(1));
     });
 
     testWidgets('noise_high sends dBm and refuses out of range', (
