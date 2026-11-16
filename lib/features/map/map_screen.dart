@@ -109,8 +109,10 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   @override
   void didUpdateWidget(covariant MapScreen old) {
     super.didUpdateWidget(old);
-    if (old.events != widget.events || old.flowEvents != widget.flowEvents) {
+    if (old.events != widget.events) {
       _listen();
+    } else if (old.flowEvents != widget.flowEvents) {
+      _listenFlow();
     }
     if (old.api != widget.api ||
         jsonEncode(old.region) != jsonEncode(widget.region)) {

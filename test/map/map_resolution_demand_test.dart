@@ -18,7 +18,7 @@ void main() {
     tester,
   ) async {
     SharedPreferences.setMockInitialValues({});
-    final base = StreamController<Json>.broadcast();
+    final base = StreamController<Json>();
     final flow = StreamController<Json>.broadcast();
     final nextRegion = StreamController<Json>.broadcast();
     final api = ApiClient(
