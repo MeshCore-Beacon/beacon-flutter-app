@@ -245,7 +245,8 @@ class ApiClient {
     while (_cache.length > 256 || _cacheBytes > 8 * 1024 * 1024) {
       final evicted = _cache.keys.first;
       _cacheBytes -= _cache.remove(evicted)!.body.length;
-      _cacheTokens.remove(evicted);
+      // Body eviction must not lose the policy owner of a valid shared read.
+      if (!_pending.containsKey(evicted)) _cacheTokens.remove(evicted);
     }
   }
 
@@ -345,6 +346,12 @@ class ApiClient {
     if (!found) {
       invalidateCache(prefix: path);
     } else {
+      // Retire in-flight reads of this list, including first loads without a cached
+      // snapshot. Existing callers may finish; new readers must not join them.
+      final listPath = uri(path).path;
+      bool isListRead(String key) => Uri.parse(key).path == listPath;
+      _cacheTokens.removeWhere((key, _) => isListRead(key));
+      _pending.removeWhere((key, _) => isListRead(key));
       invalidateCache(prefix: '$path/$id');
     }
   }
@@ -390,6 +397,8 @@ class ApiClient {
       );
     }
     try {
+      final cacheKey = _key(path, params);
+      final cacheToken = _cacheTokens[cacheKey];
       final response = await getLimited(
         _client,
         uri(path, params),
@@ -397,11 +406,12 @@ class ApiClient {
       ).timeout(const Duration(seconds: 25));
       if (_closed) throw const ApiException('Connection changed.');
       if ((response.headers['cache-control'] ?? '').toLowerCase().contains(
-        'no-store',
-      )) {
-        final key = _key(path, params);
-        _cacheBytes -= _cache.remove(key)?.body.length ?? 0;
-        _cacheTokens.remove(key);
+            'no-store',
+          ) &&
+          identical(cacheToken, _cacheTokens[cacheKey])) {
+        _cacheBytes -= _cache.remove(cacheKey)?.body.length ?? 0;
+        _cacheTokens.remove(cacheKey);
+        unawaited(_pending.remove(cacheKey));
       }
       if (response.statusCode == 204) return null;
       dynamic body;
