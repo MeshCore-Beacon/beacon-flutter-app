@@ -687,6 +687,55 @@ void main() {
       expect(puts, hasLength(1));
     });
 
+    // 355 tenths is 95.9 F and 412 is 106.2 F: both off the whole-F grid.
+    List<Map<String, dynamic>> offGrid({bool enabled = true}) => [
+      target(
+        rules: [
+          rule('temperature', threshold: 355, high: 412, enabled: enabled),
+        ],
+      ),
+    ];
+
+    testWidgets('an unedited f limit is not re-sent on blur', (tester) async {
+      data['targets'] = offGrid();
+      await open(tester, unit: 'f');
+      await tester.tap(k('alert-input-aabb-temperature-low'));
+      await tester.pump();
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pumpAndSettle();
+      expect(puts, isEmpty);
+    });
+
+    testWidgets('toggling an f limit off and on keeps its exact tenths', (
+      tester,
+    ) async {
+      data['targets'] = offGrid();
+      await open(tester, unit: 'f');
+      putAnswer = (_) {
+        data['targets'] = offGrid(enabled: false);
+        return json(200, rule('x'));
+      };
+      await tap(tester, 'alert-switch-aabb-temperature');
+      expect(body(0)['enabled'], false);
+      putAnswer = null;
+      await tap(tester, 'alert-switch-aabb-temperature');
+      expect(body(1)['enabled'], true);
+      expect(body(1)['threshold'], 355);
+      expect(body(1)['thresholdHigh'], 412);
+    });
+
+    testWidgets('editing only the high f limit keeps the low one exact', (
+      tester,
+    ) async {
+      data['targets'] = offGrid();
+      await open(tester, unit: 'f');
+      await type(tester, 'alert-input-aabb-temperature-high', '100');
+      await submit(tester);
+      expect(puts, hasLength(1));
+      expect(body(0)['threshold'], 355);
+      expect(body(0)['thresholdHigh'], 378);
+    });
+
     testWidgets('noise_high sends dBm and refuses out of range', (
       tester,
     ) async {

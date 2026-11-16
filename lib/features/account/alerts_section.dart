@@ -367,8 +367,8 @@ class _AlertRowState extends State<_AlertRow> with _Action {
           _complain(_tempText('alerts.errors.temperatureNone'));
           return null;
         }
-        final a = l.isEmpty ? null : parseTenths(l, widget.unit);
-        final b = h.isEmpty ? null : parseTenths(h, widget.unit);
+        final a = l.isEmpty ? null : _limitTenths(l, _stored('threshold'));
+        final b = h.isEmpty ? null : _limitTenths(h, _stored('thresholdHigh'));
         if ((l.isNotEmpty && a == null) || (h.isNotEmpty && b == null)) {
           _complain(_tempText('alerts.errors.temperature'));
           return null;
@@ -385,6 +385,15 @@ class _AlertRowState extends State<_AlertRow> with _Action {
         }
         return (low: a, high: b);
     }
+  }
+
+  /// A limit field still showing its stored value keeps the exact tenths; the
+  /// whole-degree text of an f limit would otherwise re-parse off by a tenth.
+  int? _limitTenths(String text, int? stored) {
+    if (stored != null && text == tenthsText(stored, widget.unit)) {
+      return stored;
+    }
+    return parseTenths(text, widget.unit);
   }
 
   /// A temperature message with the instance unit and its limits filled in.
