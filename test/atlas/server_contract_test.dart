@@ -1,8 +1,11 @@
 import 'dart:convert';
 
 import 'package:beacon/core/json.dart';
+import 'package:beacon/features/account/request_text.dart';
 import 'package:beacon/features/atlas/atlas_sync.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../features/account/harness.dart';
 
 final _a = '0f' * 32, _b = '1e' * 32, _c = '2d' * 32;
 
@@ -18,6 +21,8 @@ Json get _doc => object(
 );
 
 void main() {
+  setUp(loadAssets);
+
   test('reads null ids and omitted fields', () {
     final server = parseServerAtlas(_doc)!;
     expect(server.revision, 7);
@@ -51,5 +56,37 @@ void main() {
       if (tiles != null) expect(tiles.toSet(), hasLength(4));
       expect((pin['name'] as String).runes.length, lessThanOrEqualTo(160));
     }
+  });
+
+  // A telemetry request as GET /me/telemetry-requests marshals it: poller
+  // carries state and stateAt on a new server, neither on an old one.
+  Json request(String poller) => object(
+    jsonDecode(
+      '{"id":"r1","status":"active","poller":$poller,"latestReadingAt":null}',
+    ),
+  );
+
+  test('reads the poller state and its time, null or absent', () {
+    final p = object(
+      request(
+        '{"observerId":"o1","name":"HOWL","state":"not_direct","stateAt":1700000000000}',
+      )['poller'],
+    );
+    expect(p['state'], 'not_direct');
+    expect(p['stateAt'], 1700000000000);
+    expect(
+      requestLineText(
+        request(
+          '{"observerId":"o1","name":"HOWL","state":"ok","stateAt":null}',
+        ),
+      ),
+      'Being polled by HOWL',
+    );
+    expect(
+      object(request('{"observerId":"o1","name":"HOWL"}')['poller'])
+          .containsKey('state'),
+      isFalse,
+    );
+    expect(requestLineText(request('null')), isNotEmpty);
   });
 }

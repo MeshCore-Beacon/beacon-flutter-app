@@ -43,6 +43,7 @@ class FakeServer {
   bool bareConflict = false;
   bool offline = false;
   int? staleAfter;
+  bool atlasTelemetry = false;
 
   Map<String, dynamic> get doc => {
     'revision': revision,
@@ -61,6 +62,11 @@ class FakeServer {
     if (offline) throw http.ClientException('down');
     final gate = hold;
     if (gate != null && r.method == 'PUT') await gate.future;
+    if (r.url.path.endsWith('/info')) {
+      return _ok({
+        'features': {'atlasTelemetry': atlasTelemetry},
+      });
+    }
     if (r.method == 'GET') {
       await holdGet?.future;
       return _ok(doc);
@@ -90,7 +96,13 @@ class FakeServer {
     pins = [
       for (final raw in (body['pins'] as List).cast<Map<String, dynamic>>())
         if (raw['kind'] == 'node')
-          {...raw, 'id': nodeId, 'observerId': null}
+          {
+            ...raw,
+            'id': nodeId,
+            'observerId': null,
+            // An older server stores neither, so they never come back.
+            if (!atlasTelemetry) ...{'telemetryTiles': null, 'view': null},
+          }
         else
           {
             'kind': 'observer',
@@ -178,6 +190,50 @@ void main() {
     expect(jsonDecode(puts[1].body)['baseRevision'], 5);
     expect(fake.pins.any((p) => p['publicKey'] == keyN(3)), isTrue);
     expect(store.saved.pins.any((p) => p.key == keyN(3)), isTrue);
+  });
+
+  group('Telemetry fields', () {
+    AtlasPin telemetryPin() => AtlasPin.node(
+      id: nodeId,
+      publicKey: key,
+      name: 'Hill',
+      telemetryTiles: const ['noise', 'battery', 'uptime', 'airtime'],
+      view: AtlasView.telemetry,
+    );
+
+    test(
+      'an older server is sent neither and the local copy keeps them',
+      () async {
+        final r = await rig(marked: true);
+        final store = r.store;
+        await store.idle;
+        store.update((v) => v.appended(telemetryPin()));
+        await store.idle;
+        final sent = (jsonDecode(r.fake.puts.last.body)['pins'] as List).single;
+        expect((sent as Map).containsKey('telemetryTiles'), false);
+        expect(sent.containsKey('view'), false);
+        expect(store.saved.pins.single.view, AtlasView.telemetry);
+        expect(store.saved.pins.single.telemetryTiles, [
+          'noise',
+          'battery',
+          'uptime',
+          'airtime',
+        ]);
+        expect(cachedPins(r.prefs).single['view'], 'telemetry');
+      },
+    );
+
+    test('a server with the flag gets both', () async {
+      final fake = FakeServer()..atlasTelemetry = true;
+      final r = await rig(marked: true, fake: fake);
+      final store = r.store;
+      await store.idle;
+      store.update((v) => v.appended(telemetryPin()));
+      await store.idle;
+      final sent = (jsonDecode(fake.puts.last.body)['pins'] as List).single;
+      expect(sent['view'], 'telemetry');
+      expect(sent['telemetryTiles'], ['noise', 'battery', 'uptime', 'airtime']);
+    });
   });
 
   group('signed out', () {

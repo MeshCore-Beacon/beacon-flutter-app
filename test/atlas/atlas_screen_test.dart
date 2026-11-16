@@ -71,7 +71,15 @@ class Server {
   /// Holds the observer lookup, like a slow network.
   Completer<void>? holdObserver;
   bool activity404 = false;
-  bool polling = true;
+  bool polling = true, atlasTelemetry = false;
+
+  /// What /nodes/{id}/polling answers; null is a 404.
+  Map<String, dynamic>? pollingDoc = {
+    'polled': true,
+    'latestReadingAt': tick - 720000,
+    'poller': {'observerId': observerId, 'name': 'Roof'},
+    'standbys': <dynamic>[],
+  };
   List<Map<String, dynamic>> readings = [
     {'t': tick - 7200000, 'batteryMv': 4100, 'temperatureC': 15.2},
     {'t': tick - 3600000, 'batteryMv': 4226},
@@ -99,9 +107,10 @@ class Server {
     }
     if (path == '/info') {
       return {
-        'features': {'polling': polling},
+        'features': {'polling': polling, 'atlasTelemetry': atlasTelemetry},
       };
     }
+    if (path == '/nodes/$nodeId/polling') return pollingDoc;
     if (path == '/nodes/$nodeId/telemetry') {
       return {'polled': readings.isNotEmpty, 'points': readings};
     }
@@ -348,58 +357,200 @@ void main() {
     await close(tester);
   });
 
-  group('repeater readings line', () {
-    bool telemetryAsked() =>
-        fake.requests.any((url) => url.path.endsWith('/telemetry'));
+  group('Telemetry tab', () {
+    bool tabShown() => find.text('Telemetry').evaluate().isNotEmpty;
+    Iterable<Uri> asked(String range) => fake.requests.where(
+      (url) =>
+          url.path == '/api/v1/nodes/$nodeId/telemetry' &&
+          url.queryParameters['range'] == range,
+    );
 
-    testWidgets('shows the newest battery and temperature', (tester) async {
+    testWidgets('appears for a polled repeater with readings', (tester) async {
       final prefs = await pump(tester, pins: [nodePin()]);
-      expect(find.text('4.23 V · 16.5 °C'), findsOneWidget);
-      final asked = fake.requests.where(
-        (url) => url.path == '/api/v1/nodes/$nodeId/telemetry',
-      );
-      expect(asked.single.queryParameters['range'], '24h');
+      expect(tabShown(), true);
+      // The old readings line is gone.
+      expect(find.text('4.23 V · 16.5 °C'), findsNothing);
+      // Nothing is read for the tiles until the tab is open.
+      expect(asked('24h'), isEmpty);
       expect(prefs.atlasFor(server), stored([nodePin()]));
       await close(tester);
     });
 
-    testWidgets('shows battery alone when there is no temperature', (
+    testWidgets('appears when the node is polled but has no readings', (
       tester,
     ) async {
-      fake.readings = [
-        {'t': tick, 'batteryMv': 3900},
-      ];
-      await pump(tester, pins: [nodePin()]);
-      expect(find.text('3.90 V'), findsOneWidget);
-      await close(tester);
-    });
-
-    testWidgets('shows nothing without readings', (tester) async {
       fake.readings = [];
       await pump(tester, pins: [nodePin()]);
-      expect(find.textContaining(' V'), findsNothing);
+      expect(tabShown(), true);
       await close(tester);
     });
 
-    testWidgets('shows nothing for a non-repeater', (tester) async {
+    testWidgets('is missing with no readings and no poller', (tester) async {
+      fake.readings = [];
+      fake.pollingDoc = null;
+      await pump(tester, pins: [nodePin()]);
+      expect(tabShown(), false);
+      await close(tester);
+    });
+
+    testWidgets('is missing for a non-repeater', (tester) async {
       await pump(
         tester,
         pins: [
           nodePin({'id': otherId, 'publicKey': otherKey}),
         ],
       );
-      expect(telemetryAsked(), false);
-      expect(find.textContaining(' V'), findsNothing);
+      expect(tabShown(), false);
+      expect(
+        fake.requests.any((url) => url.path.endsWith('/telemetry')),
+        false,
+      );
       await close(tester);
     });
 
-    testWidgets('shows nothing and asks nothing with polling off', (
-      tester,
-    ) async {
+    testWidgets('is missing and asks nothing with polling off', (tester) async {
       fake.polling = false;
       await pump(tester, pins: [nodePin()]);
-      expect(telemetryAsked(), false);
-      expect(find.textContaining(' V'), findsNothing);
+      expect(tabShown(), false);
+      expect(
+        fake.requests.any((url) => url.path.endsWith('/telemetry')),
+        false,
+      );
+      await close(tester);
+    });
+
+    testWidgets('shows tile values, a dash for no data and the poller line', (
+      tester,
+    ) async {
+      await pump(tester, pins: [nodePin()]);
+      await tester.tap(find.text('Telemetry'));
+      await tester.pumpAndSettle();
+      expect(asked('24h').single.queryParameters['interval'], '1h');
+      expect(find.text('BATTERY'), findsOneWidget);
+      expect(find.text('4.23V'), findsOneWidget);
+      expect(find.text('NOISE FLOOR'), findsOneWidget);
+      // Readings exist but no counter pair: the counter tile says so.
+      expect(find.text('No readings in this window'), findsNWidgets(2));
+      expect(find.text('Needs two status readings'), findsOneWidget);
+      expect(find.text('Polled by Roof'), findsOneWidget);
+      expect(find.text('Last reading 12m ago'), findsOneWidget);
+      await close(tester);
+    });
+
+    for (final width in [390.0, 320.0]) {
+      testWidgets('a long poller name wraps and never cuts the age ($width)', (
+        tester,
+      ) async {
+        fake.pollingDoc = {
+          'polled': true,
+          'latestReadingAt': tick - 49 * 60000,
+          'poller': {'observerId': observerId, 'name': 'MrAlders0n_G3_R1'},
+          'standbys': <dynamic>[],
+        };
+        await pump(tester, pins: [nodePin()], size: Size(width, 844));
+        await tester.tap(find.text('Telemetry'));
+        await tester.pumpAndSettle();
+        final poll = find.text('Polled by MrAlders0n_G3_R1');
+        final last = find.text('Last reading 49m ago');
+        expect(poll, findsOneWidget);
+        expect(last, findsOneWidget);
+        expect(
+          tester.getTopLeft(last).dy,
+          greaterThan(tester.getBottomLeft(poll).dy - 1),
+        );
+        expect(tester.takeException(), isNull);
+        await close(tester);
+      });
+    }
+
+    testWidgets('says when nobody is polling', (tester) async {
+      fake.pollingDoc = {
+        'polled': true,
+        'latestReadingAt': tick - 3 * 86400000,
+        'poller': null,
+        'standbys': <dynamic>[],
+      };
+      await pump(tester, pins: [nodePin()]);
+      await tester.tap(find.text('Telemetry'));
+      await tester.pumpAndSettle();
+      expect(find.text('Not being polled right now'), findsOneWidget);
+      expect(find.text('Last reading 3d ago'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('a pinned card opens on it and follows the range', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        pins: [
+          nodePin({'view': 'telemetry'}),
+        ],
+      );
+      expect(find.text('BATTERY'), findsOneWidget);
+      expect(asked('24h'), hasLength(1));
+      await tester.tap(find.text('3d'));
+      await tester.pumpAndSettle();
+      // This server has no 72h range: a week, trimmed to the window.
+      expect(asked('168h').last.queryParameters['interval'], '6h');
+      expect(asked('72h'), isEmpty);
+      await close(tester);
+    });
+
+    testWidgets('asks for 72h when the server offers it', (tester) async {
+      fake.atlasTelemetry = true;
+      await pump(
+        tester,
+        pins: [
+          nodePin({'view': 'telemetry'}),
+        ],
+      );
+      await tester.tap(find.text('3d'));
+      await tester.pumpAndSettle();
+      expect(asked('72h').last.queryParameters['interval'], '1h');
+      expect(asked('168h'), isEmpty);
+      await close(tester);
+    });
+
+    testWidgets('swaps a tile, stores it only when it differs', (tester) async {
+      final prefs = await pump(
+        tester,
+        pins: [
+          nodePin({'view': 'telemetry'}),
+        ],
+      );
+      await tester.tap(find.text('NOISE FLOOR'));
+      await tester.pumpAndSettle();
+      expect(find.text('Reset tiles'), findsNothing);
+      // The fixture has a temperature, so it is offered.
+      expect(find.text('Temperature'), findsOneWidget);
+      await tester.tap(find.text('Packets'));
+      await tester.pumpAndSettle();
+      expect(savedPins(prefs).single['telemetryTiles'], [
+        'battery',
+        'packets',
+        'uptime',
+        'airtime',
+      ]);
+      await tester.tap(find.text('PACKETS'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Reset tiles'));
+      await tester.pumpAndSettle();
+      expect(
+        (savedPins(prefs).single as Map).containsKey('telemetryTiles'),
+        false,
+      );
+      expect(find.text('NOISE FLOOR'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('pins the view', (tester) async {
+      final prefs = await pump(tester, pins: [nodePin()]);
+      await tester.tap(find.text('Telemetry'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.bySemanticsLabel('Open on this tab'));
+      await tester.pumpAndSettle();
+      expect(savedPins(prefs).single['view'], 'telemetry');
       await close(tester);
     });
   });

@@ -262,7 +262,20 @@ class _TelemetryRequestBlockState extends State<TelemetryRequestBlock> {
     final request = mine;
     if (request != null) {
       return [
-        Text(requestStatusText(textOf(request['status']))),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 6, right: 8),
+              child: Icon(
+                Icons.circle,
+                size: 9,
+                color: requestDotColor(request, BeaconColors.of(context)),
+              ),
+            ),
+            Expanded(child: Text(requestLineText(request))),
+          ],
+        ),
         const SizedBox(height: 8),
         Align(
           alignment: Alignment.centerLeft,

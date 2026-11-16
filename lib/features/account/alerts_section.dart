@@ -168,15 +168,57 @@ class _AlertTarget extends StatelessWidget {
       (r) => r['kind'] == 'gone_quiet' && r['enabled'] == true,
     );
     final key = textOf(target['publicKey']);
+    final enabled = rules.where((r) => r['enabled'] == true).toList();
+    final firing = [
+      for (final r in enabled)
+        if (r['state'] == 'firing') textOf(r['kind']),
+    ];
+    final colors = BeaconColors.of(context);
+    final small = TextStyle(fontSize: 12, color: colors.muted);
+    final lead = firing.isEmpty
+        ? null
+        : firing.length == 1
+        ? trKey(
+            'alerts.summaryFiring',
+            count: 1,
+          ).replaceAll('{{name}}', trKey('alerts.kind.${firing.first}'))
+        : trKey('alerts.summaryFiring', count: firing.length);
+    final tail = enabled.isEmpty
+        ? trKey('alerts.summaryNone')
+        : trKey('alerts.summaryOnCount', count: enabled.length);
     return Padding(
-      padding: const EdgeInsets.only(top: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            textOf(target['name'], shortKey(key)),
-            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+      padding: const EdgeInsets.only(top: 8),
+      // Kept built while collapsed, so an unsaved threshold survives.
+      child: ExpansionTile(
+        key: ValueKey('alert-tile-$key'),
+        tilePadding: EdgeInsets.zero,
+        minTileHeight: 56,
+        maintainState: true,
+        childrenPadding: EdgeInsets.zero,
+        expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
+        title: Text(
+          textOf(target['name'], shortKey(key)),
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+        ),
+        subtitle: Text.rich(
+          TextSpan(
+            style: small,
+            children: [
+              if (lead != null)
+                TextSpan(
+                  text: lead,
+                  style: TextStyle(
+                    color: colors.danger,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              if (lead != null && enabled.isNotEmpty)
+                const TextSpan(text: ' \u00b7 '),
+              if (lead == null || enabled.isNotEmpty) TextSpan(text: tail),
+            ],
           ),
+        ),
+        children: [
           const Divider(height: 12),
           for (final spec in alertKinds)
             if (available.contains(spec.kind) ||
