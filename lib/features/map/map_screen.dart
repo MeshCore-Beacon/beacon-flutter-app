@@ -1241,7 +1241,8 @@ class _NativeMapState extends State<NativeMap> {
         ],
         enableInteraction: false,
       );
-      // Latest battery and temperature, dimmed when the reading is old.
+      // Latest battery and temperature, dimmed when the reading is old. Below
+      // the names so they place first and this line yields when crowded.
       await c.addSymbolLayer(
         'beacon-nodes',
         'beacon-telemetry',
@@ -1252,7 +1253,8 @@ class _NativeMapState extends State<NativeMap> {
           textColor: '#fafafa',
           textHaloColor: '#09090b',
           textHaloWidth: 1.5,
-          textOffset: [0, 2.5],
+          textOffset: [0, 3.2],
+          textPadding: 0,
           textAnchor: 'top',
           textOpacity: [
             'case',
@@ -1265,6 +1267,7 @@ class _NativeMapState extends State<NativeMap> {
             1,
           ],
         ),
+        belowLayerId: 'beacon-labels',
         minzoom: 8,
         filter: [
           'all',
