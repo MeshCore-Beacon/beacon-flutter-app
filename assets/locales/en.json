@@ -1278,7 +1278,7 @@
       "range30d": "30 days",
       "battery": "Battery (V)",
       "batterySeries": "Battery",
-      "temperature": "Temperature (°C)",
+      "temperature": "Temperature ({{unit}})",
       "temperatureSeries": "Temperature",
       "noiseFloor": "Noise floor (dBm)",
       "noiseFloorSeries": "Noise floor",
@@ -1440,8 +1440,8 @@
         "dbm": "dBm",
         "drift": "Drift",
         "minutes": "No report for",
-        "low": "Low (°C)",
-        "high": "High (°C)"
+        "low": "Low ({{symbol}})",
+        "high": "High ({{symbol}})"
       },
       "drift": {
         "300": "5 minutes",
@@ -1462,11 +1462,12 @@
         "volts": "Enter a value between 2.50 and 5.00 volts.",
         "dbm": "Enter a whole number between -130 and -50 dBm.",
         "temperatureNone": "Enter a low or a high limit.",
-        "temperature": "Enter a temperature in degrees C, such as 4.5.",
+        "temperature": "Enter a temperature in degrees {{unit}}, such as {{example}}.",
+        "temperatureWhole": "Enter a whole number of degrees {{unit}}, such as {{example}}.",
         "not_found": "That alert no longer exists.",
         "app_session_required": "Only the Beacon app can register a phone for alerts.",
-        "temperatureRange": "Enter limits between -50 and 150 degrees C.",
-        "temperatureWidth": "The high limit must be at least 2 degrees above the low limit."
+        "temperatureRange": "Enter limits between {{min}} and {{max}} degrees {{unit}}.",
+        "temperatureWidth": "The high limit must be at least {{width}} degrees above the low limit."
       },
       "when": {
         "gone_quiet": "When the radio has not been heard for this long.",

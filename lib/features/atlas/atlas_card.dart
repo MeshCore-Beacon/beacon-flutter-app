@@ -6,6 +6,7 @@ import '../../core/api.dart';
 import '../../core/json.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
+import '../../core/units.dart';
 import '../analytics/charts.dart';
 import '../directory/node_telemetry.dart';
 import 'atlas.dart';
@@ -151,6 +152,7 @@ class _AtlasCardState extends State<AtlasCard> {
   final _keys = <String, String>{};
   final _body = GlobalKey();
   double? _held;
+  String _tempUnit = 'c';
 
   AtlasPin get pin => widget.pin;
   Json? get node => _queries['node']?.data as Json?;
@@ -166,6 +168,9 @@ class _AtlasCardState extends State<AtlasCard> {
   @override
   void initState() {
     super.initState();
+    widget.api.features().then((f) {
+      if (mounted) setState(() => _tempUnit = f.temperatureUnit);
+    });
     _sync();
   }
 
@@ -966,7 +971,7 @@ class _AtlasCardState extends State<AtlasCard> {
                   'TX ${percent(sample.airtimeTx!)} · RX ${percent(sample.airtimeRx!)}';
             }
           case 'temperature':
-            if (latest != null) value = '${latest.toStringAsFixed(1)} °C';
+            if (latest != null) value = formatTemp(latest, _tempUnit);
           case 'packets':
             peak = counter = true;
             if (latest != null) {

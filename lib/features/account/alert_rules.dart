@@ -1,6 +1,7 @@
 import '../../core/api.dart';
 import '../../core/json.dart';
 import '../../core/strings.dart';
+import '../../core/units.dart';
 import 'account_errors.dart';
 
 /// How a kind's threshold is entered.
@@ -71,12 +72,22 @@ int? parseDbm(String text) {
   return v >= -130 && v <= -50 ? v.round() : null;
 }
 
-/// Degrees C as typed to tenths of a degree; null when not a number. An empty
-/// text is a side left open and is the caller's to handle.
-int? parseTenths(String text) {
+/// Degrees in [unit] as typed to tenths of a degree C; null when not a number
+/// or a fraction of a degree F (those do not survive the round trip).
+int? parseTenths(String text, [String unit = 'c']) {
   final v = _parse(text);
-  return v == null ? null : (v * 10).round();
+  if (v == null) return null;
+  if (unit != 'f') return (v * 10).round();
+  if (v != v.roundToDouble()) return null;
+  return (fromDisplayTemp(v, 'f') * 10).round();
 }
+
+/// The limits and the least gap between them, as the user reads them in [unit].
+/// The F gap is 4 because 3 F is under the 2.0 C the server takes.
+({String min, String max, String width}) tempLimitText(String unit) =>
+    unit == 'f'
+    ? (min: '-58', max: '302', width: '4')
+    : (min: '-50', max: '150', width: '2.0');
 
 /// Whether tenths of a degree are inside what the server takes, -50 to 150 C.
 bool tenthsInRange(int tenths) => tenths >= -500 && tenths <= 1500;
@@ -88,8 +99,14 @@ String minutesLabel(int minutes) => minutes % 60 == 0
 
 String voltsText(int? mv) => ((mv ?? 3500) / 1000).toStringAsFixed(2);
 
-String tenthsText(int? tenths) =>
-    tenths == null ? '' : (tenths / 10).toStringAsFixed(1);
+/// Tenths of a degree C in [unit]: one decimal in C, whole degrees in F.
+String tenthsText(int? tenths, [String unit = 'c']) {
+  if (tenths == null) return '';
+  final celsius = tenths / 10;
+  return unit == 'f'
+      ? toDisplayTemp(celsius, 'f').round().toString()
+      : celsius.toStringAsFixed(1);
+}
 
 /// A rule's state in words; `inactive` and `unknown` mean the server has no
 /// data yet, `ok` and `firing` are the checked states.

@@ -6,10 +6,14 @@ class _Alerts extends StatefulWidget {
   const _Alerts({
     required this.account,
     required this.deliveryHint,
+    required this.unit,
     this.refresh,
   });
   final AccountState account;
   final ValueNotifier<int>? refresh;
+
+  /// The instance's temperature unit, 'c' or 'f'.
+  final String unit;
 
   /// The delivery the server's features announce, used until the list loads.
   final String? deliveryHint;
@@ -85,6 +89,7 @@ class _AlertsState extends State<_Alerts> {
             key: ValueKey('alert-target-${textOf(target['publicKey'])}'),
             target: target,
             account: widget.account,
+            unit: widget.unit,
             changed: load,
           ),
         Padding(
@@ -150,10 +155,12 @@ class _AlertTarget extends StatelessWidget {
     super.key,
     required this.target,
     required this.account,
+    required this.unit,
     required this.changed,
   });
   final Json target;
   final AccountState account;
+  final String unit;
   final Future<void> Function() changed;
 
   @override
@@ -238,6 +245,7 @@ class _AlertTarget extends StatelessWidget {
                       ),
                 goneQuietOn: goneQuiet,
                 account: account,
+                unit: unit,
                 changed: changed,
               ),
         ],
@@ -256,6 +264,7 @@ class _AlertRow extends StatefulWidget {
     required this.reason,
     required this.goneQuietOn,
     required this.account,
+    required this.unit,
     required this.changed,
   });
   final Json target;
@@ -267,6 +276,7 @@ class _AlertRow extends StatefulWidget {
   final String? reason;
   final bool goneQuietOn;
   final AccountState account;
+  final String unit;
   final Future<void> Function() changed;
   @override
   State<_AlertRow> createState() => _AlertRowState();
@@ -302,7 +312,8 @@ class _AlertRowState extends State<_AlertRow> with _Action {
     super.didUpdateWidget(old);
     final a = old.rule, b = widget.rule;
     if (a?['threshold'] != b?['threshold'] ||
-        a?['thresholdHigh'] != b?['thresholdHigh']) {
+        a?['thresholdHigh'] != b?['thresholdHigh'] ||
+        old.unit != widget.unit) {
       _reset();
     }
   }
@@ -315,8 +326,8 @@ class _AlertRowState extends State<_AlertRow> with _Action {
       AlertInput.dbm => '${threshold ?? defaultThreshold['noise_high']}',
       _ => '',
     };
-    low.text = tenthsText(threshold);
-    high.text = tenthsText(_stored('thresholdHigh'));
+    low.text = tenthsText(threshold, widget.unit);
+    high.text = tenthsText(_stored('thresholdHigh'), widget.unit);
   }
 
   @override
@@ -353,27 +364,63 @@ class _AlertRowState extends State<_AlertRow> with _Action {
       case AlertInput.temperature:
         final l = low.text.trim(), h = high.text.trim();
         if (l.isEmpty && h.isEmpty) {
-          _complain(trKey('alerts.errors.temperatureNone'));
+          _complain(_tempText('alerts.errors.temperatureNone'));
           return null;
         }
-        final a = l.isEmpty ? null : parseTenths(l);
-        final b = h.isEmpty ? null : parseTenths(h);
+        final a = l.isEmpty ? null : _limitTenths(l, _stored('threshold'));
+        final b = h.isEmpty ? null : _limitTenths(h, _stored('thresholdHigh'));
         if ((l.isNotEmpty && a == null) || (h.isNotEmpty && b == null)) {
-          _complain(trKey('alerts.errors.temperature'));
+          // A number that failed in F is a fraction of a degree.
+          final fraction =
+              widget.unit == 'f' &&
+              [(l, a), (h, b)].any(
+                (t) =>
+                    t.$1.isNotEmpty &&
+                    t.$2 == null &&
+                    parseTenths(t.$1) != null,
+              );
+          _complain(
+            _tempText(
+              fraction
+                  ? 'alerts.errors.temperatureWhole'
+                  : 'alerts.errors.temperature',
+            ),
+          );
           return null;
         }
         if ((a != null && !tenthsInRange(a)) ||
             (b != null && !tenthsInRange(b))) {
-          _complain(trKey('alerts.errors.temperatureRange'));
+          _complain(_tempText('alerts.errors.temperatureRange'));
           return null;
         }
         // The server refuses a range under 2.0 degrees (20 tenths).
         if (a != null && b != null && b - a < 20) {
-          _complain(trKey('alerts.errors.temperatureWidth'));
+          _complain(_tempText('alerts.errors.temperatureWidth'));
           return null;
         }
         return (low: a, high: b);
     }
+  }
+
+  /// A limit field still showing its stored value keeps the exact tenths; the
+  /// whole-degree text of an f limit would otherwise re-parse off by a tenth.
+  int? _limitTenths(String text, int? stored) {
+    if (stored != null && text == tenthsText(stored, widget.unit)) {
+      return stored;
+    }
+    return parseTenths(text, widget.unit);
+  }
+
+  /// A temperature message with the instance unit and its limits filled in.
+  String _tempText(String key) {
+    final limits = tempLimitText(widget.unit);
+    final letter = widget.unit == 'f' ? 'F' : 'C';
+    return trKey(key)
+        .replaceAll('{{unit}}', letter)
+        .replaceAll('{{min}}', limits.min)
+        .replaceAll('{{max}}', limits.max)
+        .replaceAll('{{width}}', limits.width)
+        .replaceAll('{{example}}', widget.unit == 'f' ? '95' : '4.5');
   }
 
   Future<void> _send(bool on, int? threshold, int? thresholdHigh) async {
@@ -482,7 +529,7 @@ class _AlertRowState extends State<_AlertRow> with _Action {
               child: _field(
                 '$inputId-low',
                 low,
-                trKey('alerts.input.low'),
+                _tempLabel('alerts.input.low'),
                 decimal: true,
               ),
             ),
@@ -491,7 +538,7 @@ class _AlertRowState extends State<_AlertRow> with _Action {
               child: _field(
                 '$inputId-high',
                 high,
-                trKey('alerts.input.high'),
+                _tempLabel('alerts.input.high'),
                 decimal: true,
               ),
             ),
@@ -499,6 +546,9 @@ class _AlertRowState extends State<_AlertRow> with _Action {
         );
     }
   }
+
+  String _tempLabel(String key) =>
+      trKey(key).replaceAll('{{symbol}}', tempSymbol(widget.unit));
 
   Widget _field(
     String key,
@@ -525,7 +575,7 @@ class _AlertRowState extends State<_AlertRow> with _Action {
             ? 'V'
             : widget.spec.input == AlertInput.dbm
             ? 'dBm'
-            : '\u00b0C',
+            : tempSymbol(widget.unit),
       ),
       onSubmitted: (_) => unawaited(commit()),
     ),

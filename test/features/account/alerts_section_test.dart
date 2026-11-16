@@ -77,6 +77,7 @@ void main() {
     String mode = 'email',
     FakePush? push,
     bool collapsed = false,
+    String unit = 'c',
   }) async {
     tester.view.physicalSize = const Size(600, 6000);
     tester.view.devicePixelRatio = 1;
@@ -102,6 +103,7 @@ void main() {
             'alerts': alerts,
             'alertDelivery': ?(alerts ? mode : null),
           },
+          'display': {'temperatureUnit': unit},
         }),
       ),
     );
@@ -638,7 +640,7 @@ void main() {
       await tap(tester, 'alert-switch-aabb-temperature');
       expect(
         find.text(
-          'The high limit must be at least 2 degrees above the low limit.',
+          'The high limit must be at least 2.0 degrees above the low limit.',
         ),
         findsOneWidget,
       );
@@ -647,6 +649,97 @@ void main() {
       await tap(tester, 'alert-switch-aabb-temperature');
       expect(body(0)['threshold'], 100);
       expect(body(0)['thresholdHigh'], 120);
+    });
+
+    testWidgets('an f instance shows and sends whole degrees F', (
+      tester,
+    ) async {
+      data['targets'] = [
+        target(
+          rules: [
+            rule('temperature', threshold: 100, high: 350, enabled: false),
+          ],
+        ),
+      ];
+      await open(tester, unit: 'f');
+      expect(find.text('Low (°F)'), findsOneWidget);
+      expect(
+        tester
+            .widget<TextField>(k('alert-input-aabb-temperature-low'))
+            .controller!
+            .text,
+        '50',
+      );
+      await type(tester, 'alert-input-aabb-temperature-low', '14');
+      await type(tester, 'alert-input-aabb-temperature-high', '95');
+      await tap(tester, 'alert-switch-aabb-temperature');
+      expect(body(0)['threshold'], -100);
+      expect(body(0)['thresholdHigh'], 350);
+      await type(tester, 'alert-input-aabb-temperature-high', '303');
+      await tap(tester, 'alert-switch-aabb-temperature');
+      expect(
+        find.textContaining('between -58 and 302 degrees F'),
+        findsOneWidget,
+      );
+      await type(tester, 'alert-input-aabb-temperature-high', '17');
+      await tap(tester, 'alert-switch-aabb-temperature');
+      expect(find.textContaining('at least 4 degrees'), findsOneWidget);
+      await type(tester, 'alert-input-aabb-temperature-high', '95.5');
+      await tap(tester, 'alert-switch-aabb-temperature');
+      expect(
+        find.textContaining('whole number of degrees F, such as 95'),
+        findsOneWidget,
+      );
+      expect(puts, hasLength(1));
+    });
+
+    // 355 tenths is 95.9 F and 412 is 106.2 F: both off the whole-F grid.
+    List<Map<String, dynamic>> offGrid({bool enabled = true}) => [
+      target(
+        rules: [
+          rule('temperature', threshold: 355, high: 412, enabled: enabled),
+        ],
+      ),
+    ];
+
+    testWidgets('an unedited f limit is not re-sent on blur', (tester) async {
+      data['targets'] = offGrid();
+      await open(tester, unit: 'f');
+      await tester.tap(k('alert-input-aabb-temperature-low'));
+      await tester.pump();
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pumpAndSettle();
+      expect(puts, isEmpty);
+    });
+
+    testWidgets('toggling an f limit off and on keeps its exact tenths', (
+      tester,
+    ) async {
+      data['targets'] = offGrid();
+      await open(tester, unit: 'f');
+      putAnswer = (_) {
+        data['targets'] = offGrid(enabled: false);
+        return json(200, rule('x'));
+      };
+      await tap(tester, 'alert-switch-aabb-temperature');
+      expect(body(0)['enabled'], false);
+      putAnswer = null;
+      await tap(tester, 'alert-switch-aabb-temperature');
+      expect(body(1)['enabled'], true);
+      expect(body(1)['threshold'], 355);
+      expect(body(1)['thresholdHigh'], 412);
+    });
+
+    testWidgets('editing only the high f limit keeps the low one exact', (
+      tester,
+    ) async {
+      data['targets'] = offGrid();
+      await open(tester, unit: 'f');
+      await type(tester, 'alert-input-aabb-temperature-high', '100');
+      await submit(tester);
+      expect(puts, hasLength(1));
+      expect(body(0)['threshold'], 355);
+      expect(body(0)['thresholdHigh'], 378);
     });
 
     testWidgets('noise_high sends dBm and refuses out of range', (

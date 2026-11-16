@@ -72,6 +72,7 @@ class Server {
   Completer<void>? holdObserver;
   bool activity404 = false;
   bool polling = true, atlasTelemetry = false;
+  String temperatureUnit = 'c';
 
   /// What /nodes/{id}/polling answers; null is a 404.
   Map<String, dynamic>? pollingDoc = {
@@ -108,6 +109,7 @@ class Server {
     if (path == '/info') {
       return {
         'features': {'polling': polling, 'atlasTelemetry': atlasTelemetry},
+        'display': {'temperatureUnit': temperatureUnit},
       };
     }
     if (path == '/nodes/$nodeId/polling') return pollingDoc;
@@ -511,6 +513,23 @@ void main() {
       expect(asked('168h'), isEmpty);
       await close(tester);
     });
+
+    for (final (unit, shown) in [('c', '16.5 °C'), ('f', '61.8 °F')]) {
+      testWidgets('shows the temperature tile in $unit', (tester) async {
+        fake.temperatureUnit = unit;
+        await pump(
+          tester,
+          pins: [
+            nodePin({
+              'view': 'telemetry',
+              'telemetryTiles': ['temperature', 'noise', 'uptime', 'airtime'],
+            }),
+          ],
+        );
+        expect(find.text(shown), findsOneWidget);
+        await close(tester);
+      });
+    }
 
     testWidgets('swaps a tile, stores it only when it differs', (tester) async {
       final prefs = await pump(
