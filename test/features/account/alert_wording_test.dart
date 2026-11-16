@@ -108,8 +108,8 @@ const others = {
     'alerts.needsGoneQuiet': 'Turn on {{name}} first.',
     'alerts.voltsPerDay': '{{volts}} V per day',
     'alerts.input.minutes': 'No report for',
-    'alerts.input.low': 'Low (°C)',
-    'alerts.input.high': 'High (°C)',
+    'alerts.input.low': 'Low ({{symbol}})',
+    'alerts.input.high': 'High ({{symbol}})',
   },
   'fr': {
     'alerts.empty': "Les alertes se règlent sur les radios de votre Atlas. Ajoutez d'abord une radio.",
@@ -117,8 +117,8 @@ const others = {
     'alerts.needsGoneQuiet': 'Activez d\'abord « {{name}} ».',
     'alerts.voltsPerDay': '{{volts}} V par jour',
     'alerts.input.minutes': 'Sans rapport depuis',
-    'alerts.input.low': 'Bas (°C)',
-    'alerts.input.high': 'Haut (°C)',
+    'alerts.input.low': 'Bas ({{symbol}})',
+    'alerts.input.high': 'Haut ({{symbol}})',
   },
   'sv': {
     'alerts.empty': 'Aviseringar ställs in på radioapparater i din Atlas. Lägg först till en radio.',
@@ -126,8 +126,8 @@ const others = {
     'alerts.needsGoneQuiet': 'Slå först på {{name}}.',
     'alerts.voltsPerDay': '{{volts}} V per dygn',
     'alerts.input.minutes': 'Ingen rapport på',
-    'alerts.input.low': 'Låg (°C)',
-    'alerts.input.high': 'Hög (°C)',
+    'alerts.input.low': 'Låg ({{symbol}})',
+    'alerts.input.high': 'Hög ({{symbol}})',
   },
 };
 

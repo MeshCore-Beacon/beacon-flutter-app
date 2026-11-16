@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:beacon/core/api.dart';
 import 'package:beacon/core/strings.dart';
+import 'package:beacon/core/units.dart';
 import 'package:beacon/features/analytics/charts.dart';
 import 'package:beacon/features/directory/directory.dart';
 import 'package:beacon/features/directory/node_telemetry.dart';
@@ -30,6 +31,26 @@ void main() {
         scale: .001,
       );
       expect(s.single.y, closeTo(4.226, 1e-9));
+    });
+
+    test('temperature converts through convert', () {
+      final s = telemetrySeries(
+        [
+          point(0, {'temperatureC': 35}),
+        ],
+        'temperatureC',
+        hour,
+        convert: (c) => toDisplayTemp(c, 'f'),
+      );
+      expect(s.single.y, closeTo(95, 1e-9));
+    });
+
+    test('readingsLine shows the temperature in the unit', () {
+      final points = [
+        point(0, {'batteryMv': 4230, 'temperatureC': 16.5}),
+      ];
+      expect(readingsLine(points, 'c'), '4.23 V · 16.5 °C');
+      expect(readingsLine(points, 'f'), '4.23 V · 61.7 °F');
     });
 
     test('airtime seconds become percent of the counter span', () {
@@ -110,6 +131,7 @@ void main() {
       Map<String, dynamic>? telemetry,
       Map<String, dynamic>? pollingBody,
       void Function(String, String)? onOpen,
+      String temperatureUnit = 'c',
     }) async {
       tester.view.physicalSize = const Size(800, 6000);
       tester.view.devicePixelRatio = 1;
@@ -125,6 +147,7 @@ void main() {
             return http.Response(
               jsonEncode({
                 'features': {'polling': polling},
+                'display': {'temperatureUnit': temperatureUnit},
               }),
               200,
             );
@@ -331,6 +354,14 @@ void main() {
       expect(find.text(trKey('nodeTelemetry.waiting')), findsNothing);
       await tester.tap(find.text('Polled by HOWL V4.2'));
       expect(opened, 'observer:obs-9');
+    });
+
+    testWidgets('the temperature chart follows the instance unit', (
+      tester,
+    ) async {
+      await pump(tester, telemetry: data(), temperatureUnit: 'f');
+      expect(find.text('TEMPERATURE (°F)'), findsOneWidget);
+      expect(find.text('TEMPERATURE (°C)'), findsNothing);
     });
 
     testWidgets('only charts that carry data are drawn', (tester) async {

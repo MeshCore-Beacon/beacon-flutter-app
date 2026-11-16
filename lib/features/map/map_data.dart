@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import '../../core/json.dart';
+import 'map_telemetry.dart';
 
 Map<String, dynamic> collection(Iterable<Map<String, dynamic>> features) => {
   'type': 'FeatureCollection',
@@ -34,6 +35,7 @@ List<double> coordinates(Map<String, dynamic> n) => [
 Map<String, dynamic> nodeFeatures(
   List<Map<String, dynamic>> nodes, {
   String type = '',
+  Map<String, TelemetryLabel> labels = const {},
 }) => collection(
   nodes
       .where(
@@ -45,6 +47,10 @@ Map<String, dynamic> nodeFeatures(
           'name': n['name'] ?? n['id'],
           'nodeTypeName': n['nodeTypeName'] ?? 'unknown',
           'isObserver': n['isObserver'] == true,
+          if (labels[n['id']] case final l?) ...{
+            'telemetry': l.text,
+            'telemetryOld': l.old,
+          },
         }),
       ),
 );
@@ -377,6 +383,7 @@ Uri mapShareUri(
   required String neighbors,
   required bool borders,
   required bool flow,
+  bool telemetry = false,
 }) => base.replace(
   queryParameters: {
     'tab': 'Map',
@@ -394,6 +401,7 @@ Uri mapShareUri(
     'neighbor_lines': neighbors,
     'borders': borders ? 'on' : 'off',
     'flow': flow ? 'on' : 'off',
+    if (telemetry) 'telemetry': 'on',
   },
 );
 

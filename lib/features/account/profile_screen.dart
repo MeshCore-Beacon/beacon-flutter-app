@@ -10,6 +10,7 @@ import '../../core/json.dart';
 import '../../core/push.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
+import '../../core/units.dart';
 import '../directory/directory_widgets.dart';
 import '../directory/telemetry_request.dart';
 import 'account_errors.dart';
@@ -142,6 +143,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 _Alerts(
                   account: widget.account,
                   deliveryHint: features.alertDelivery,
+                  unit: features.temperatureUnit,
                   refresh: refresh,
                 ),
               section(trKey('account.sectionDevices'), [
