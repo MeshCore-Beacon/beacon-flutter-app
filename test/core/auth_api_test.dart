@@ -40,6 +40,16 @@ void main() {
 
   setUp(() => tokens = MemoryTokenStore());
 
+  test(
+    'account responses have a byte bound and do not clear the session',
+    () async {
+      await tokens.write(_base, 'kept');
+      final api = make((_) => http.Response('x' * (1024 * 1024 + 1), 200));
+      await expectLater(api.send('GET', '/me'), throwsA(isA<ApiException>()));
+      expect(await tokens.read(_base), 'kept');
+    },
+  );
+
   group('headers', () {
     test(
       'no Authorization without a token, none of the unsafe headers',

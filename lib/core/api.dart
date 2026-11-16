@@ -58,6 +58,7 @@ Future<T?> retryTransient<T>(
   Future<void> Function(Duration) wait = _sleep,
 }) async {
   for (var attempt = 0; ; attempt++) {
+    if (isCurrent != null && !isCurrent()) return null;
     try {
       return await request();
     } catch (error) {
@@ -92,35 +93,61 @@ Future<T?> withPageCursorFallback<T>(
   }
 }
 
-/// Reads a GET body, giving up once it passes [maxBytes] so a hostile
-/// server can't exhaust memory.
+/// Reads a GET body with the same size and lifetime bounds as account calls.
 Future<http.Response> getLimited(
   http.Client client,
   Uri url,
-  int maxBytes,
-) async {
+  int maxBytes, {
+  Duration timeout = const Duration(seconds: 25),
+}) => requestLimited(client, 'GET', url, maxBytes, timeout: timeout);
+
+/// Bounds the whole exchange, including a stalled body. Aborting only this
+/// request leaves other screens' requests on the shared client alone.
+Future<http.Response> requestLimited(
+  http.Client client,
+  String method,
+  Uri url,
+  int maxBytes, {
+  Map<String, String> headers = const {},
+  String? body,
+  Duration timeout = const Duration(seconds: 25),
+}) async {
   // Keep dart:io's "Dart/" UA: the analyzer's scrape block lets it in.
-  final request = http.Request('GET', url);
-  final response = await client.send(request);
-  const tooLarge = ApiException('Server response is too large.');
-  if ((response.contentLength ?? 0) > maxBytes) {
-    unawaited(response.stream.listen(null).cancel());
-    throw tooLarge;
-  }
-  final bytes = BytesBuilder(copy: false);
-  await for (final chunk in response.stream) {
-    bytes.add(chunk);
-    if (bytes.length > maxBytes) throw tooLarge;
-  }
-  return http.Response.bytes(
-    bytes.takeBytes(),
-    response.statusCode,
-    request: request,
-    headers: response.headers,
-    isRedirect: response.isRedirect,
-    persistentConnection: response.persistentConnection,
-    reasonPhrase: response.reasonPhrase,
+  final abort = Completer<void>();
+  final request = http.AbortableRequest(
+    method,
+    url,
+    abortTrigger: abort.future,
   );
+  request.headers.addAll(headers);
+  if (body != null) request.body = body;
+  final timer = Timer(timeout, () => abort.complete());
+  try {
+    final response = await client.send(request);
+    const tooLarge = ApiException('Server response is too large.');
+    if ((response.contentLength ?? 0) > maxBytes) {
+      unawaited(response.stream.listen(null).cancel());
+      throw tooLarge;
+    }
+    final bytes = BytesBuilder(copy: false);
+    await for (final chunk in response.stream) {
+      bytes.add(chunk);
+      if (bytes.length > maxBytes) throw tooLarge;
+    }
+    return http.Response.bytes(
+      bytes.takeBytes(),
+      response.statusCode,
+      request: request,
+      headers: response.headers,
+      isRedirect: response.isRedirect,
+      persistentConnection: response.persistentConnection,
+      reasonPhrase: response.reasonPhrase,
+    );
+  } on http.RequestAbortedException {
+    throw TimeoutException('The server took too long to respond.', timeout);
+  } finally {
+    timer.cancel();
+  }
 }
 
 class ApiClient {
@@ -394,7 +421,7 @@ class ApiClient {
         _client,
         uri(path, params),
         maxResponseBytes,
-      ).timeout(const Duration(seconds: 25));
+      );
       if (_closed) throw const ApiException('Connection changed.');
       if ((response.headers['cache-control'] ?? '').toLowerCase().contains(
         'no-store',
