@@ -349,10 +349,16 @@ void main() {
       expect(find.text('TEMPERATURE (°C)'), findsOneWidget);
       expect(find.text('NOISE FLOOR (DBM)'), findsOneWidget);
       expect(find.text('AIRTIME TX AND RX (% OF TIME)'), findsOneWidget);
-      expect(find.text('Polled by HOWL V4.2'), findsOneWidget);
-      expect(find.text('2 standby observers'), findsOneWidget);
+      final line = find.descendant(
+        of: find.byKey(const ValueKey('poll-line')),
+        matching: find.byType(Text),
+      );
+      expect(
+        tester.widget<Text>(line).data,
+        matches(RegExp(r'^Polled · .+ · by HOWL V4\.2 · 2 standby observers$')),
+      );
       expect(find.text(trKey('nodeTelemetry.waiting')), findsNothing);
-      await tester.tap(find.text('Polled by HOWL V4.2'));
+      await tester.tap(find.byKey(const ValueKey('poll-line')));
       expect(opened, 'observer:obs-9');
     });
 

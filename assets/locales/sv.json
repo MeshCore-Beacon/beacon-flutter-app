@@ -1580,6 +1580,17 @@
       "polled": "Avläst",
       "notPolled": "Avläses inte",
       "byPoller": "av {{name}}"
+    },
+    "nodePanel": {
+      "details": "Detaljer",
+      "scopes_one": "{{count}} scope",
+      "scopes_other": "{{count}} scopes",
+      "fromMeshMapperIn": "Från MeshMapper ({{iata}})",
+      "passwordHint": "Endast gästlösenord, aldrig admin.",
+      "usedShort": "{{used}} av {{limit}} använda",
+      "polled": "Avläst",
+      "by": "av",
+      "manage": "Hantera i profilen"
     }
   }
 }

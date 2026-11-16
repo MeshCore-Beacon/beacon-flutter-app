@@ -634,13 +634,7 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
               ),
           ],
         ),
-        nodeTime('First seen', d['firstSeen']),
         nodeTime('Last seen', d['lastSeen']),
-        if (d['lastAdvertAt'] != null)
-          nodeTime('Last advert', d['lastAdvertAt']),
-        if (textOf(d['radio']).isNotEmpty) fact('Radio', d['radio']),
-        if (d['lat'] != null && d['lng'] != null)
-          fact('Coordinates', '${d['lat']}, ${d['lng']}'),
         Wrap(
           spacing: 8,
           runSpacing: 4,
@@ -661,33 +655,6 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
           ],
         ),
       ]),
-      if (MeshMapperSection.hasContent(meshMapper))
-        MeshMapperSection(data: meshMapper),
-      section('Capabilities', [
-        capability('Multibyte paths', d['supportsMultibytePaths']),
-        capability('Multibyte traces', d['supportsMultibyteTraces']),
-        if (d['minFirmwareVersion'] != null)
-          fact('Minimum firmware', d['minFirmwareVersion']),
-        if (d['clockDriftSeconds'] != null)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 5),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                Text(
-                  tr('Clock drift'),
-                  style: TextStyle(fontSize: 11, color: colors.muted),
-                ),
-                nodeBadge(
-                  '${d['clockDriftSeconds']} s${d['clockOutOfSync'] == true ? ' · ${tr('Out of sync')}' : ''}',
-                  d['clockOutOfSync'] == true ? colors.warning : colors.success,
-                ),
-              ],
-            ),
-          ),
-      ]),
       if (isPolledNodeType(textOf(d['nodeTypeName'])))
         NodeTelemetrySection(
           key: ValueKey('telemetry:${widget.id}'),
@@ -697,20 +664,6 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
           account: widget.account,
           onOpen: widget.onOpen,
         ),
-      if (rows(d['iatas']).isNotEmpty)
-        section('Heard in regions', [
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              for (final region in rows(d['iatas']))
-                Tooltip(
-                  message: '${tr('Last seen')}: ${stamp(region['lastHeard'])}',
-                  child: nodeBadge(textOf(region['iata']), colors.primary),
-                ),
-            ],
-          ),
-        ]),
       section(
         trKey('nodeDetail.neighborsCount')
             .replaceAll('{{count}}', '${neighbors.length}'),
@@ -764,6 +717,70 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
         ],
       ),
       section('Observations', history.map(observation).toList()),
+      FoldSection(
+        id: 'node-details',
+        title: trKey('nodePanel.details'),
+        summary: [
+          if (number(d['lat']) != null && number(d['lng']) != null)
+            '${number(d['lat'])!.toStringAsFixed(2)}, ${number(d['lng'])!.toStringAsFixed(2)}',
+          if (d['minFirmwareVersion'] != null) 'fw ${d['minFirmwareVersion']}',
+        ].join(' · '),
+        children: [
+          if (d['lat'] != null && d['lng'] != null)
+            fact('Coordinates', '${d['lat']}, ${d['lng']}'),
+          nodeTime('First seen', d['firstSeen']),
+          if (d['lastAdvertAt'] != null)
+            nodeTime('Last advert', d['lastAdvertAt']),
+          if (textOf(d['radio']).isNotEmpty) fact('Radio', d['radio']),
+          capability('Multibyte paths', d['supportsMultibytePaths']),
+          capability('Multibyte traces', d['supportsMultibyteTraces']),
+          if (d['minFirmwareVersion'] != null)
+            fact('Minimum firmware', d['minFirmwareVersion']),
+          if (d['clockDriftSeconds'] != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 5),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text(
+                    tr('Clock drift'),
+                    style: TextStyle(fontSize: 11, color: colors.muted),
+                  ),
+                  nodeBadge(
+                    '${d['clockDriftSeconds']} s${d['clockOutOfSync'] == true ? ' · ${tr('Out of sync')}' : ''}',
+                    d['clockOutOfSync'] == true
+                        ? colors.warning
+                        : colors.success,
+                  ),
+                ],
+              ),
+            ),
+          if (rows(d['iatas']).isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              tr('Heard in regions'),
+              style: TextStyle(fontSize: 11, color: colors.muted),
+            ),
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final region in rows(d['iatas']))
+                  Tooltip(
+                    message:
+                        '${tr('Last seen')}: ${stamp(region['lastHeard'])}',
+                    child: nodeBadge(textOf(region['iata']), colors.primary),
+                  ),
+              ],
+            ),
+          ],
+        ],
+      ),
+      if (MeshMapperSection.hasContent(meshMapper))
+        MeshMapperSection(data: meshMapper),
     ];
   }
 

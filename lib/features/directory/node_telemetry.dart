@@ -338,33 +338,45 @@ class _NodeTelemetrySectionState extends State<NodeTelemetrySection> {
           'RX': airtimeSeries(points, 'airtimeRxSecs', bucketMs),
           'TX': airtimeSeries(points, 'airtimeTxSecs', bucketMs),
         }, '%'),
-      if (poller.isNotEmpty)
-        ListTile(
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          title: Text(
-            trKey('nodeTelemetry.polledBy').replaceAll('{{name}}', name),
-            style: const TextStyle(fontSize: 12),
-          ),
-          trailing: const Icon(Icons.chevron_right, size: 16),
+      if (poller.isNotEmpty || polling['latestReadingAt'] != null)
+        InkWell(
+          key: const ValueKey('poll-line'),
           onTap: textOf(poller['observerId']).isEmpty
               ? null
               : () => widget.onOpen('observer', textOf(poller['observerId'])),
-        ),
-      if (polling['latestReadingAt'] != null)
-        Tooltip(
-          message: stamp(polling['latestReadingAt']),
-          child: fact(
-            trKey('nodeTelemetry.lastReading'),
-            age(polling['latestReadingAt']),
-          ),
-        ),
-      if (standbys.isNotEmpty)
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 5),
-          child: Text(
-            trKey('nodeTelemetry.standbys', count: standbys.length),
-            style: TextStyle(fontSize: 11, color: colors.muted),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.circle,
+                  size: 7,
+                  color: poller.isNotEmpty
+                      ? colors.success
+                      : colors.dim.withValues(alpha: .3),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    [
+                      trKey(
+                        poller.isNotEmpty
+                            ? 'nodePanel.polled'
+                            : 'nodeTelemetry.lastReading',
+                      ),
+                      if (polling['latestReadingAt'] != null)
+                        age(polling['latestReadingAt']),
+                      if (poller.isNotEmpty) '${trKey('nodePanel.by')} $name',
+                      if (standbys.isNotEmpty)
+                        trKey('nodeTelemetry.standbys', count: standbys.length),
+                    ].join(' · '),
+                    style: TextStyle(fontSize: 12, color: colors.muted),
+                  ),
+                ),
+                if (poller.isNotEmpty)
+                  const Icon(Icons.chevron_right, size: 16),
+              ],
+            ),
           ),
         ),
       _request(),

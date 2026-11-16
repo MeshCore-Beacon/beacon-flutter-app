@@ -1580,6 +1580,17 @@
       "polled": "Polled",
       "notPolled": "Not polled",
       "byPoller": "by {{name}}"
+    },
+    "nodePanel": {
+      "details": "Details",
+      "scopes_one": "{{count}} scope",
+      "scopes_other": "{{count}} scopes",
+      "fromMeshMapperIn": "From MeshMapper ({{iata}})",
+      "passwordHint": "Guest password only, never admin.",
+      "usedShort": "{{used}} of {{limit}} used",
+      "polled": "Polled",
+      "by": "by",
+      "manage": "Manage in profile"
     }
   }
 }

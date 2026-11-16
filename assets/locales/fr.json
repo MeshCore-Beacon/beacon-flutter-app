@@ -1629,6 +1629,17 @@
       "polled": "Interrogé",
       "notPolled": "Non interrogé",
       "byPoller": "par {{name}}"
+    },
+    "nodePanel": {
+      "details": "Détails",
+      "scopes_one": "{{count}} portée",
+      "scopes_other": "{{count}} portées",
+      "fromMeshMapperIn": "Depuis MeshMapper ({{iata}})",
+      "passwordHint": "Mot de passe invité seulement, jamais admin.",
+      "usedShort": "{{used}} sur {{limit}} utilisées",
+      "polled": "Interrogé",
+      "by": "par",
+      "manage": "Gérer dans le profil"
     }
   }
 }

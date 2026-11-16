@@ -81,17 +81,6 @@ class MeshMapperSection extends StatelessWidget {
     final checkedAt = data['scopesCheckedAt'];
     final iata = textOf(data['iata']);
 
-    Widget footer(String value) => Text(
-      value,
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      style: TextStyle(
-        fontFamily: 'JetBrainsMono',
-        fontSize: 11,
-        color: colors.muted,
-      ),
-    );
-
     Widget scopeRow(Json s) {
       final how = [
         if (number(s['observedPackets']) case final num n)
@@ -149,90 +138,80 @@ class MeshMapperSection extends StatelessWidget {
       );
     }
 
-    return section(trKey('meshMapper.title'), [
-      if (text('hardware').isNotEmpty)
-        fact(trKey('meshMapper.hardware'), text('hardware')),
-      if (text('power').isNotEmpty)
-        fact(trKey('meshMapper.power'), text('power')),
-      if (text('powerSource').isNotEmpty)
-        fact(
-          trKey('meshMapper.powerSource'),
-          option('meshMapper.powerSources', text('powerSource')),
-        ),
-      if (text('antenna').isNotEmpty)
-        fact(trKey('meshMapper.antenna'), text('antenna')),
-      if (heightM != null)
-        fact(
-          trKey('meshMapper.height'),
-          [
-            trKey('meshMapper.heightAgl')
-                .replaceAll('{{value}}', meshMapperNumber(heightM)),
-            if (heightAslM != null)
-              trKey('meshMapper.heightAsl')
-                  .replaceAll('{{value}}', meshMapperNumber(heightAslM)),
-          ].join(' · '),
-        ),
-      if (admins.isNotEmpty)
-        fact(trKey('meshMapper.admins'), admins.join(', ')),
-      if (defaultScope != null)
-        fact(trKey('meshMapper.defaultScope'), defaultScopeText(defaultScope)),
-      if (scopes.isNotEmpty || checkedAt != null) ...[
-        Padding(
-          padding: const EdgeInsets.only(top: 5, bottom: 2),
-          child: Text(trKey('meshMapper.confirmedScopes'), style: dim),
-        ),
-        if (scopes.isNotEmpty)
-          ...scopes.map(scopeRow)
-        else
+    return FoldSection(
+      id: 'node-meshmapper',
+      title: trKey('meshMapper.title'),
+      summary: [
+        if (iata.isNotEmpty) iata,
+        if (scopes.isNotEmpty) trKey('nodePanel.scopes', count: scopes.length),
+      ].join(' · '),
+      info: [
+        iata.isEmpty
+            ? trKey('meshMapper.fromMeshMapper')
+            : trKey('nodePanel.fromMeshMapperIn').replaceAll('{{iata}}', iata),
+        '${trKey('meshMapper.updated')} ${stamp(data['fetchedAt'])}',
+      ],
+      children: [
+        if (text('hardware').isNotEmpty)
+          fact(trKey('meshMapper.hardware'), text('hardware')),
+        if (text('power').isNotEmpty)
+          fact(trKey('meshMapper.power'), text('power')),
+        if (text('powerSource').isNotEmpty)
+          fact(
+            trKey('meshMapper.powerSource'),
+            option('meshMapper.powerSources', text('powerSource')),
+          ),
+        if (text('antenna').isNotEmpty)
+          fact(trKey('meshMapper.antenna'), text('antenna')),
+        if (heightM != null)
+          fact(
+            trKey('meshMapper.height'),
+            [
+              trKey('meshMapper.heightAgl')
+                  .replaceAll('{{value}}', meshMapperNumber(heightM)),
+              if (heightAslM != null)
+                trKey('meshMapper.heightAsl')
+                    .replaceAll('{{value}}', meshMapperNumber(heightAslM)),
+            ].join(' · '),
+          ),
+        if (admins.isNotEmpty)
+          fact(trKey('meshMapper.admins'), admins.join(', ')),
+        if (defaultScope != null)
+          fact(
+            trKey('meshMapper.defaultScope'),
+            defaultScopeText(defaultScope),
+          ),
+        if (scopes.isNotEmpty || checkedAt != null) ...[
           Padding(
-            padding: const EdgeInsets.only(left: 12, top: 2, bottom: 2),
-            child: Row(
-              children: [
-                Text(trKey('meshMapper.noConfirmedScopes'), style: dim),
-                const Spacer(),
-                Tooltip(
-                  message: stamp(checkedAt),
-                  child: mono(age(checkedAt), color: colors.muted),
-                ),
-              ],
+            padding: const EdgeInsets.only(top: 5, bottom: 2),
+            child: Text(trKey('meshMapper.confirmedScopes'), style: dim),
+          ),
+          if (scopes.isNotEmpty)
+            ...scopes.map(scopeRow)
+          else
+            Padding(
+              padding: const EdgeInsets.only(left: 12, top: 2, bottom: 2),
+              child: Row(
+                children: [
+                  Text(trKey('meshMapper.noConfirmedScopes'), style: dim),
+                  const Spacer(),
+                  Tooltip(
+                    message: stamp(checkedAt),
+                    child: mono(age(checkedAt), color: colors.muted),
+                  ),
+                ],
+              ),
+            ),
+        ],
+        if (text('notes').isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              text('notes'),
+              style: TextStyle(fontSize: 12, color: colors.muted),
             ),
           ),
       ],
-      if (text('notes').isNotEmpty)
-        Padding(
-          padding: const EdgeInsets.only(top: 6),
-          child: Text(
-            text('notes'),
-            style: TextStyle(fontSize: 12, color: colors.muted),
-          ),
-        ),
-      const SizedBox(height: 8),
-      Row(
-        children: [
-          footer(trKey('meshMapper.fromMeshMapper')),
-          if (iata.isNotEmpty) ...[
-            const SizedBox(width: 6),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-              decoration: BoxDecoration(
-                color: colors.primary.withValues(alpha: .08),
-                border: Border.all(color: colors.primary.withValues(alpha: .3)),
-                borderRadius: BorderRadius.circular(3),
-              ),
-              child: mono(iata, color: colors.primary),
-            ),
-          ],
-          const Spacer(),
-          Flexible(
-            child: Tooltip(
-              message: stamp(data['fetchedAt']),
-              child: footer(
-                '${trKey('meshMapper.updated')} ${age(data['fetchedAt'])}',
-              ),
-            ),
-          ),
-        ],
-      ),
-    ]);
+    );
   }
 }
