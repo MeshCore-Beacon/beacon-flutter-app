@@ -44,7 +44,9 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   Map<String, TelemetryLabel> _labels = const {};
   List<Map<String, dynamic>> _readings = const [];
   bool _resumed = true;
+  bool _visible = true;
   bool _flow = false;
+  bool get _flowAllowed => _flow && _resumed && _visible;
   final _flows = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _nodes = [],
       _neighbors = [],
@@ -88,6 +90,15 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     });
     if (_showBorders) unawaited(_loadBorders());
     _syncTelemetry();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final visible = TickerMode.valuesOf(context).enabled;
+    if (_visible == visible) return;
+    _visible = visible;
+    if (!visible) _clearFlow();
   }
 
   Future<void> _save() async {
@@ -139,7 +150,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
           }
         });
       }
-      if (_flow && event['event'] == 'packetObservation') {
+      if (_flowAllowed && event['event'] == 'packetObservation') {
         final ns = flowNodes(object(d['observation']));
         if (ns.length < 2) return;
         while (_flows.length >= 120) {
