@@ -33,6 +33,17 @@ const observation = {
   },
 };
 
+class TestStopwatch extends Stopwatch {
+  int milliseconds = 0;
+  @override
+  int get elapsedMilliseconds => milliseconds;
+  @override
+  void reset() {
+    super.reset();
+    milliseconds = 0;
+  }
+}
+
 void main() {
   setUp(BeaconTheme.load);
 
@@ -40,6 +51,12 @@ void main() {
     tester,
   ) async {
     final timers = <Timer>[];
+    final clock = TestStopwatch();
+    Future<void> advance(Duration elapsed) async {
+      if (clock.isRunning) clock.milliseconds += elapsed.inMilliseconds;
+      await tester.pump(elapsed);
+    }
+
     var delayTicks = false;
     final events = StreamController<Json>();
     SharedPreferences.setMockInitialValues({});
@@ -66,6 +83,7 @@ void main() {
                 api: api,
                 region: const {},
                 events: events.stream,
+                flowClock: clock,
                 onOpen: (_, _) {},
               ),
             ),
@@ -77,11 +95,12 @@ void main() {
         events.add(observation);
         await tester.pump();
         expect(timers.single.isActive, isTrue);
-        // The widget clock advances while DateTime.now remains unrelated.
-        await tester.pump(const Duration(milliseconds: 1450));
+        // Elapsed time advances while DateTime.now remains unrelated.
+        await advance(const Duration(milliseconds: 1450));
         expect(timers.single.isActive, isTrue);
-        await tester.pump(const Duration(milliseconds: 100));
+        await advance(const Duration(milliseconds: 100));
         expect(timers.single.isActive, isFalse);
+        expect(clock.isRunning, isFalse);
 
         // A fresh timer has its own origin; an overlapping arrival must not
         // restart that timer or expire at the earlier flow's deadline.
@@ -89,30 +108,45 @@ void main() {
         await tester.pump();
         expect(timers, hasLength(2));
         expect(timers.last.tick, 0);
-        await tester.pump(const Duration(seconds: 1));
+        await advance(const Duration(seconds: 1));
         events.add(observation);
         await tester.pump();
         expect(timers, hasLength(2));
-        await tester.pump(const Duration(milliseconds: 550));
+        await advance(const Duration(milliseconds: 550));
         expect(timers.last.isActive, isTrue);
-        await tester.pump(const Duration(seconds: 1));
+        await advance(const Duration(seconds: 1));
+        expect(timers.last.isActive, isFalse);
+
+        // A packet can arrive before an overdue timer callback. Its timestamp
+        // must use current elapsed time, not the timer's previous tick.
+        events.add(observation);
+        await tester.pump();
+        clock.milliseconds = 3000;
+        events.add(observation);
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 3));
+        expect(timers.last.isActive, isTrue);
+        await advance(const Duration(milliseconds: 1450));
+        expect(timers.last.isActive, isTrue);
+        await advance(const Duration(milliseconds: 100));
         expect(timers.last.isActive, isFalse);
 
         // Delayed callbacks still count elapsed durations, not callback count.
         events.add(observation);
         await tester.pump();
         delayTicks = true;
-        await tester.pump(const Duration(seconds: 3));
+        await advance(const Duration(seconds: 3));
         expect(timers.last.isActive, isTrue);
         delayTicks = false;
-        await tester.pump(const Duration(milliseconds: 50));
+        await advance(const Duration(milliseconds: 50));
         expect(timers.last.isActive, isFalse);
 
         events.add(observation);
         await tester.pump();
         tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
-        await tester.pump(const Duration(hours: 1));
+        await advance(const Duration(hours: 1));
         expect(timers.every((t) => !t.isActive), isTrue);
+        expect(clock.isRunning, isFalse);
         tester.binding.handleAppLifecycleStateChanged(
           AppLifecycleState.resumed,
         );
@@ -131,6 +165,7 @@ void main() {
         expect(timers.last.isActive, isTrue);
         await tester.pumpWidget(const SizedBox());
         expect(timers.every((t) => !t.isActive), isTrue);
+        expect(clock.isRunning, isFalse);
         unawaited(events.close());
         await tester.pump();
         api.close();

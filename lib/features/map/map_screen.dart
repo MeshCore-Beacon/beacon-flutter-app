@@ -27,7 +27,11 @@ class MapScreen extends StatefulWidget {
     required this.onOpen,
     this.selectedNodeId,
     this.events,
+    this.flowClock,
   });
+
+  /// Optional elapsed clock for deterministic flow lifecycle tests.
+  final Stopwatch? flowClock;
   final Stream<Json>? events;
   final ApiClient api;
   final Map<String, dynamic> region;
@@ -47,8 +51,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   bool _resumed = true;
   bool _flow = false;
   final _flows = <Map<String, dynamic>>[];
-  // Timer ticks advance with elapsed durations, independent of wall-clock jumps.
-  int get _flowNow => (_flowTimer?.tick ?? 0) * _flowInterval.inMilliseconds;
+  late final _flowClock = widget.flowClock ?? Stopwatch();
   List<Map<String, dynamic>> _nodes = [],
       _neighbors = [],
       _airports = [],
@@ -148,14 +151,15 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         while (_flows.length >= 120) {
           _flows.removeAt(0);
         }
-        _flows.add({'nodes': ns, 'start': _flowNow});
+        _flowClock.start();
+        _flows.add({'nodes': ns, 'start': _flowClock.elapsedMilliseconds});
         _flowTimer ??= Timer.periodic(_flowInterval, (_) => _tick());
       }
     });
   }
 
   void _tick() {
-    final now = _flowNow;
+    final now = _flowClock.elapsedMilliseconds;
     _flows.removeWhere(
       (f) =>
           now - (number(f['start']) ?? 0) >
@@ -165,6 +169,9 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     if (_flows.isEmpty) {
       _flowTimer?.cancel();
       _flowTimer = null;
+      _flowClock
+        ..stop()
+        ..reset();
     }
   }
 
@@ -172,6 +179,9 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     _flows.clear();
     _flowTimer?.cancel();
     _flowTimer = null;
+    _flowClock
+      ..stop()
+      ..reset();
     _canvas.currentState?.flow(flowFrame([], 0));
   }
 
@@ -807,6 +817,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     _flowTimer?.cancel();
     _telemetryTimer?.cancel();
     _ageTimer?.cancel();
+    _flowClock.stop();
     super.dispose();
   }
 }
