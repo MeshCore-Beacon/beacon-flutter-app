@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/account.dart';
 import '../../core/api.dart';
 import '../../core/instance.dart';
 import '../../core/preferences.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
 import '../../core/version_gate.dart';
+import '../account/account_section.dart';
+import '../atlas/atlas_settings.dart';
+import '../atlas/atlas_store.dart';
 
 /// "Version 0.2.0" for releases, "Beta build 1791597587" for dev/beta builds.
 String versionLabel(String? version) {
@@ -21,9 +25,26 @@ class SettingsPage extends StatelessWidget {
     super.key,
     required this.preferences,
     this.appVersion = VersionGate.platformVersion,
+    this.atlasFiles = const DeviceAtlasFiles(),
+    this.account,
+    this.api,
+    this.atlas,
+    this.onOpen,
   });
   final Preferences preferences;
   final Future<String?> Function() appVersion;
+  final AtlasFiles atlasFiles;
+
+  /// The active server's account and client; null where there is no home
+  /// screen (welcome, update required), which hides the account section.
+  final AccountState? account;
+  final ApiClient? api;
+
+  /// The active server's shared Atlas store, so a signed-in import is synced.
+  final AtlasStore? atlas;
+
+  /// Opens a repeater from the profile's telemetry requests.
+  final void Function(String, String)? onOpen;
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: preferences,
@@ -89,6 +110,25 @@ class SettingsPage extends StatelessWidget {
             trailing: const Icon(Icons.chevron_right, size: 20),
             onTap: () => _pickLanguage(context),
           ),
+          if (preferences.active != null) ...[
+            const SizedBox(height: 12),
+            const Divider(),
+            _heading(context, tr('Atlas')),
+            AtlasSettings(
+              preferences: preferences,
+              files: atlasFiles,
+              store: atlas,
+            ),
+            if (account != null &&
+                api != null &&
+                account!.api.base == preferences.active!.url)
+              AccountSection(
+                account: account!,
+                api: api!,
+                serverName: preferences.active!.name,
+                onOpen: onOpen,
+              ),
+          ],
           const SizedBox(height: 12),
           const Divider(),
           _heading(context, tr('About')),

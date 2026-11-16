@@ -5,10 +5,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'instance.dart';
 import 'json.dart';
+import 'token_store.dart';
 
 class Preferences extends ChangeNotifier {
-  Preferences._(this._store);
+  Preferences._(this._store, this._tokens);
   final SharedPreferences _store;
+  final TokenStore? _tokens;
   final List<BeaconInstance> servers = [];
   String? _activeUrl;
   String themeId = 'neutral-blue';
@@ -20,8 +22,8 @@ class Preferences extends ChangeNotifier {
     return servers.isEmpty ? null : servers.first;
   }
 
-  static Future<Preferences> load() async {
-    final result = Preferences._(await SharedPreferences.getInstance());
+  static Future<Preferences> load({TokenStore? tokens}) async {
+    final result = Preferences._(await SharedPreferences.getInstance(), tokens);
     try {
       final values = jsonDecode(
         result._store.getString('beacon.servers') ?? '[]',
@@ -66,12 +68,72 @@ class Preferences extends ChangeNotifier {
         }
         await _store.remove('beacon.region.$replacing');
       }
+      // The saved Atlas follows the server the same way.
+      final atlas = _store.getString('beacon.atlas.$replacing');
+      if (replacing != server.url && atlas != null) {
+        if (!_store.containsKey('beacon.atlas.${server.url}')) {
+          await _store.setString('beacon.atlas.${server.url}', atlas);
+        }
+        await _store.remove('beacon.atlas.$replacing');
+      }
+      if (replacing != server.url) {
+        await _moveAtlasMarkers(replacing, server.url);
+        final owner = _store.getString('beacon.atlas.owner.$replacing');
+        if (owner != null) {
+          if (!_store.containsKey('beacon.atlas.owner.${server.url}')) {
+            await _store.setString('beacon.atlas.owner.${server.url}', owner);
+          }
+          await _store.remove('beacon.atlas.owner.$replacing');
+        }
+      }
+      // The sign-in token follows too; a keystore failure must not block the edit.
+      if (replacing != server.url) {
+        try {
+          await _tokens?.move(replacing, server.url);
+        } catch (_) {}
+      }
     }
     servers.removeWhere((e) => e.url == server.url);
     servers.add(server);
     _activeUrl = server.url;
     await _persist();
   }
+
+  static const _syncedPrefix = 'beacon.atlas.synced.';
+
+  /// Marker keys are `<prefix><url>.<userId>`; a user id has no dot, so the
+  /// last dot ends the URL and `https://a.com` never matches `https://a.com.au`.
+  List<(String key, String user)> _markersOf(String url) => [
+    for (final key in _store.getKeys())
+      if (key.startsWith(_syncedPrefix) && key.lastIndexOf('.') > 0)
+        if (key.substring(_syncedPrefix.length, key.lastIndexOf('.')) == url)
+          (key, key.substring(key.lastIndexOf('.') + 1)),
+  ];
+
+  /// Carries the markers to an edited URL, or drops them when [to] is null.
+  Future<void> _moveAtlasMarkers(String from, String? to) async {
+    for (final (key, user) in _markersOf(from)) {
+      if (to != null && !_store.containsKey('$_syncedPrefix$to.$user')) {
+        await _store.setBool('$_syncedPrefix$to.$user', true);
+      }
+      await _store.remove(key);
+    }
+  }
+
+  /// Whether this user's first sign-in merge already ran on this server.
+  bool atlasSyncedFor(String url, String userId) =>
+      _store.getBool('$_syncedPrefix$url.$userId') ?? false;
+
+  Future<void> markAtlasSynced(String url, String userId) =>
+      _store.setBool('$_syncedPrefix$url.$userId', true);
+
+  /// The user the local Atlas copy was last synced to, so another account
+  /// signing in on this device never uploads it.
+  String? atlasOwnerFor(String url) =>
+      _store.getString('beacon.atlas.owner.$url');
+
+  Future<void> setAtlasOwner(String url, String userId) =>
+      _store.setString('beacon.atlas.owner.$url', userId);
 
   Future<void> selectServer(String url) async {
     if (!servers.any((e) => e.url == url)) return;
@@ -85,6 +147,12 @@ class Preferences extends ChangeNotifier {
       _activeUrl = servers.isEmpty ? null : servers.first.url;
     }
     await _store.remove('beacon.region.$url');
+    await _store.remove('beacon.atlas.$url');
+    await _moveAtlasMarkers(url, null);
+    await _store.remove('beacon.atlas.owner.$url');
+    try {
+      await _tokens?.delete(url);
+    } catch (_) {}
     await _persist();
   }
 
@@ -128,5 +196,24 @@ class Preferences extends ChangeNotifier {
       'beacon.region.$url',
       jsonEncode({...params, 'selection': ?selection}),
     );
+  }
+
+  /// Bumped on every Atlas save, so an open Atlas tab picks up an import.
+  final atlasRevision = ValueNotifier<int>(0);
+
+  /// The saved Atlas cards for one server, as stored.
+  String? atlasFor(String url) => _store.getString('beacon.atlas.$url');
+
+  /// False when the device refused the write.
+  Future<bool> saveAtlas(String url, String raw) async {
+    var saved = false;
+    try {
+      final write = _store.setString('beacon.atlas.$url', raw);
+      atlasRevision.value++;
+      saved = await write;
+    } catch (_) {
+      atlasRevision.value++;
+    }
+    return saved;
   }
 }

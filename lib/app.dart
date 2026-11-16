@@ -6,17 +6,24 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'core/account.dart';
 import 'core/api.dart';
+import 'core/auth_api.dart';
 import 'core/instance.dart';
 import 'core/json.dart';
 import 'core/live.dart';
 import 'core/preferences.dart';
+import 'core/push.dart';
 import 'core/region_selection.dart';
 import 'core/runtime_config.dart';
 import 'core/strings.dart';
 import 'core/theme.dart';
+import 'core/token_store.dart';
 import 'core/version_gate.dart';
+import 'features/account/sign_in.dart';
 import 'features/analytics/analytics_screen.dart';
+import 'features/atlas/atlas_screen.dart';
+import 'features/atlas/atlas_store.dart';
 import 'features/directory/directory.dart';
 import 'features/map/map_screen.dart';
 import 'features/packets/packet_detail.dart';
@@ -30,14 +37,38 @@ class BeaconApp extends StatefulWidget {
     this.connectLive = true,
     this.apiFactory,
     this.versionGate,
+    this.signInFlow,
+    this.linkSource,
+    this.tokens,
+    this.accounts,
+    this.authFactory,
+    this.push,
   });
   final Preferences preferences;
   final bool connectLive;
   final ApiClient Function(Uri)? apiFactory;
 
+  /// The push plugin behind its interface; null leaves push off, as in tests.
+  final PushClient? push;
+
   /// Minimum-app-version checks. Defaults to one that reads `/api/v1/info`
   /// through [apiFactory].
   final VersionGate? versionGate;
+
+  /// Browser sign-in. Null leaves it off, as in tests.
+  final SignInFlow? signInFlow;
+
+  /// Where callback links come from; needed with [signInFlow] to receive any.
+  final LinkSource? linkSource;
+
+  /// Where sign-in tokens live; memory only when null, as in tests.
+  final TokenStore? tokens;
+
+  /// Shared with the sign-in flow so a new sign-in reaches the open account.
+  final AccountRegistry? accounts;
+
+  /// Builds the signed-in client for a server URL; tests swap in a mock.
+  final AuthApi Function(String url, TokenStore tokens)? authFactory;
   @override
   State<BeaconApp> createState() => _BeaconAppState();
 }
@@ -47,11 +78,21 @@ class _BeaconAppState extends State<BeaconApp> with WidgetsBindingObserver {
   late final VersionGate gate =
       widget.versionGate ??
       VersionGate(fetchInfo: VersionGate.apiFetcher(widget.apiFactory));
+  late final TokenStore tokens = widget.tokens ?? MemoryTokenStore();
+  late final AccountRegistry accounts = widget.accounts ?? AccountRegistry();
   String? active;
   GateStatus? shown;
+  SignInLinks? _signInLinks;
   @override
   void initState() {
     super.initState();
+    final flow = widget.signInFlow;
+    final source = widget.linkSource;
+    // Here, not in a screen, so a callback is caught whichever one is open.
+    if (flow != null && source != null) {
+      _signInLinks = SignInLinks(flow, source);
+      unawaited(_signInLinks!.listen());
+    }
     active = widget.preferences.active?.url;
     widget.preferences.addListener(changed);
     final server = widget.preferences.active;
@@ -110,6 +151,7 @@ class _BeaconAppState extends State<BeaconApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     widget.preferences.removeListener(changed);
     gate.removeListener(gateChanged);
+    unawaited(_signInLinks?.dispose());
     if (widget.versionGate == null) gate.dispose();
     super.dispose();
   }
@@ -138,6 +180,10 @@ class _BeaconAppState extends State<BeaconApp> with WidgetsBindingObserver {
         preferences: widget.preferences,
         connectLive: widget.connectLive,
         apiFactory: widget.apiFactory,
+        tokens: tokens,
+        accounts: accounts,
+        authFactory: widget.authFactory,
+        push: widget.push,
       ),
     };
   }
@@ -145,7 +191,7 @@ class _BeaconAppState extends State<BeaconApp> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     language = widget.preferences.language;
-    return VersionGateScope(
+    final app = VersionGateScope(
       gate: gate,
       child: MaterialApp(
         navigatorKey: navigator,
@@ -158,13 +204,19 @@ class _BeaconAppState extends State<BeaconApp> with WidgetsBindingObserver {
         home: home(),
       ),
     );
+    final flow = widget.signInFlow;
+    return flow == null ? app : SignInScope(flow: flow, child: app);
   }
 }
 
 Future<void> showServerSwitcher(
   BuildContext context,
-  Preferences preferences,
-) async {
+  Preferences preferences, {
+  AccountState? account,
+  ApiClient? api,
+  AtlasStore? atlas,
+  void Function(String, String)? onOpen,
+}) async {
   final manage = await showModalBottomSheet<bool>(
     context: context,
     useSafeArea: true,
@@ -209,7 +261,15 @@ Future<void> showServerSwitcher(
   if (manage == true && context.mounted) {
     await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => SettingsPage(preferences: preferences)),
+      MaterialPageRoute(
+        builder: (_) => SettingsPage(
+          preferences: preferences,
+          account: account,
+          api: api,
+          atlas: atlas,
+          onOpen: onOpen,
+        ),
+      ),
     );
   }
 }
@@ -417,16 +477,29 @@ class BeaconHome extends StatefulWidget {
     required this.preferences,
     this.connectLive = true,
     this.apiFactory,
+    required this.tokens,
+    required this.accounts,
+    this.authFactory,
+    this.push,
   });
+  final PushClient? push;
   final Preferences preferences;
   final bool connectLive;
   final ApiClient Function(Uri)? apiFactory;
+  final TokenStore tokens;
+  final AccountRegistry accounts;
+  final AuthApi Function(String url, TokenStore tokens)? authFactory;
   @override
   State<BeaconHome> createState() => _BeaconHomeState();
 }
 
 class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
   late final ApiClient api;
+  late final AccountState account;
+  PushRegistration? pushRegistration;
+
+  // One store for this server, so the Atlas tab and Settings share it.
+  late final AtlasStore atlas;
   late LiveConnection live;
   StreamSubscription<Json>? liveEvents;
   late Map<String, dynamic> region;
@@ -439,6 +512,21 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
     super.initState();
     final instance = widget.preferences.active!;
     api = widget.apiFactory?.call(instance.base) ?? ApiClient(instance.base);
+    account = AccountState(
+      widget.authFactory?.call(instance.url, widget.tokens) ??
+          AuthApi(instance.url, widget.tokens),
+    );
+    widget.accounts.register(instance.url, account);
+    if (widget.push case final client?) {
+      pushRegistration = PushRegistration(
+        client: client,
+        account: account,
+        features: api.features,
+      )..onOpened = openAlertTarget;
+      account.push = pushRegistration;
+    }
+    atlas = AtlasStore(widget.preferences, instance.url, account: account);
+    unawaited(account.refresh());
     region = widget.preferences.regionFor(instance.url);
     selection = RegionSelection.restore(
       widget.preferences.regionSelectionFor(instance.url),
@@ -467,6 +555,10 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
     liveEvents?.cancel();
     live.dispose();
     api.close();
+    widget.accounts.unregister(account.api.base, account);
+    atlas.dispose();
+    pushRegistration?.dispose();
+    account.dispose();
     super.dispose();
   }
 
@@ -492,7 +584,25 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
       );
       if (!mounted || result.status == GateStatus.blocked) return;
     }
+    unawaited(account.refresh());
     if (widget.connectLive) live.start();
+  }
+
+  /// A tapped alert names a radio by public key; a pinned node opens by its id.
+  /// A tapped alert carries the radio's id; without one it names the radio by
+  /// public key, and the detail routes take ids, which the Atlas holds. A cold
+  /// start waits for the Atlas to load first.
+  Future<void> openAlertTarget(
+    String kind,
+    String publicKey,
+    String? radioId,
+  ) async {
+    var id = radioId ?? atlas.idForRadio(kind, publicKey);
+    if (id == null) {
+      await atlas.idle.timeout(const Duration(seconds: 10), onTimeout: () {});
+      id = atlas.idForRadio(kind, publicKey);
+    }
+    if (id != null && mounted) open(kind == 'node' ? 'node' : 'observer', id);
   }
 
   void open(String kind, String id) {
@@ -535,16 +645,30 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
             region: region,
             onOpen: open,
             events: live.events,
+            account: account,
           );
     Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
   }
 
-  Future<void> switcher() => showServerSwitcher(context, widget.preferences);
+  Future<void> switcher() => showServerSwitcher(
+    context,
+    widget.preferences,
+    account: account,
+    api: api,
+    atlas: atlas,
+    onOpen: open,
+  );
 
   void settings() => Navigator.push(
     context,
     MaterialPageRoute(
-      builder: (_) => SettingsPage(preferences: widget.preferences),
+      builder: (_) => SettingsPage(
+        preferences: widget.preferences,
+        account: account,
+        api: api,
+        atlas: atlas,
+        onOpen: open,
+      ),
     ),
   );
   Future<void> chooseRegion() async {
@@ -589,6 +713,7 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
             'Observers',
             'Routes',
             'Traces',
+            'Atlas',
             'Analytics',
           ].where(config.tabs.contains))
             ListTile(
@@ -597,6 +722,7 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
                 'Observers' => Icons.sensors,
                 'Routes' => Icons.route_outlined,
                 'Traces' => Icons.timeline,
+                'Atlas' => Icons.explore_outlined,
                 _ => Icons.bar_chart_outlined,
               }),
               trailing: const Icon(Icons.chevron_right, size: 18),
@@ -632,6 +758,13 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
         ? MapScreen(api: api, region: region, onOpen: open, events: live.events)
         : tab == 'Analytics'
         ? AnalyticsScreen(api: api, region: region, onOpen: open)
+        : tab == 'Atlas'
+        ? AtlasScreen(
+            api: api,
+            preferences: widget.preferences,
+            store: atlas,
+            onOpen: open,
+          )
         : DirectoryScreen(
             kind: tab.toLowerCase(),
             api: api,

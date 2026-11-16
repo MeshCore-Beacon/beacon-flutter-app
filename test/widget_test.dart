@@ -57,9 +57,19 @@ void main() {
     }
     await tester.tap(find.text('More'));
     await tester.pumpAndSettle();
-    for (final label in ['Observers', 'Routes', 'Traces', 'Analytics']) {
+    for (final label in [
+      'Observers',
+      'Routes',
+      'Traces',
+      'Atlas',
+      'Analytics',
+    ]) {
       expect(find.text(label), findsOneWidget);
     }
+    await tester.tap(find.text('Atlas'));
+    await tester.pumpAndSettle();
+    expect(find.text('No nodes saved'), findsOneWidget);
+    expect(find.text('0/12'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
     await tester.pump();
   });

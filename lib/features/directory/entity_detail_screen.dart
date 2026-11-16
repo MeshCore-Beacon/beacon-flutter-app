@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/account.dart';
 import '../../core/api.dart';
 import '../../core/json.dart';
 import '../../core/strings.dart';
@@ -12,6 +13,7 @@ import '../analytics/charts.dart';
 import '../analytics/observer_charts.dart';
 import 'directory_widgets.dart';
 import 'meshmapper_section.dart';
+import 'node_telemetry.dart';
 import 'observation_row.dart';
 import 'observer_info.dart';
 import 'paging.dart';
@@ -25,12 +27,16 @@ class EntityDetailScreen extends StatefulWidget {
     required this.region,
     required this.onOpen,
     this.events,
+    this.account,
   });
   final String kind, id;
   final ApiClient api;
   final Json region;
   final void Function(String, String) onOpen;
   final Stream<Json>? events;
+
+  /// The signed-in user on this server, for "Request telemetry".
+  final AccountState? account;
   @override
   State<EntityDetailScreen> createState() => _EntityDetailScreenState();
 }
@@ -682,6 +688,15 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
             ),
           ),
       ]),
+      if (isPolledNodeType(textOf(d['nodeTypeName'])))
+        NodeTelemetrySection(
+          key: ValueKey('telemetry:${widget.id}'),
+          api: widget.api,
+          nodeId: widget.id,
+          publicKey: publicKey,
+          account: widget.account,
+          onOpen: widget.onOpen,
+        ),
       if (rows(d['iatas']).isNotEmpty)
         section('Heard in regions', [
           Wrap(

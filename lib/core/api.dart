@@ -6,13 +6,26 @@ import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
+import 'features.dart';
 import 'json.dart';
 
 class ApiException implements Exception {
-  const ApiException(this.message, {this.status, this.retryAfter});
+  const ApiException(
+    this.message, {
+    this.status,
+    this.retryAfter,
+    this.code,
+    this.body,
+  });
   final String message;
   final int? status;
   final Duration? retryAfter;
+
+  /// The server's `error.code`, set by [AuthApi] so screens can branch on it.
+  final String? code;
+
+  /// The decoded error response, set by [AuthApi] for answers that carry data.
+  final Map<String, dynamic>? body;
   @override
   String toString() => message;
 }
@@ -150,14 +163,16 @@ class ApiClient {
   }
 
   bool _reference(String path) =>
-      {'/iatas', '/regions', '/scopes', '/brokers'}.contains(path) ||
+      {'/iatas', '/regions', '/scopes', '/brokers', '/info'}.contains(path) ||
       RegExp(r'^/iatas/[^/]+/border$').hasMatch(path);
+
+  static const _referenceTtl = Duration(minutes: 5);
 
   Duration _ttl(String path, Map<String, dynamic> params) {
     if (path.endsWith('/border')) return const Duration(hours: 1);
-    if (_reference(path)) return const Duration(minutes: 5);
+    if (_reference(path)) return _referenceTtl;
     if (path == '/nodes' && '${params['neighbors']}' == 'true') {
-      return const Duration(minutes: 5);
+      return _referenceTtl;
     }
     return const Duration(seconds: 30);
   }
@@ -235,6 +250,8 @@ class ApiClient {
   }
 
   void invalidateCache({String? prefix}) {
+    _features = null;
+    _featuresUntil = null;
     bool matches(String key) {
       final path = Uri.parse(key).path;
       final target = prefix == null ? null : uri(prefix).path;
@@ -453,6 +470,51 @@ class ApiClient {
     if (seconds == null) return unparsable;
     return Duration(seconds: seconds.clamp(1, 300));
   }
+
+  /// Server feature flags from /info; all off on any failure so nothing new shows.
+  /// A success lasts like other reference data, a 404 (no flags on this server) the
+  /// client's life, any other failure a minute; invalidateCache() clears it.
+  Future<ServerFeatures> features() {
+    final until = _featuresUntil;
+    if (_features == null || (until != null && !_now().isBefore(until))) {
+      _featuresUntil = null;
+      _features = _readFeatures();
+    }
+    return _features!;
+  }
+
+  Future<ServerFeatures>? _features;
+  DateTime? _featuresUntil;
+
+  Future<ServerFeatures> _readFeatures() async {
+    try {
+      final f = ServerFeatures.fromInfo(object(await getCached('/info')));
+      _featuresUntil = _now().add(_referenceTtl);
+      return f;
+    } catch (e) {
+      if (!(e is ApiException && e.status == 404)) {
+        _featuresUntil = _now().add(const Duration(seconds: 60));
+      }
+      return const ServerFeatures.off();
+    }
+  }
+
+  /// Polled readings for a repeater or room server; the server picks the bucket
+  /// size from [range] (24h, 168h or 720h).
+  Future<Json> nodeTelemetry(String id, {String range = '168h'}) async =>
+      object(
+        await getCached('/nodes/${Uri.encodeComponent(id)}/telemetry', {
+          'range': range,
+          'interval': switch (range) {
+            '24h' => '1h',
+            '720h' => '24h',
+            _ => '6h',
+          },
+        }),
+      );
+
+  Future<Json> nodePolling(String id) async =>
+      object(await getCached('/nodes/${Uri.encodeComponent(id)}/polling'));
 
   /// A short-lived ticket that lets this app open /ws on servers requiring an Origin.
   Future<String> wsTicket() async =>
