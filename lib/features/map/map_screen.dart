@@ -38,6 +38,7 @@ class MapScreen extends StatefulWidget {
 }
 
 class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
+  static const _flowInterval = Duration(milliseconds: 50);
   StreamSubscription<Json>? _events;
   Timer? _flowTimer, _telemetryTimer, _ageTimer;
   ServerFeatures _features = const ServerFeatures.off();
@@ -46,6 +47,8 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   bool _resumed = true;
   bool _flow = false;
   final _flows = <Map<String, dynamic>>[];
+  // Timer ticks advance with elapsed durations, independent of wall-clock jumps.
+  int get _flowNow => (_flowTimer?.tick ?? 0) * _flowInterval.inMilliseconds;
   List<Map<String, dynamic>> _nodes = [],
       _neighbors = [],
       _airports = [],
@@ -145,20 +148,14 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         while (_flows.length >= 120) {
           _flows.removeAt(0);
         }
-        _flows.add({
-          'nodes': ns,
-          'start': DateTime.now().millisecondsSinceEpoch,
-        });
-        _flowTimer ??= Timer.periodic(
-          const Duration(milliseconds: 50),
-          (_) => _tick(),
-        );
+        _flows.add({'nodes': ns, 'start': _flowNow});
+        _flowTimer ??= Timer.periodic(_flowInterval, (_) => _tick());
       }
     });
   }
 
   void _tick() {
-    final now = DateTime.now().millisecondsSinceEpoch;
+    final now = _flowNow;
     _flows.removeWhere(
       (f) =>
           now - (number(f['start']) ?? 0) >
