@@ -322,4 +322,18 @@ void main() {
       expect(neighborMode('off', live: true), 'off');
     },
   );
+  test('node features carry a telemetry label on the matching node only', () {
+    final nodes = <Map<String, dynamic>>[
+      {'id': 'a', 'lat': 43, 'lng': -79},
+      {'id': 'b', 'lat': 44, 'lng': -80},
+    ];
+    final f = nodeFeatures(
+      nodes,
+      labels: {'a': (text: '4.08V  1°  38m', old: true)},
+    )['features'];
+    expect(f[0]['properties']['telemetry'], '4.08V  1°  38m');
+    expect(f[0]['properties']['telemetryOld'], true);
+    expect(f[1]['properties'].containsKey('telemetry'), false);
+    expect(f[1]['properties'].containsKey('telemetryOld'), false);
+  });
 }

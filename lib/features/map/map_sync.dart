@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'map_data.dart';
+import 'map_telemetry.dart';
 
 /// The GeoJSON the map screen hands its native map.
 typedef MapLayerData = ({
@@ -28,10 +29,19 @@ class MapLayers {
     required Map<String, dynamic>? selectedNode,
     required List<Map<String, dynamic>> neighbors,
     required List<Map<String, dynamic>> borders,
+    Map<String, TelemetryLabel> labels = const {},
   }) {
-    final typed = _typed([nodes, type], () => nodeFeatures(nodes, type: type));
+    final typed = _typed([
+      nodes,
+      type,
+      labels,
+    ], () => nodeFeatures(nodes, type: type, labels: labels));
     final all = flow && type.isNotEmpty;
-    final live = _live([nodes, all], () => all ? nodeFeatures(nodes) : null);
+    final live = _live([
+      nodes,
+      all,
+      labels,
+    ], () => all ? nodeFeatures(nodes, labels: labels) : null);
     return (
       points: _points([
         typed,

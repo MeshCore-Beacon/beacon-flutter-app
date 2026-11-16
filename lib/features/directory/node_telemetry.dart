@@ -5,6 +5,7 @@ import '../../core/api.dart';
 import '../../core/json.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
+import '../../core/units.dart';
 import '../analytics/charts.dart';
 import '../analytics/transforms.dart';
 import '../atlas/atlas.dart' show hourMs;
@@ -30,13 +31,13 @@ double? latestReading(List<Json> points, String key) {
   return null;
 }
 
-/// "4.23 V · 16.5 °C" from the newest battery and temperature, or null for neither.
-String? readingsLine(List<Json> points) {
+/// "4.23 V · 16.5 °C" (in [unit]) from the newest battery and temperature, or null for neither.
+String? readingsLine(List<Json> points, String unit) {
   final mv = latestReading(points, 'batteryMv');
   final c = latestReading(points, 'temperatureC');
   final parts = [
     if (mv != null) '${(mv / 1000).toStringAsFixed(2)} V',
-    if (c != null) '${c.toStringAsFixed(1)} °C',
+    if (c != null) formatTemp(c, unit),
   ];
   return parts.isEmpty ? null : parts.join(' · ');
 }
@@ -57,12 +58,13 @@ List<ChartPoint> telemetrySeries(
   String key,
   int bucketMs, {
   double scale = 1,
+  double Function(double)? convert,
 }) {
   final out = <ChartPoint>[];
   for (var i = 0; i < points.length; i++) {
     final t = number(points[i]['t']) ?? 0;
     final v = number(points[i][key]);
-    out.add(ChartPoint(t, v == null ? null : v * scale));
+    out.add(ChartPoint(t, v == null ? null : convert?.call(v) ?? v * scale));
     final next = i + 1 < points.length ? number(points[i + 1]['t']) : null;
     if (next != null && next - t > bucketMs * 1.5) {
       out.add(ChartPoint(t + bucketMs, null));
@@ -124,6 +126,7 @@ class _NodeTelemetrySectionState extends State<NodeTelemetrySection> {
   // Once a chart has shown, a failed reload keeps the section instead of hiding it.
   bool chartShown = false;
   Json telemetry = {}, polling = {};
+  String tempUnit = 'c';
   int generation = 0, rangeToken = 0;
 
   @override
@@ -153,6 +156,7 @@ class _NodeTelemetrySectionState extends State<NodeTelemetrySection> {
     bool current() => mounted && token == generation;
     final features = await widget.api.features();
     if (!current()) return;
+    tempUnit = features.temperatureUnit;
     if (!features.polling) {
       setState(() => checked = true);
       return;
@@ -308,13 +312,19 @@ class _NodeTelemetrySectionState extends State<NodeTelemetrySection> {
           ),
         }, ' V'),
       if (has('temperatureC'))
-        chart(trKey('nodeTelemetry.temperature'), {
-          trKey('nodeTelemetry.temperatureSeries'): telemetrySeries(
-            points,
-            'temperatureC',
-            bucketMs,
-          ),
-        }, ' °C'),
+        chart(
+          trKey('nodeTelemetry.temperature')
+              .replaceAll('{{unit}}', tempSymbol(tempUnit)),
+          {
+            trKey('nodeTelemetry.temperatureSeries'): telemetrySeries(
+              points,
+              'temperatureC',
+              bucketMs,
+              convert: (c) => toDisplayTemp(c, tempUnit),
+            ),
+          },
+          ' ${tempSymbol(tempUnit)}',
+        ),
       if (has('noiseFloorDb'))
         chart(trKey('nodeTelemetry.noiseFloor'), {
           trKey('nodeTelemetry.noiseFloorSeries'): telemetrySeries(

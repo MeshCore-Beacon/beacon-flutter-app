@@ -1278,7 +1278,7 @@
       "range30d": "30 dagar",
       "battery": "Batteri (V)",
       "batterySeries": "Batteri",
-      "temperature": "Temperatur (°C)",
+      "temperature": "Temperatur ({{unit}})",
       "temperatureSeries": "Temperatur",
       "noiseFloor": "Brusnivå (dBm)",
       "noiseFloorSeries": "Brusnivå",
@@ -1440,8 +1440,8 @@
         "dbm": "dBm",
         "drift": "Avvikelse",
         "minutes": "Ingen rapport på",
-        "low": "Låg (°C)",
-        "high": "Hög (°C)"
+        "low": "Låg ({{symbol}})",
+        "high": "Hög ({{symbol}})"
       },
       "drift": {
         "300": "5 minuter",
@@ -1462,11 +1462,12 @@
         "volts": "Ange ett värde mellan 2,50 och 5,00 volt.",
         "dbm": "Ange ett heltal mellan -130 och -50 dBm.",
         "temperatureNone": "Ange en nedre eller övre gräns.",
-        "temperature": "Ange en temperatur i grader C, till exempel 4,5.",
+        "temperature": "Ange en temperatur i grader {{unit}}, till exempel {{example}}.",
+        "temperatureWhole": "Ange ett helt antal grader {{unit}}, till exempel {{example}}.",
         "not_found": "Den aviseringen finns inte längre.",
         "app_session_required": "Bara Beacon-appen kan registrera en telefon för aviseringar.",
-        "temperatureRange": "Ange gränser mellan -50 och 150 grader C.",
-        "temperatureWidth": "Den höga gränsen måste vara minst 2 grader över den låga."
+        "temperatureRange": "Ange gränser mellan {{min}} och {{max}} grader {{unit}}.",
+        "temperatureWidth": "Den höga gränsen måste vara minst {{width}} grader över den låga."
       },
       "when": {
         "gone_quiet": "När radion inte har hörts på så här länge.",
