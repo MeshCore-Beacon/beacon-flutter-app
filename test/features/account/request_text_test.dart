@@ -1,5 +1,6 @@
 import 'package:beacon/core/api.dart';
 import 'package:beacon/core/strings.dart';
+import 'package:beacon/core/theme.dart';
 import 'package:beacon/features/account/alert_rules.dart';
 import 'package:beacon/features/account/request_text.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -28,6 +29,90 @@ void main() {
       requestStatusText('disabled'),
       'Paused: the repeater has not been heard recently',
     );
+  });
+
+  Map<String, dynamic> polled(
+    String? state, {
+    String status = 'active',
+    bool stateAt = false,
+  }) => {
+    'status': status,
+    'poller': {
+      'observerId': 'o1',
+      'name': 'HOWL',
+      'state': ?state,
+      if (stateAt) 'stateAt': 1700000000000,
+    },
+  };
+
+  test('an active request says what its poller reports', () {
+    const expected = {
+      'ok': 'Being polled by HOWL',
+      'pending': 'Assigned to HOWL. First poll is on its way.',
+      'not_direct': 'Assigned to HOWL, which cannot hear this repeater directly right now.',
+      'no_reply': 'HOWL is asking, but the repeater is not answering.',
+      'not_claimed': 'Assigned to HOWL. Waiting for it to pick this up.',
+      'login_failed': 'HOWL reported a password problem. Checking.',
+      'admin_stop': 'HOWL reported a password problem. Checking.',
+    };
+    expected.forEach((state, text) {
+      expect(requestLineText(polled(state)), text, reason: state);
+    });
+  });
+
+  test('every poller state has words in fr and sv too', () {
+    for (final lang in ['fr', 'sv']) {
+      language = lang;
+      for (final s in [
+        'ok',
+        'pending',
+        'not_direct',
+        'no_reply',
+        'not_claimed',
+        'login_failed',
+      ]) {
+        final text = requestLineText(polled(s));
+        expect(text, contains('HOWL'), reason: '$lang $s');
+        expect(text, isNot(startsWith('pollerState.')), reason: '$lang $s');
+        expect(text, isNot(contains('{{')), reason: '$lang $s');
+      }
+    }
+  });
+
+  test('a missing or unknown state keeps today\'s text', () {
+    expect(requestLineText(polled(null)), 'Being polled');
+    expect(requestLineText(polled('brand_new')), 'Being polled');
+    expect(
+      requestLineText({'status': 'active', 'poller': null}),
+      'Being polled',
+    );
+    expect(requestLineText({'status': 'active'}), 'Being polled');
+  });
+
+  test('a state only counts while the request is active', () {
+    expect(
+      requestLineText(polled('no_reply', status: 'waiting')),
+      'Waiting for an observer that can reach it',
+    );
+  });
+
+  test('the dot is green for ok and amber for the waiting states', () {
+    final c = BeaconTheme.all.first.data.extension<BeaconColors>()!;
+    for (final s in ['ok', null, 'brand_new']) {
+      expect(requestDotColor(polled(s), c), c.success, reason: '$s');
+    }
+    for (final s in [
+      'pending',
+      'not_direct',
+      'no_reply',
+      'not_claimed',
+      'login_failed',
+      'admin_stop',
+    ]) {
+      expect(requestDotColor(polled(s), c), c.warning, reason: s);
+    }
+    expect(requestDotColor(polled('ok', status: 'waiting'), c), c.warning);
+    expect(requestDotColor(polled('ok', status: 'login_failed'), c), c.danger);
   });
 
   test('an unknown status is shown as it came', () {

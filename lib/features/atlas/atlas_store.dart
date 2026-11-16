@@ -61,6 +61,9 @@ class AtlasStore extends ChangeNotifier {
   Map<String, String> _observerKeys = {};
   String? _user;
   bool _dirty = false, _wantLoad = false, _markAfterWrite = false;
+  // Whether the server stores Telemetry tiles and views; otherwise they live
+  // only in the local copy.
+  bool _telemetrySync = false;
   bool _disposed = false;
   int _changes = 0;
   Future<void>? _job;
@@ -166,7 +169,7 @@ class AtlasStore extends ChangeNotifier {
   void _adopt(ServerAtlas server) {
     _revision = server.revision;
     _observerKeys = {..._observerKeys, ...server.observerKeys};
-    saved = server.atlas;
+    saved = _telemetrySync ? server.atlas : carryTelemetry(server.atlas, saved);
     _changes++;
     _notify();
     _cache();
@@ -196,6 +199,7 @@ class AtlasStore extends ChangeNotifier {
     ServerAtlas? server;
     try {
       server = parseServerAtlas(await account!.api.atlas());
+      _telemetrySync = await account!.api.atlasTelemetry();
     } catch (_) {
       return !_live(user, epoch);
     }
@@ -247,10 +251,18 @@ class AtlasStore extends ChangeNotifier {
     _dirty = false;
     Json doc;
     try {
+      _telemetrySync = await account!.api.atlasTelemetry();
+      if (!_live(user, epoch)) return true;
       doc = await account!.api.putAtlas(
         _revision!,
         snapshot.range.id,
-        (atlasPutBody(snapshot, _observerKeys, _revision!)['pins'] as List)
+        (atlasPutBody(
+                  snapshot,
+                  _observerKeys,
+                  _revision!,
+                  telemetry: _telemetrySync,
+                )['pins']
+                as List)
             .cast<Json>(),
       );
     } on AtlasConflict catch (conflict) {
@@ -295,10 +307,11 @@ class AtlasStore extends ChangeNotifier {
       await preferences.markAtlasSynced(url, user);
     }
     // The stored copy is the truth, but only when nothing newer is waiting.
-    if (!_dirty &&
-        _changes == changes &&
-        written.atlas.encode() != saved.encode()) {
-      saved = written.atlas;
+    final stored = _telemetrySync
+        ? written.atlas
+        : carryTelemetry(written.atlas, saved);
+    if (!_dirty && _changes == changes && stored.encode() != saved.encode()) {
+      saved = stored;
       _changes++;
       _notify();
       _cache();

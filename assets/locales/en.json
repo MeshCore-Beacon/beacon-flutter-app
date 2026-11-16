@@ -1411,6 +1411,11 @@
       "empty": "Alerts are set on radios in your Atlas. Add a radio there first.",
       "requestAttention": "You are always told when one of your telemetry requests needs attention.",
       "needsGoneQuiet": "Turn on {{name}} first.",
+      "summaryNone": "No alerts on",
+      "summaryOnCount_one": "{{count}} alert on",
+      "summaryOnCount_other": "{{count}} alerts on",
+      "summaryFiring_one": "Alerting: {{name}}",
+      "summaryFiring_other": "Alerting: {{count}} alerts",
       "push": {
         "notSetUp": "Push notifications are not set up in this build.",
         "enable": "Turn on notifications",
@@ -1537,6 +1542,34 @@
       "passwordHelper": "Needed to confirm it is you.",
       "noDevices": "No devices to show.",
       "deleteUsernameHelper": "Type your username exactly as shown."
+    },
+    "pollerState": {
+      "ok": "Being polled by {{name}}",
+      "pending": "Assigned to {{name}}. First poll is on its way.",
+      "notDirect": "Assigned to {{name}}, which cannot hear this repeater directly right now.",
+      "noReply": "{{name}} is asking, but the repeater is not answering.",
+      "notClaimed": "Assigned to {{name}}. Waiting for it to pick this up.",
+      "passwordProblem": "{{name}} reported a password problem. Checking."
+    },
+    "atlasTelemetry": {
+      "tab": "Telemetry",
+      "battery": "Battery",
+      "noise": "Noise floor",
+      "uptime": "Uptime",
+      "airtime": "Airtime",
+      "temperature": "Temperature",
+      "packets": "Packets",
+      "signal": "Signal",
+      "errors": "Errors",
+      "noReadings": "No readings in this window",
+      "needsPair": "Needs two status readings",
+      "restarted": "Restarted",
+      "sentPerHour": "sent {{value}}",
+      "polledBy": "Polled by {{name}}",
+      "polled": "Being polled",
+      "notPolled": "Not being polled right now",
+      "lastReading": "Last reading",
+      "help": "Readings Beacon polled from this repeater, over the selected window. Airtime is the share of time spent transmitting and receiving. Packets and errors are per hour. Signal is the last SNR and RSSI the repeater reported. With only a few readings the points are drawn as dots."
     }
   }
 }
