@@ -63,6 +63,24 @@ void main() {
     }
 
     await toggle(true);
+    unawaited(
+      Navigator.of(tester.element(find.byType(MapScreen))).push<void>(
+        MaterialPageRoute(
+          builder: (_) => const Scaffold(body: Text('Opaque details')),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(flow.hasListener, isFalse);
+    expect(base.hasListener, isTrue);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(flow.hasListener, isFalse);
+    Navigator.of(tester.element(find.text('Opaque details'))).pop();
+    await tester.pumpAndSettle();
+    expect(flow.hasListener, isTrue);
     await toggle(false);
     await toggle(true);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
