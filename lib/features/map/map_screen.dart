@@ -139,7 +139,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
           }
         });
       }
-      if (_flow && event['event'] == 'packetObservation') {
+      if (_resumed && _flow && event['event'] == 'packetObservation') {
         final ns = flowNodes(object(d['observation']));
         if (ns.length < 2) return;
         while (_flows.length >= 120) {
