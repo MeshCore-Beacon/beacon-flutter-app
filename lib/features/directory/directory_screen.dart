@@ -9,6 +9,7 @@ import '../../core/json.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
 import '../analytics/charts.dart' show countLabel;
+import '../packets/trace_quality.dart';
 import 'directory_widgets.dart';
 import 'paging.dart';
 
@@ -1436,6 +1437,7 @@ class _DirectoryScreenState extends State<DirectoryScreen>
       final hashes = r['pathHashes'] is List ? r['pathHashes'] as List : [];
       final snrs = r['snrValues'] is List ? r['snrValues'] as List : [];
       content = [
+        TraceQualityNotice(quality: r['quality'], compact: true),
         Row(
           children: [
             line(

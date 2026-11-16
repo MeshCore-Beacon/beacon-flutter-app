@@ -11,6 +11,7 @@ import '../../core/strings.dart';
 import '../../core/theme.dart';
 import '../analytics/charts.dart';
 import '../analytics/observer_charts.dart';
+import '../packets/trace_quality.dart';
 import 'directory_widgets.dart';
 import 'meshmapper_section.dart';
 import 'node_telemetry.dart';
@@ -1091,6 +1092,7 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
     ...rows(d['packets']).map((p) {
       final raw = rows(p['rawPath']), resolved = rows(p['resolvedRoute']);
       return section(textOf(p['routeTypeName'], 'Trace packet'), [
+        TraceQualityNotice(quality: p['quality']),
         link(
           textOf(p['packetHash']),
           'packet',

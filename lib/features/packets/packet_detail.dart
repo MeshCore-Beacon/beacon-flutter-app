@@ -12,6 +12,7 @@ import 'packet_model.dart';
 import 'packet_screen.dart';
 import 'path_hop.dart';
 import 'payload_view.dart';
+import 'trace_quality.dart';
 
 class PacketDetailScreen extends StatefulWidget {
   const PacketDetailScreen({
@@ -156,6 +157,9 @@ class _PacketDetailScreenState extends State<PacketDetailScreen>
           : ListView(
               padding: const EdgeInsets.symmetric(vertical: 14),
               children: _insetSections([
+                TraceQualityNotice(
+                  quality: obs?['traceQuality'] ?? data['traceQuality'],
+                ),
                 _section('Summary', [
                   Row(
                     children: [

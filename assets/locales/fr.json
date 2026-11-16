@@ -805,7 +805,21 @@
       "empty": "Aucune trace",
       "iataCount_one": "{{count}} IATA",
       "iataCount_other": "{{count}} IATA",
-      "iataCount_many": "{{count}} IATA"
+      "iataCount_many": "{{count}} IATA",
+      "quality": {
+        "suspect": "Observation suspecte",
+        "ambiguous": "Collision de préfixe possible",
+        "evidenceOnly": "Les données brutes sont conservées. Elles ne prouvent ni un trajet réel ni une collision confirmée.",
+        "unsupported_version": "Version de paquet non prise en charge",
+        "non_direct_trace": "TRACE ne prend pas en charge la diffusion",
+        "incomplete_payload": "Charge utile de trace incomplète",
+        "payload_too_large": "Charge utile supérieure à la limite du protocole",
+        "unsupported_flags": "Indicateurs de trace non reconnus",
+        "misaligned_hashes": "Octets incompatibles avec la largeur annoncée",
+        "too_many_hops": "Trajet dépassant le nombre de sauts pris en charge",
+        "invalid_snr_path": "Le chemin SNR ne correspond pas à cette trace",
+        "ambiguous_prefix": "Un saut correspond à plusieurs nœuds connus"
+      }
     },
     "loadingPill": {
       "nodes": {

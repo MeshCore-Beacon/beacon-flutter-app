@@ -781,7 +781,21 @@
       "ping": "Ping",
       "empty": "No traces",
       "iataCount_one": "{{count}} IATA",
-      "iataCount_other": "{{count}} IATAs"
+      "iataCount_other": "{{count}} IATAs",
+      "quality": {
+        "suspect": "Suspect observation",
+        "ambiguous": "Possible prefix collision",
+        "evidenceOnly": "Raw evidence is retained. This does not establish a real route or identify a confirmed collision.",
+        "unsupported_version": "Unsupported packet version",
+        "non_direct_trace": "TRACE does not support flood routing",
+        "incomplete_payload": "Incomplete trace payload",
+        "payload_too_large": "Payload exceeds the protocol limit",
+        "unsupported_flags": "Unrecognized trace flags",
+        "misaligned_hashes": "Hash bytes do not match the declared width",
+        "too_many_hops": "Route exceeds the supported trace hop count",
+        "invalid_snr_path": "SNR path cannot match this trace",
+        "ambiguous_prefix": "A hop matches multiple known nodes"
+      }
     },
     "loadingPill": {
       "nodes": {
