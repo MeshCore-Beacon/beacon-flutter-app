@@ -1458,6 +1458,13 @@
       "empty": "Les alertes se règlent sur les radios de votre Atlas. Ajoutez d'abord une radio.",
       "requestAttention": "Vous êtes toujours prévenu quand une de vos demandes de télémétrie demande votre attention.",
       "needsGoneQuiet": "Activez d'abord « {{name}} ».",
+      "summaryNone": "Aucune alerte activée",
+      "summaryOnCount_one": "{{count}} alerte activée",
+      "summaryOnCount_many": "{{count}} alertes activées",
+      "summaryOnCount_other": "{{count}} alertes activées",
+      "summaryFiring_one": "En alerte : {{name}}",
+      "summaryFiring_many": "En alerte : {{count}} alertes",
+      "summaryFiring_other": "En alerte : {{count}} alertes",
       "push": {
         "notSetUp": "Les notifications push ne sont pas configurées dans cette version.",
         "enable": "Activer les notifications",
@@ -1584,6 +1591,34 @@
       "passwordHelper": "Nécessaire pour confirmer votre identité.",
       "noDevices": "Aucun appareil à afficher.",
       "deleteUsernameHelper": "Saisissez votre nom d'utilisateur exactement comme affiché."
+    },
+    "pollerState": {
+      "ok": "Interrogé par {{name}}",
+      "pending": "Attribué à {{name}}. La première interrogation est en route.",
+      "notDirect": "Attribué à {{name}}, qui n'entend pas ce répéteur directement pour l'instant.",
+      "noReply": "{{name}} interroge, mais le répéteur ne répond pas.",
+      "notClaimed": "Attribué à {{name}}. En attente qu'il le prenne en charge.",
+      "passwordProblem": "{{name}} a signalé un problème de mot de passe. Vérification en cours."
+    },
+    "atlasTelemetry": {
+      "tab": "Télémétrie",
+      "battery": "Batterie",
+      "noise": "Plancher de bruit",
+      "uptime": "Disponibilité",
+      "airtime": "Temps radio",
+      "temperature": "Température",
+      "packets": "Paquets",
+      "signal": "Signal",
+      "errors": "Erreurs",
+      "noReadings": "Aucune mesure sur cette période",
+      "needsPair": "Il faut deux relevés d’état",
+      "restarted": "Redémarré",
+      "sentPerHour": "envoyés {{value}}",
+      "polledBy": "Interrogé par {{name}}",
+      "polled": "Interrogé",
+      "notPolled": "Pas interrogé pour le moment",
+      "lastReading": "Dernière mesure",
+      "help": "Mesures relevées par Beacon sur ce répéteur, sur la période choisie. Le temps radio est la part du temps passée à émettre et à recevoir. Les paquets et les erreurs sont par heure. Le signal est le dernier SNR et RSSI rapporté par le répéteur. Avec peu de mesures, les points sont dessinés isolés."
     }
   }
 }

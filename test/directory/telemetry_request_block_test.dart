@@ -286,6 +286,28 @@ void main() {
     expect(find.text('Profile'), findsWidgets);
   });
 
+  testWidgets('the request block says what the poller reports', (tester) async {
+    requests = [
+      {
+        ...existing('active'),
+        'poller': {
+          'observerId': 'o1',
+          'name': 'HOWL',
+          'state': 'not_direct',
+          'stateAt': 1700000000000,
+        },
+      },
+    ];
+    await pump(tester);
+    expect(
+      find.text(
+        'Assigned to HOWL, which cannot hear this repeater directly right now.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Being polled'), findsNothing);
+  });
+
   testWidgets('a request matches the repeater by key when its id is missing', (
     tester,
   ) async {

@@ -1411,6 +1411,11 @@
       "empty": "Aviseringar ställs in på radioapparater i din Atlas. Lägg först till en radio.",
       "requestAttention": "Du får alltid besked när en av dina telemetribegäranden behöver uppmärksamhet.",
       "needsGoneQuiet": "Slå först på {{name}}.",
+      "summaryNone": "Inga larm på",
+      "summaryOnCount_one": "{{count}} larm på",
+      "summaryOnCount_other": "{{count}} larm på",
+      "summaryFiring_one": "Larmar: {{name}}",
+      "summaryFiring_other": "Larmar: {{count}} larm",
       "push": {
         "notSetUp": "Pushnotiser är inte inställda i den här versionen.",
         "enable": "Slå på notiser",
@@ -1537,6 +1542,34 @@
       "passwordHelper": "Behövs för att bekräfta att det är du.",
       "noDevices": "Inga enheter att visa.",
       "deleteUsernameHelper": "Skriv ditt användarnamn exakt som det visas."
+    },
+    "pollerState": {
+      "ok": "Läses av {{name}}",
+      "pending": "Tilldelad {{name}}. Första avläsningen är på väg.",
+      "notDirect": "Tilldelad {{name}}, som inte kan höra den här repeatern direkt just nu.",
+      "noReply": "{{name}} frågar, men repeatern svarar inte.",
+      "notClaimed": "Tilldelad {{name}}. Väntar på att den ska ta över.",
+      "passwordProblem": "{{name}} rapporterade ett lösenordsproblem. Kontrollerar."
+    },
+    "atlasTelemetry": {
+      "tab": "Telemetri",
+      "battery": "Batteri",
+      "noise": "Brusgolv",
+      "uptime": "Drifttid",
+      "airtime": "Sändningstid",
+      "temperature": "Temperatur",
+      "packets": "Paket",
+      "signal": "Signal",
+      "errors": "Fel",
+      "noReadings": "Inga värden i det här fönstret",
+      "needsPair": "Kräver två statusvärden",
+      "restarted": "Startades om",
+      "sentPerHour": "skickade {{value}}",
+      "polledBy": "Avläses av {{name}}",
+      "polled": "Avläses",
+      "notPolled": "Avläses inte just nu",
+      "lastReading": "Senaste värdet",
+      "help": "Värden som Beacon har hämtat från den här repeatern, över det valda fönstret. Sändtid är andelen av tiden som gått åt till att sända och ta emot. Paket och fel räknas per timme. Signal är det senaste SNR och RSSI som repeatern rapporterade. Med få värden ritas punkterna som prickar."
     }
   }
 }

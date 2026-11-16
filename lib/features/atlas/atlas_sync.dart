@@ -60,6 +60,7 @@ ServerAtlas? parseServerAtlas(Json doc) {
         'name': pin['name'],
         'observerId': pin['observerId'],
         'tiles': pin['tiles'],
+        'telemetryTiles': pin['telemetryTiles'],
         'view': pin['view'],
       });
     }
@@ -72,8 +73,14 @@ ServerAtlas? parseServerAtlas(Json doc) {
 }
 
 /// The PUT body for [saved]. A stand-in observer goes out by key; any other
-/// observer by id, as a local pin only has that.
-Json atlasPutBody(SavedAtlas saved, Map<String, String> keys, int revision) => {
+/// observer by id, as a local pin only has that. An older server rejects the
+/// Telemetry fields, so without [telemetry] they stay out.
+Json atlasPutBody(
+  SavedAtlas saved,
+  Map<String, String> keys,
+  int revision, {
+  bool telemetry = true,
+}) => {
   'baseRevision': revision,
   'range': saved.range.id,
   'pins': [
@@ -84,7 +91,10 @@ Json atlasPutBody(SavedAtlas saved, Map<String, String> keys, int revision) => {
           'publicKey': pin.publicKey,
           'name': pin.name,
           'tiles': ?pin.tiles,
-          'view': ?pin.view?.name,
+          if (telemetry) 'telemetryTiles': ?pin.telemetryTiles,
+          'view': ?(pin.view == AtlasView.telemetry && !telemetry
+              ? null
+              : pin.view?.name),
         }
       else
         {
@@ -143,5 +153,30 @@ AtlasMerge mergeFirstSignIn(ServerAtlas server, SavedAtlas local) {
     server.atlas.copyWith(pins: pins),
     upload: added > 0,
     dropped: dropped,
+  );
+}
+
+/// Against a server that does not store the Telemetry fields, the local copy
+/// keeps them: a card's tiles and pinned view are put back on the server's pins.
+SavedAtlas carryTelemetry(SavedAtlas server, SavedAtlas local) {
+  final mine = {for (final pin in local.pins) pin.key: pin};
+  return server.copyWith(
+    pins: [
+      for (final pin in server.pins)
+        if (pin.isNode && mine[pin.key]?.isNode == true)
+          AtlasPin.node(
+            id: pin.id!,
+            publicKey: pin.publicKey!,
+            name: pin.name,
+            observerId: pin.observerId,
+            tiles: pin.tiles,
+            telemetryTiles: pin.telemetryTiles ?? mine[pin.key]!.telemetryTiles,
+            view: pin.view == null && mine[pin.key]!.view == AtlasView.telemetry
+                ? AtlasView.telemetry
+                : pin.view,
+          )
+        else
+          pin,
+    ],
   );
 }

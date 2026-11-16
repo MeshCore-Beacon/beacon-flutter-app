@@ -293,6 +293,7 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
                           name: other.name,
                           observerId: observerId,
                           tiles: other.tiles ?? tiles,
+                          telemetryTiles: other.telemetryTiles,
                           view: other.view,
                         )
                       : other,
@@ -466,6 +467,12 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
                                 upgrade(pin, match, observerId),
                             onTilesChange: (tiles) =>
                                 replace(pin, (other) => other.withTiles(tiles)),
+                            onTelemetryTilesChange: (tiles) => replace(
+                              pin,
+                              (other) => other.isNode
+                                  ? other.withTelemetryTiles(tiles)
+                                  : other,
+                            ),
                             onOpen: widget.onOpen,
                             handle: handle,
                           );

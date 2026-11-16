@@ -1,6 +1,9 @@
+import 'package:flutter/material.dart';
+
 import '../../core/api.dart';
 import '../../core/json.dart';
 import '../../core/strings.dart';
+import '../../core/theme.dart';
 import 'account_errors.dart';
 
 /// A request's status in words; a status this build does not know shows as sent.
@@ -57,4 +60,47 @@ String requestError(Object error) {
     }
   }
   return accountError(error);
+}
+
+// poller.state values that mean the observer is not yet reading the repeater,
+// mapped to the catalog key that words each.
+const _pollerKeys = {
+  'ok': 'ok',
+  'pending': 'pending',
+  'not_direct': 'notDirect',
+  'no_reply': 'noReply',
+  'not_claimed': 'notClaimed',
+  'login_failed': 'passwordProblem',
+  'admin_stop': 'passwordProblem',
+};
+
+String? _pollerKey(Json request) {
+  if (request['status'] != 'active') return null;
+  return _pollerKeys[textOf(object(request['poller'])['state'])];
+}
+
+/// A request's status line. While active it says what the assigned observer
+/// reports; no poller state (an older server) or an unknown one shows the
+/// plain status.
+String requestLineText(Json request) {
+  final key = _pollerKey(request);
+  if (key == null) return requestStatusText(textOf(request['status']));
+  final name = textOf(object(request['poller'])['name'], '?');
+  return trKey('pollerState.$key').replaceAll('{{name}}', name);
+}
+
+/// Whether [requestLineText] already names the poller.
+bool requestLineNamesPoller(Json request) => _pollerKey(request) != null;
+
+/// The status dot: green only when polling works, amber while waiting.
+Color requestDotColor(Json request, BeaconColors colors) {
+  final status = textOf(request['status']);
+  if (status == 'active') {
+    final key = _pollerKey(request);
+    return key == null || key == 'ok' ? colors.success : colors.warning;
+  }
+  if (status == 'login_failed' || status == 'admin_stopped') {
+    return colors.danger;
+  }
+  return colors.warning;
 }

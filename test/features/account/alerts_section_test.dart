@@ -76,6 +76,7 @@ void main() {
     bool alerts = true,
     String mode = 'email',
     FakePush? push,
+    bool collapsed = false,
   }) async {
     tester.view.physicalSize = const Size(600, 6000);
     tester.view.devicePixelRatio = 1;
@@ -120,6 +121,17 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    if (!collapsed) {
+      for (final tile in find.byType(ExpansionTile).evaluate().toList()) {
+        await tester.tap(
+          find.descendant(
+            of: find.byWidget(tile.widget),
+            matching: find.byType(ListTile),
+          ),
+        );
+        await tester.pumpAndSettle();
+      }
+    }
     return h;
   }
 
@@ -172,6 +184,131 @@ void main() {
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
   }
+
+  group('collapsed radios', () {
+    Finder head(String key) => find.descendant(
+      of: k('alert-tile-$key'),
+      matching: find.byType(ListTile),
+    );
+    Future<void> flip(WidgetTester tester, String key) async {
+      await tester.ensureVisible(head(key));
+      await tester.tap(head(key));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('start collapsed with no switches, even for one radio', (
+      tester,
+    ) async {
+      data['targets'] = [target()];
+      await open(tester, collapsed: true);
+      expect(find.byType(Switch), findsNothing);
+      expect(find.text('Hilltop'), findsOneWidget);
+      expect(find.textContaining('always told'), findsOneWidget);
+      expect(find.text('Alerts are sent to a@example.org'), findsOneWidget);
+    });
+
+    testWidgets('summarise none, one, several and firing', (tester) async {
+      data['targets'] = [
+        target(name: 'None', key: 'n1'),
+        target(
+          name: 'One',
+          key: 'o1',
+          rules: [rule('gone_quiet', threshold: 24)],
+        ),
+        target(
+          name: 'Many',
+          key: 'm1',
+          rules: [
+            rule('gone_quiet', threshold: 24),
+            rule('battery_low', threshold: 3500),
+            rule('rebooted', enabled: false),
+          ],
+        ),
+        target(
+          name: 'Fire',
+          key: 'f1',
+          rules: [
+            rule('battery_low', threshold: 3500, state: 'firing'),
+            rule('rebooted'),
+          ],
+        ),
+        target(
+          name: 'Fires',
+          key: 'f2',
+          rules: [
+            rule('battery_low', threshold: 3500, state: 'firing'),
+            rule('rebooted', state: 'firing'),
+          ],
+        ),
+      ];
+      await open(tester, collapsed: true);
+      expect(find.text('No alerts on'), findsOneWidget);
+      expect(find.text('1 alert on'), findsOneWidget);
+      expect(find.text('2 alerts on'), findsOneWidget);
+      expect(
+        find.textContaining('Alerting: Battery low · 2 alerts on'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('Alerting: 2 alerts · 2 alerts on'),
+        findsOneWidget,
+      );
+      expect(find.byType(Switch), findsNothing);
+    });
+
+    testWidgets(
+      'open to the rows, several at once, with an accessible tap size',
+      (tester) async {
+        await open(tester, collapsed: true);
+        expect(tester.getSize(head('aabb')).height, greaterThanOrEqualTo(48));
+        await flip(tester, 'aabb');
+        await flip(tester, 'ccdd');
+        expect(k('alert-switch-aabb-gone_quiet'), findsOneWidget);
+        expect(k('alert-switch-ccdd-gone_quiet'), findsOneWidget);
+        await flip(tester, 'aabb');
+        expect(k('alert-switch-aabb-gone_quiet'), findsNothing);
+        expect(k('alert-switch-ccdd-gone_quiet'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'an unsaved threshold survives collapse and expand, no refetch',
+      (tester) async {
+        data['targets'] = [
+          target(rules: [rule('noise_high', threshold: -90)]),
+        ];
+        final h = await open(tester, collapsed: true);
+        await flip(tester, 'aabb');
+        await tester.enterText(k('alert-input-aabb-noise_high'), '-77');
+        await tester.pump();
+        await flip(tester, 'aabb');
+        await flip(tester, 'aabb');
+        expect(find.text('-77'), findsOneWidget);
+        expect(h.calls('GET', '/me/alerts'), hasLength(1));
+        expect(puts, isEmpty);
+      },
+    );
+
+    testWidgets('a toggle updates the summary once collapsed', (tester) async {
+      await open(tester, collapsed: true);
+      await flip(tester, 'ccdd');
+      data['targets'] = [
+        target(),
+        target(
+          name: 'Ridge',
+          key: 'ccdd',
+          id: null,
+          polled: false,
+          available: ['gone_quiet', 'back_online'],
+          rules: [rule('gone_quiet', threshold: 24)],
+        ),
+      ];
+      await tap(tester, 'alert-switch-ccdd-gone_quiet');
+      await flip(tester, 'ccdd');
+      expect(find.text('1 alert on'), findsOneWidget);
+      expect(k('alert-switch-ccdd-gone_quiet'), findsNothing);
+    });
+  });
 
   testWidgets('is absent and fetches nothing when the feature is off', (
     tester,

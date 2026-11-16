@@ -188,11 +188,7 @@ class _RequestRowState extends State<_RequestRow> with _Action {
       trKey('telemetryRequests.unknownRepeater'),
     );
     final colors = BeaconColors.of(context);
-    final tone = switch (textOf(r['status'])) {
-      'active' => colors.success,
-      'login_failed' || 'admin_stopped' => colors.danger,
-      _ => colors.warning,
-    };
+    final tone = requestDotColor(r, colors);
     return Container(
       margin: const EdgeInsets.only(top: 8),
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
@@ -229,7 +225,7 @@ class _RequestRowState extends State<_RequestRow> with _Action {
                 padding: const EdgeInsets.only(top: 6, right: 8),
                 child: Icon(Icons.circle, size: 9, color: tone),
               ),
-              Expanded(child: Text(requestStatusText(textOf(r['status'])))),
+              Expanded(child: Text(requestLineText(r))),
             ],
           ),
           if (reason.isNotEmpty) Text(reason, style: muted),
@@ -241,7 +237,7 @@ class _RequestRowState extends State<_RequestRow> with _Action {
                 style: TextStyle(fontSize: 13, color: colors.danger),
               ),
             ),
-          if (poller.isNotEmpty)
+          if (poller.isNotEmpty && !requestLineNamesPoller(r))
             Text(
               trKey('telemetryRequests.polledBy')
                   .replaceAll('{{name}}', textOf(poller['name'], '?')),

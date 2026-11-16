@@ -28,6 +28,7 @@ Map<String, dynamic> _request(
   String name,
   String status, {
   bool reading = true,
+  String? state,
 }) => {
   'id': id,
   'node': {'id': 'n$id', 'publicKey': 'ab' * 32, 'name': name},
@@ -35,21 +36,26 @@ Map<String, dynamic> _request(
   'statusReason': '',
   'hasPassword': status != 'waiting',
   'poller': status == 'active'
-      ? {'observerId': 'o1', 'name': 'HOWL V4.2'}
+      ? {'observerId': 'o1', 'name': 'HOWL V4.2', 'state': ?state}
       : null,
   'latestReadingAt': reading ? _now - 3600000 : null,
 };
 
-Map<String, dynamic> _rule(String kind, {int? t, int? high, bool on = true}) =>
-    {
-      'id': 'r-$kind',
-      'kind': kind,
-      'threshold': t,
-      'thresholdHigh': high,
-      'enabled': on,
-      'state': 'ok',
-      'stateChangedAt': _now - 7200000,
-    };
+Map<String, dynamic> _rule(
+  String kind, {
+  int? t,
+  int? high,
+  bool on = true,
+  String state = 'ok',
+}) => {
+  'id': 'r-$kind',
+  'kind': kind,
+  'threshold': t,
+  'thresholdHigh': high,
+  'enabled': on,
+  'state': state,
+  'stateChangedAt': _now - 7200000,
+};
 
 void main() {
   setUpAll(() async {
@@ -167,6 +173,20 @@ void main() {
                         _rule('gone_quiet', t: 6),
                         _rule('battery_low', t: 3400),
                         _rule('temperature', t: 0, high: 400, on: false),
+                      ],
+                    },
+                    {
+                      'id': 'b',
+                      'kind': 'node',
+                      'publicKey': 'ccdd',
+                      'name': 'Ridge',
+                      'polled': true,
+                      'available': ['gone_quiet', 'battery_low'],
+                      'unavailable': {},
+                      'unavailableCodes': {},
+                      'rules': [
+                        _rule('gone_quiet', t: 6),
+                        _rule('battery_low', t: 3400, state: 'firing'),
                       ],
                     },
                   ]
@@ -320,6 +340,7 @@ void main() {
           _request('1', 'Hilltop', 'active'),
           _request('2', 'Lakeside', 'admin_stopped', reading: false),
           _request('3', 'North ridge', 'waiting', reading: false),
+          _request('4', 'Pine bluff', 'active', state: 'not_direct'),
         ],
       );
       await profile(tester, h, scrollTo: 'request-row-1');
@@ -334,6 +355,23 @@ void main() {
         scrollTo: 'alert-target-aabb',
       );
       await save(tester, '08-alerts');
+    }, skip: !_on);
+
+    testWidgets('alerts expanded ($mode)', (tester) async {
+      await size(tester, h: 1000);
+      await profile(
+        tester,
+        harness(alerts: true),
+        scrollTo: 'alert-target-aabb',
+      );
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(const ValueKey('alert-tile-aabb')),
+          matching: find.byType(ListTile),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await save(tester, '08b-alerts-expanded');
     }, skip: !_on);
 
     testWidgets('delete ($mode)', (tester) async {
