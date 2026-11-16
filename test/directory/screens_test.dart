@@ -678,7 +678,7 @@ void main() {
   });
 
   testWidgets(
-    'channel renders messages chronologically despite descending API ids',
+    'channel keeps an older future-dated message before newer receipts',
     (tester) async {
       final api = ApiClient(
         Uri.parse('https://test.invalid'),
@@ -700,7 +700,7 @@ void main() {
                           'senderName': 'Old sender',
                           'content': 'Old message',
                           'packetHash': 'old',
-                          'sentAt': 1000,
+                          'sentAt': 9999999999999,
                         },
                       ],
                       'hasMore': false,
