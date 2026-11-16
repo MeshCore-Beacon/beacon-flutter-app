@@ -58,6 +58,7 @@ Future<T?> retryTransient<T>(
   Future<void> Function(Duration) wait = _sleep,
 }) async {
   for (var attempt = 0; ; attempt++) {
+    if (isCurrent != null && !isCurrent()) return null;
     try {
       return await request();
     } catch (error) {
