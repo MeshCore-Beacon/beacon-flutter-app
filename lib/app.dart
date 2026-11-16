@@ -636,6 +636,7 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
               onOpen: open,
               selectedNodeId: id,
               events: live.events,
+              flowEvents: live.resolvedEvents,
             ),
           )
         : EntityDetailScreen(
@@ -755,7 +756,13 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
             events: live.events,
           )
         : tab == 'Map'
-        ? MapScreen(api: api, region: region, onOpen: open, events: live.events)
+        ? MapScreen(
+            api: api,
+            region: region,
+            onOpen: open,
+            events: live.events,
+            flowEvents: live.resolvedEvents,
+          )
         : tab == 'Analytics'
         ? AnalyticsScreen(api: api, region: region, onOpen: open)
         : tab == 'Atlas'

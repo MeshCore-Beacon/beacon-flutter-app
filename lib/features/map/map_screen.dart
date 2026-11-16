@@ -27,8 +27,10 @@ class MapScreen extends StatefulWidget {
     required this.onOpen,
     this.selectedNodeId,
     this.events,
+    this.flowEvents,
   });
   final Stream<Json>? events;
+  final Stream<Json>? flowEvents;
   final ApiClient api;
   final Map<String, dynamic> region;
   final void Function(String kind, String id) onOpen;
@@ -39,6 +41,7 @@ class MapScreen extends StatefulWidget {
 
 class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   StreamSubscription<Json>? _events;
+  StreamSubscription<Json>? _flowEvents;
   Timer? _flowTimer, _telemetryTimer, _ageTimer;
   ServerFeatures _features = const ServerFeatures.off();
   Map<String, TelemetryLabel> _labels = const {};
@@ -105,7 +108,9 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   @override
   void didUpdateWidget(covariant MapScreen old) {
     super.didUpdateWidget(old);
-    if (old.events != widget.events) _listen();
+    if (old.events != widget.events || old.flowEvents != widget.flowEvents) {
+      _listen();
+    }
     if (old.api != widget.api ||
         jsonEncode(old.region) != jsonEncode(widget.region)) {
       _selected = widget.selectedNodeId;
@@ -139,7 +144,18 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
           }
         });
       }
-      if (_flow && event['event'] == 'packetObservation') {
+    });
+    _listenFlow();
+  }
+
+  void _listenFlow() {
+    _flowEvents?.cancel();
+    _flowEvents = null;
+    if (!_flow || !_resumed) return;
+    _flowEvents = (widget.flowEvents ?? widget.events)?.listen((event) {
+      if (!mounted || !_resumed || !_flow || _codes?.isEmpty == true) return;
+      final d = object(event['data']);
+      if (event['event'] == 'packetObservation') {
         final ns = flowNodes(object(d['observation']));
         if (ns.length < 2) return;
         while (_flows.length >= 120) {
@@ -189,6 +205,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       _clearFlow();
       _stopTelemetryTimers();
     }
+    _listenFlow();
   }
 
   bool _current(int gen) => mounted && gen == _generation;
@@ -683,6 +700,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                 () {
                   setState(() => _flow = !_flow);
                   if (!_flow) _clearFlow();
+                  _listenFlow();
                 },
               ),
             ],
@@ -807,6 +825,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     _generation++;
     WidgetsBinding.instance.removeObserver(this);
     _events?.cancel();
+    _flowEvents?.cancel();
     _flowTimer?.cancel();
     _telemetryTimer?.cancel();
     _ageTimer?.cancel();
