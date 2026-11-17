@@ -247,7 +247,7 @@ AtlasPin? _pin(dynamic raw) {
 /// Only a version 2 payload loads; anything else is empty.
 SavedAtlas parseAtlas(String? raw) {
   try {
-    if (raw == null || raw.isEmpty || raw.length > 32000) {
+    if (raw == null || raw.isEmpty || raw.length > atlasFileMaxBytes) {
       return const SavedAtlas();
     }
     final value = jsonDecode(raw);
