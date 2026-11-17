@@ -655,68 +655,56 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
           ],
         ),
       ]),
-      FoldSection(
-        id: 'node-details',
-        title: trKey('nodePanel.details'),
-        summary: [
-          if (number(d['lat']) != null && number(d['lng']) != null)
-            '${number(d['lat'])!.toStringAsFixed(2)}, ${number(d['lng'])!.toStringAsFixed(2)}',
-          if (d['minFirmwareVersion'] != null) 'fw ${d['minFirmwareVersion']}',
-        ].join(' · '),
-        children: [
-          if (d['lat'] != null && d['lng'] != null)
-            fact('Coordinates', '${d['lat']}, ${d['lng']}'),
-          nodeTime('First seen', d['firstSeen']),
-          if (d['lastAdvertAt'] != null)
-            nodeTime('Last advert', d['lastAdvertAt']),
-          if (textOf(d['radio']).isNotEmpty) fact('Radio', d['radio']),
-          capability('Multibyte paths', d['supportsMultibytePaths']),
-          capability('Multibyte traces', d['supportsMultibyteTraces']),
-          if (d['minFirmwareVersion'] != null)
-            fact('Minimum firmware', d['minFirmwareVersion']),
-          if (d['clockDriftSeconds'] != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 5),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 4,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  Text(
-                    tr('Clock drift'),
-                    style: TextStyle(fontSize: 11, color: colors.muted),
-                  ),
-                  nodeBadge(
-                    '${d['clockDriftSeconds']} s${d['clockOutOfSync'] == true ? ' · ${tr('Out of sync')}' : ''}',
-                    d['clockOutOfSync'] == true
-                        ? colors.warning
-                        : colors.success,
-                  ),
-                ],
-              ),
-            ),
-          if (rows(d['iatas']).isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(
-              tr('Heard in regions'),
-              style: TextStyle(fontSize: 11, color: colors.muted),
-            ),
-            const SizedBox(height: 4),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
+      section(trKey('nodePanel.details'), [
+        if (d['lat'] != null && d['lng'] != null)
+          fact('Coordinates', '${d['lat']}, ${d['lng']}'),
+        nodeTime('First seen', d['firstSeen']),
+        if (d['lastAdvertAt'] != null)
+          nodeTime('Last advert', d['lastAdvertAt']),
+        if (textOf(d['radio']).isNotEmpty) fact('Radio', d['radio']),
+        capability('Multibyte paths', d['supportsMultibytePaths']),
+        capability('Multibyte traces', d['supportsMultibyteTraces']),
+        if (d['minFirmwareVersion'] != null)
+          fact('Minimum firmware', d['minFirmwareVersion']),
+        if (d['clockDriftSeconds'] != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 5),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                for (final region in rows(d['iatas']))
-                  Tooltip(
-                    message:
-                        '${tr('Last seen')}: ${stamp(region['lastHeard'])}',
-                    child: nodeBadge(textOf(region['iata']), colors.primary),
-                  ),
+                Text(
+                  tr('Clock drift'),
+                  style: TextStyle(fontSize: 11, color: colors.muted),
+                ),
+                nodeBadge(
+                  '${d['clockDriftSeconds']} s${d['clockOutOfSync'] == true ? ' · ${tr('Out of sync')}' : ''}',
+                  d['clockOutOfSync'] == true ? colors.warning : colors.success,
+                ),
               ],
             ),
-          ],
+          ),
+        if (rows(d['iatas']).isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            tr('Heard in regions'),
+            style: TextStyle(fontSize: 11, color: colors.muted),
+          ),
+          const SizedBox(height: 4),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final region in rows(d['iatas']))
+                Tooltip(
+                  message: '${tr('Last seen')}: ${stamp(region['lastHeard'])}',
+                  child: nodeBadge(textOf(region['iata']), colors.primary),
+                ),
+            ],
+          ),
         ],
-      ),
+      ]),
       if (MeshMapperSection.hasContent(meshMapper))
         MeshMapperSection(data: meshMapper),
       if (isPolledNodeType(textOf(d['nodeTypeName'])))

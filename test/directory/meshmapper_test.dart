@@ -145,9 +145,7 @@ void main() {
     expect(find.text('RAK4631'), findsNothing);
   });
 
-  testWidgets('folds reference info into Details above the activity', (
-    tester,
-  ) async {
+  testWidgets('shows Details open, above the activity', (tester) async {
     await pumpNode(tester, {
       ...node(),
       'lat': 45.4215,
@@ -155,18 +153,13 @@ void main() {
       'minFirmwareVersion': '1.14.0',
       'firstSeen': now - 48 * hour,
     });
-    final fold = find.byKey(const ValueKey('fold-node-details'));
-    expect(find.text('45.42, -75.70 · fw 1.14.0'), findsOneWidget);
-    expect(find.text('Coordinates'), findsNothing);
-    expect(
-      tester.getTopLeft(fold).dy,
-      lessThan(tester.getTopLeft(find.text('PACKETS SENT')).dy),
-    );
-    await tester.ensureVisible(fold);
-    await tester.tap(fold);
-    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('fold-node-details')), findsNothing);
     expect(find.text('Coordinates'), findsOneWidget);
     expect(find.text('Minimum firmware'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('DETAILS')).dy,
+      lessThan(tester.getTopLeft(find.text('PACKETS SENT')).dy),
+    );
   });
 
   testWidgets('names the packet list Packets sent and explains it', (
