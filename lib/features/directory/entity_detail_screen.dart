@@ -783,9 +783,20 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
       ),
       FoldSection(
         id: 'node-packets',
-        title: tr('Observations'),
+        title: trKey('nodePanel.packetsSent'),
+        info: [
+          trKey('nodePanel.packetsSentInfo'),
+          trKey('nodePanel.packetsSentExpire'),
+        ],
         summary: history.isEmpty ? '' : age(history.first['heardAt']),
-        children: history.map(observation).toList(),
+        children: history.isEmpty
+            ? [
+                Text(
+                  trKey('nodePanel.noPacketsSent'),
+                  style: TextStyle(fontSize: 12, color: colors.muted),
+                ),
+              ]
+            : history.map(observation).toList(),
       ),
     ];
   }

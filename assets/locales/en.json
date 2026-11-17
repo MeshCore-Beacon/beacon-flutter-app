@@ -1590,7 +1590,11 @@
       "usedShort": "{{used}} of {{limit}} used",
       "polled": "Polled",
       "by": "by",
-      "manage": "Manage in profile"
+      "manage": "Manage in profile",
+      "packetsSent": "Packets sent",
+      "noPacketsSent": "No packets sent",
+      "packetsSentInfo": "Adverts and login requests this node sent. Other packets don't name their sender in full, so they can't be listed here.",
+      "packetsSentExpire": "Older packets expire after the server's retention period."
     }
   }
 }

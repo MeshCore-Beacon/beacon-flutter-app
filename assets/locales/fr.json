@@ -1639,7 +1639,11 @@
       "usedShort": "{{used}} sur {{limit}} utilisées",
       "polled": "Interrogé",
       "by": "par",
-      "manage": "Gérer dans le profil"
+      "manage": "Gérer dans le profil",
+      "packetsSent": "Paquets envoyés",
+      "noPacketsSent": "Aucun paquet envoyé",
+      "packetsSentInfo": "Annonces et demandes de connexion envoyées par ce nœud. Les autres paquets ne nomment pas leur expéditeur en entier, ils ne peuvent donc pas être listés ici.",
+      "packetsSentExpire": "Les paquets plus anciens expirent après la période de conservation du serveur."
     }
   }
 }

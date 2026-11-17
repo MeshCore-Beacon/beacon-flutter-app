@@ -1590,7 +1590,11 @@
       "usedShort": "{{used}} av {{limit}} använda",
       "polled": "Avläst",
       "by": "av",
-      "manage": "Hantera i profilen"
+      "manage": "Hantera i profilen",
+      "packetsSent": "Skickade paket",
+      "noPacketsSent": "Inga skickade paket",
+      "packetsSentInfo": "Annonser och inloggningsförfrågningar som den här noden skickat. Andra paket anger inte avsändaren i sin helhet, så de kan inte listas här.",
+      "packetsSentExpire": "Äldre paket försvinner efter serverns lagringstid."
     }
   }
 }

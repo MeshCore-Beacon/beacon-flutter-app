@@ -160,13 +160,25 @@ void main() {
     expect(find.text('Coordinates'), findsNothing);
     expect(
       tester.getTopLeft(fold).dy,
-      lessThan(tester.getTopLeft(find.text('OBSERVATIONS')).dy),
+      lessThan(tester.getTopLeft(find.text('PACKETS SENT')).dy),
     );
     await tester.ensureVisible(fold);
     await tester.tap(fold);
     await tester.pumpAndSettle();
     expect(find.text('Coordinates'), findsOneWidget);
     expect(find.text('Minimum firmware'), findsOneWidget);
+  });
+
+  testWidgets('names the packet list Packets sent and explains it', (
+    tester,
+  ) async {
+    await pumpNode(tester, node());
+    expect(find.text('PACKETS SENT'), findsOneWidget);
+    expect(find.text('OBSERVATIONS'), findsNothing);
+    expect(
+      tipWith(tester, 'Adverts and login requests this node sent.'),
+      contains("can't be listed here"),
+    );
   });
 
   testWidgets('hides the section and badge without meshmapper', (tester) async {
