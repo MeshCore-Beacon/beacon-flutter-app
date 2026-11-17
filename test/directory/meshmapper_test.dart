@@ -145,7 +145,7 @@ void main() {
     expect(find.text('RAK4631'), findsNothing);
   });
 
-  testWidgets('folds reference info into Details below the activity', (
+  testWidgets('folds reference info into Details above the activity', (
     tester,
   ) async {
     await pumpNode(tester, {
@@ -160,7 +160,7 @@ void main() {
     expect(find.text('Coordinates'), findsNothing);
     expect(
       tester.getTopLeft(fold).dy,
-      greaterThan(tester.getTopLeft(find.text('OBSERVATIONS')).dy),
+      lessThan(tester.getTopLeft(find.text('OBSERVATIONS')).dy),
     );
     await tester.ensureVisible(fold);
     await tester.tap(fold);

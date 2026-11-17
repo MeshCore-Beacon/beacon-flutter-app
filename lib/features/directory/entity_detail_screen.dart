@@ -655,68 +655,6 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
           ],
         ),
       ]),
-      if (isPolledNodeType(textOf(d['nodeTypeName'])))
-        NodeTelemetrySection(
-          key: ValueKey('telemetry:${widget.id}'),
-          api: widget.api,
-          nodeId: widget.id,
-          publicKey: publicKey,
-          account: widget.account,
-          onOpen: widget.onOpen,
-        ),
-      section(
-        trKey('nodeDetail.neighborsCount')
-            .replaceAll('{{count}}', '${neighbors.length}'),
-        [
-          if (neighborsError != null)
-            failure(
-              neighborsError!,
-              () => loadNeighbors(generation, fresh: true),
-            )
-          else if (neighbors.isEmpty)
-            Text(
-              tr('No known neighbors'),
-              style: TextStyle(fontSize: 12, color: colors.muted),
-            ),
-          for (final n in neighbors)
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(
-                label(n),
-                style: TextStyle(fontSize: 12, color: colors.primary),
-              ),
-              subtitle: Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Wrap(
-                  spacing: 6,
-                  runSpacing: 4,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    if (textOf(n['iata']).isNotEmpty)
-                      nodeBadge(textOf(n['iata']), colors.primary),
-                    if (n['observationCount'] != null)
-                      mono(
-                        trKey(
-                          'investigation.observations',
-                          count: (number(n['observationCount']) ?? 0).toInt(),
-                        ),
-                        color: colors.muted,
-                      ),
-                    Tooltip(
-                      message: stamp(n['lastSeen']),
-                      child: mono(age(n['lastSeen']), color: colors.muted),
-                    ),
-                  ],
-                ),
-              ),
-              trailing: const Icon(Icons.chevron_right, size: 16),
-              onTap: n['id'] == null
-                  ? null
-                  : () => widget.onOpen('node', textOf(n['id'])),
-            ),
-        ],
-      ),
-      section('Observations', history.map(observation).toList()),
       FoldSection(
         id: 'node-details',
         title: trKey('nodePanel.details'),
@@ -781,6 +719,74 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
       ),
       if (MeshMapperSection.hasContent(meshMapper))
         MeshMapperSection(data: meshMapper),
+      if (isPolledNodeType(textOf(d['nodeTypeName'])))
+        NodeTelemetrySection(
+          key: ValueKey('telemetry:${widget.id}'),
+          api: widget.api,
+          nodeId: widget.id,
+          publicKey: publicKey,
+          account: widget.account,
+          onOpen: widget.onOpen,
+        ),
+      FoldSection(
+        id: 'node-neighbors',
+        title: trKey('nodeDetail.neighborsCount')
+            .replaceAll('{{count}}', '${neighbors.length}'),
+        children: [
+          if (neighborsError != null)
+            failure(
+              neighborsError!,
+              () => loadNeighbors(generation, fresh: true),
+            )
+          else if (neighbors.isEmpty)
+            Text(
+              tr('No known neighbors'),
+              style: TextStyle(fontSize: 12, color: colors.muted),
+            ),
+          for (final n in neighbors)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(
+                label(n),
+                style: TextStyle(fontSize: 12, color: colors.primary),
+              ),
+              subtitle: Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    if (textOf(n['iata']).isNotEmpty)
+                      nodeBadge(textOf(n['iata']), colors.primary),
+                    if (n['observationCount'] != null)
+                      mono(
+                        trKey(
+                          'investigation.observations',
+                          count: (number(n['observationCount']) ?? 0).toInt(),
+                        ),
+                        color: colors.muted,
+                      ),
+                    Tooltip(
+                      message: stamp(n['lastSeen']),
+                      child: mono(age(n['lastSeen']), color: colors.muted),
+                    ),
+                  ],
+                ),
+              ),
+              trailing: const Icon(Icons.chevron_right, size: 16),
+              onTap: n['id'] == null
+                  ? null
+                  : () => widget.onOpen('node', textOf(n['id'])),
+            ),
+        ],
+      ),
+      FoldSection(
+        id: 'node-packets',
+        title: tr('Observations'),
+        summary: history.isEmpty ? '' : age(history.first['heardAt']),
+        children: history.map(observation).toList(),
+      ),
     ];
   }
 

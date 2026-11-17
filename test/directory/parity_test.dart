@@ -8,6 +8,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'folds.dart';
+
 void main() {
   testWidgets(
     'node detail copies its public key and opens the exact observation',
@@ -64,6 +66,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await openFolds(tester);
 
       expect(find.text('public-key-value'), findsOneWidget);
       await tester.tap(find.byTooltip('Copy public key'));
@@ -143,6 +146,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await openFolds(tester);
     expect(urls, contains('/api/v1/nodes/a%2Fb/neighbors'));
     final message = find.text('neighbors down');
     await tester.scrollUntilVisible(

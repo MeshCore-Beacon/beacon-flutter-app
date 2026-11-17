@@ -12,6 +12,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'folds.dart';
+
 const base = 'https://test.invalid';
 const notice =
     'The guest password is shared with volunteer observers so they can ask this repeater for its stats. Never enter an admin password.';
@@ -142,6 +144,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await openFolds(tester);
   }
 
   setUp(() {
@@ -163,6 +166,7 @@ void main() {
       await tester.pumpAndSettle();
       account.adopt({'id': 'u2', 'username': 'valley'});
       await tester.pumpAndSettle();
+      await openFolds(tester);
       expect(
         tester.widget<TextField>(inner(field())).controller!.text,
         isEmpty,

@@ -11,6 +11,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'folds.dart';
+
 const hour = 3600000;
 
 Map<String, dynamic> point(int t, [Map<String, dynamic> more = const {}]) => {
@@ -195,6 +197,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await openFolds(tester);
       return seen;
     }
 

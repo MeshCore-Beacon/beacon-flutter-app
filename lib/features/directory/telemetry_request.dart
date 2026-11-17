@@ -241,7 +241,12 @@ class _TelemetryRequestBlockState extends State<TelemetryRequestBlock> {
       ..._body(context, muted),
     ];
     if (widget.standalone) {
-      return section(trKey('telemetryRequests.request'), children, info: info);
+      return FoldSection(
+        id: 'node-telemetry',
+        title: trKey('telemetryRequests.request'),
+        info: info,
+        children: children,
+      );
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
