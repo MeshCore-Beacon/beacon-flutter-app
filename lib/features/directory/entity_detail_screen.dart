@@ -634,13 +634,7 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
               ),
           ],
         ),
-        nodeTime('First seen', d['firstSeen']),
         nodeTime('Last seen', d['lastSeen']),
-        if (d['lastAdvertAt'] != null)
-          nodeTime('Last advert', d['lastAdvertAt']),
-        if (textOf(d['radio']).isNotEmpty) fact('Radio', d['radio']),
-        if (d['lat'] != null && d['lng'] != null)
-          fact('Coordinates', '${d['lat']}, ${d['lng']}'),
         Wrap(
           spacing: 8,
           runSpacing: 4,
@@ -661,9 +655,13 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
           ],
         ),
       ]),
-      if (MeshMapperSection.hasContent(meshMapper))
-        MeshMapperSection(data: meshMapper),
-      section('Capabilities', [
+      section(trKey('nodePanel.details'), [
+        if (d['lat'] != null && d['lng'] != null)
+          fact('Coordinates', '${d['lat']}, ${d['lng']}'),
+        nodeTime('First seen', d['firstSeen']),
+        if (d['lastAdvertAt'] != null)
+          nodeTime('Last advert', d['lastAdvertAt']),
+        if (textOf(d['radio']).isNotEmpty) fact('Radio', d['radio']),
         capability('Multibyte paths', d['supportsMultibytePaths']),
         capability('Multibyte traces', d['supportsMultibyteTraces']),
         if (d['minFirmwareVersion'] != null)
@@ -687,18 +685,13 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
               ],
             ),
           ),
-      ]),
-      if (isPolledNodeType(textOf(d['nodeTypeName'])))
-        NodeTelemetrySection(
-          key: ValueKey('telemetry:${widget.id}'),
-          api: widget.api,
-          nodeId: widget.id,
-          publicKey: publicKey,
-          account: widget.account,
-          onOpen: widget.onOpen,
-        ),
-      if (rows(d['iatas']).isNotEmpty)
-        section('Heard in regions', [
+        if (rows(d['iatas']).isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            tr('Heard in regions'),
+            style: TextStyle(fontSize: 11, color: colors.muted),
+          ),
+          const SizedBox(height: 4),
           Wrap(
             spacing: 6,
             runSpacing: 6,
@@ -710,11 +703,24 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
                 ),
             ],
           ),
-        ]),
-      section(
-        trKey('nodeDetail.neighborsCount')
+        ],
+      ]),
+      if (MeshMapperSection.hasContent(meshMapper))
+        MeshMapperSection(data: meshMapper),
+      if (isPolledNodeType(textOf(d['nodeTypeName'])))
+        NodeTelemetrySection(
+          key: ValueKey('telemetry:${widget.id}'),
+          api: widget.api,
+          nodeId: widget.id,
+          publicKey: publicKey,
+          account: widget.account,
+          onOpen: widget.onOpen,
+        ),
+      FoldSection(
+        id: 'node-neighbors',
+        title: trKey('nodeDetail.neighborsCount')
             .replaceAll('{{count}}', '${neighbors.length}'),
-        [
+        children: [
           if (neighborsError != null)
             failure(
               neighborsError!,
@@ -763,7 +769,23 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
             ),
         ],
       ),
-      section('Observations', history.map(observation).toList()),
+      FoldSection(
+        id: 'node-packets',
+        title: trKey('nodePanel.packetsSent'),
+        info: [
+          trKey('nodePanel.packetsSentInfo'),
+          trKey('nodePanel.packetsSentExpire'),
+        ],
+        summary: history.isEmpty ? '' : age(history.first['heardAt']),
+        children: history.isEmpty
+            ? [
+                Text(
+                  trKey('nodePanel.noPacketsSent'),
+                  style: TextStyle(fontSize: 12, color: colors.muted),
+                ),
+              ]
+            : history.map(observation).toList(),
+      ),
     ];
   }
 

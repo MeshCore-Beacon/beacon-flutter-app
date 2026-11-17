@@ -13,6 +13,7 @@ class ServerFeatures {
     this.mapTelemetry = false,
     this.temperatureUnit = 'c',
     this.distanceUnit = 'metric',
+    this.atlasLimit = 12,
     this.alertDelivery,
     this.portalUrl,
   });
@@ -26,12 +27,14 @@ class ServerFeatures {
       mapTelemetry = false,
       temperatureUnit = 'c',
       distanceUnit = 'metric',
+      atlasLimit = 12,
       alertDelivery = null,
       portalUrl = null;
 
   factory ServerFeatures.fromInfo(Json? info) {
     final f = object(info?['features']);
     final d = object(info?['display']);
+    final atlas = object(info?['limits'])['atlas'];
     return ServerFeatures(
       polling: f['polling'] == true,
       accounts: f['accounts'] is String ? f['accounts'] as String : 'off',
@@ -42,6 +45,7 @@ class ServerFeatures {
       mapTelemetry: f['mapTelemetry'] == true,
       temperatureUnit: d['temperatureUnit'] == 'f' ? 'f' : 'c',
       distanceUnit: d['distanceUnit'] == 'imperial' ? 'imperial' : 'metric',
+      atlasLimit: atlas is int && atlas >= 1 && atlas <= 100 ? atlas : 12,
       alertDelivery:
           f['alertDelivery'] == 'push' || f['alertDelivery'] == 'email'
           ? f['alertDelivery'] as String
@@ -67,6 +71,9 @@ class ServerFeatures {
 
   /// Instance display units: 'c' or 'f', 'metric' or 'imperial'.
   final String temperatureUnit, distanceUnit;
+
+  /// The most cards one Atlas holds; 12 on a server that does not say.
+  final int atlasLimit;
 
   /// "push" or "email" when alerts are on.
   final String? alertDelivery;

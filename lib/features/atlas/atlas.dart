@@ -3,7 +3,12 @@ import 'dart:convert';
 import '../../core/api.dart';
 import '../../core/json.dart';
 
-const atlasLimit = 12;
+/// The cap a server that does not send limits.atlas enforces.
+const atlasLimitFallback = 12;
+
+/// The highest cap a server can set. Loading keeps up to this many; the
+/// screen enforces the server's own.
+const atlasLimitMax = 100;
 
 enum AtlasRange {
   day('24h', 24, '24h'),
@@ -254,7 +259,7 @@ SavedAtlas parseAtlas(String? raw) {
       final pin = _pin(entry);
       if (pin == null || pins.any((other) => other.key == pin.key)) continue;
       pins.add(pin);
-      if (pins.length == atlasLimit) break;
+      if (pins.length == atlasLimitMax) break;
     }
     return SavedAtlas(
       range: value['range'] == '3d' ? AtlasRange.threeDays : AtlasRange.day,
@@ -288,9 +293,9 @@ class AtlasImport {
   final int skipped;
 }
 
-/// Null when the text is not an Atlas export. Pins go through the same checks,
-/// dedupe and cap as a restore.
-AtlasImport? readAtlasFile(String text) {
+/// Null when the text is not an Atlas export. Pins go through the same checks
+/// and dedupe as a restore, then the cap.
+AtlasImport? readAtlasFile(String text, {int limit = atlasLimitFallback}) {
   if (text.length > atlasFileMaxBytes) return null;
   dynamic value;
   try {
@@ -303,7 +308,8 @@ AtlasImport? readAtlasFile(String text) {
       value['pins'] is! List) {
     return null;
   }
-  final atlas = parseAtlas(jsonEncode(value));
+  final parsed = parseAtlas(jsonEncode(value));
+  final atlas = parsed.copyWith(pins: parsed.pins.take(limit).toList());
   return AtlasImport(atlas, (value['pins'] as List).length - atlas.pins.length);
 }
 

@@ -1571,6 +1571,34 @@
       "notPolled": "Avläses inte just nu",
       "lastReading": "Senaste värdet",
       "help": "Värden som Beacon har hämtat från den här repeatern, över det valda fönstret. Sändtid är andelen av tiden som gått åt till att sända och ta emot. Paket och fel räknas per timme. Signal är det senaste SNR och RSSI som repeatern rapporterade. Med få värden ritas punkterna som prickar."
+    },
+    "atlasFooter": {
+      "heard": "Hörd",
+      "hops": "{{value}} hopp",
+      "neighbors_one": "{{count}} granne",
+      "neighbors_other": "{{count}} grannar",
+      "polled": "Avläst",
+      "notPolled": "Avläses inte",
+      "byPoller": "av {{name}}"
+    },
+    "nodePanel": {
+      "details": "Detaljer",
+      "scopes_one": "{{count}} scope",
+      "scopes_other": "{{count}} scopes",
+      "fromMeshMapperIn": "Från MeshMapper ({{iata}})",
+      "passwordHint": "Endast gästlösenord, aldrig admin.",
+      "usedShort": "{{used}} av {{limit}} använda",
+      "polled": "Avläst",
+      "by": "av",
+      "manage": "Hantera i profilen",
+      "packetsSent": "Skickade paket",
+      "noPacketsSent": "Inga skickade paket",
+      "packetsSentInfo": "Annonser och inloggningsförfrågningar som den här noden skickat. Andra paket anger inte avsändaren i sin helhet, så de kan inte listas här.",
+      "packetsSentExpire": "Äldre paket försvinner efter serverns lagringstid."
+    },
+    "atlasLimits": {
+      "overLimit_one": "Den här servern tillåter {{count}} kort. Ta bort {{remove}} till för att spara din Atlas i ditt konto.",
+      "overLimit_other": "Den här servern tillåter {{count}} kort. Ta bort {{remove}} till för att spara din Atlas i ditt konto."
     }
   }
 }

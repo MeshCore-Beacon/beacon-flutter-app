@@ -1620,6 +1620,34 @@
       "notPolled": "Pas interrogé pour le moment",
       "lastReading": "Dernière mesure",
       "help": "Mesures relevées par Beacon sur ce répéteur, sur la période choisie. Le temps radio est la part du temps passée à émettre et à recevoir. Les paquets et les erreurs sont par heure. Le signal est le dernier SNR et RSSI rapporté par le répéteur. Avec peu de mesures, les points sont dessinés isolés."
+    },
+    "atlasFooter": {
+      "heard": "Entendu",
+      "hops": "{{value}} sauts",
+      "neighbors_one": "{{count}} voisin",
+      "neighbors_other": "{{count}} voisins",
+      "polled": "Interrogé",
+      "notPolled": "Non interrogé",
+      "byPoller": "par {{name}}"
+    },
+    "nodePanel": {
+      "details": "Détails",
+      "scopes_one": "{{count}} portée",
+      "scopes_other": "{{count}} portées",
+      "fromMeshMapperIn": "Depuis MeshMapper ({{iata}})",
+      "passwordHint": "Mot de passe invité seulement, jamais admin.",
+      "usedShort": "{{used}} sur {{limit}} utilisées",
+      "polled": "Interrogé",
+      "by": "par",
+      "manage": "Gérer dans le profil",
+      "packetsSent": "Paquets envoyés",
+      "noPacketsSent": "Aucun paquet envoyé",
+      "packetsSentInfo": "Annonces et demandes de connexion envoyées par ce nœud. Les autres paquets ne nomment pas leur expéditeur en entier, ils ne peuvent donc pas être listés ici.",
+      "packetsSentExpire": "Les paquets plus anciens expirent après la période de conservation du serveur."
+    },
+    "atlasLimits": {
+      "overLimit_one": "Ce serveur permet {{count}} carte. Retirez-en encore {{remove}} pour enregistrer votre Atlas dans votre compte.",
+      "overLimit_other": "Ce serveur permet {{count}} cartes. Retirez-en encore {{remove}} pour enregistrer votre Atlas dans votre compte."
     }
   }
 }

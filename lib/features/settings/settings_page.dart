@@ -118,6 +118,7 @@ class SettingsPage extends StatelessWidget {
               preferences: preferences,
               files: atlasFiles,
               store: atlas,
+              api: api,
             ),
             if (account != null &&
                 api != null &&

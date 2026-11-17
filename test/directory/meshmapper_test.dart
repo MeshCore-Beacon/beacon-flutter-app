@@ -9,7 +9,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-Future<void> pumpNode(WidgetTester tester, Map<String, dynamic> node) async {
+Future<void> pumpNode(
+  WidgetTester tester,
+  Map<String, dynamic> node, {
+  bool open = true,
+}) async {
   final api = ApiClient(
     Uri.parse('https://test.invalid'),
     client: MockClient((request) async {
@@ -34,7 +38,18 @@ Future<void> pumpNode(WidgetTester tester, Map<String, dynamic> node) async {
     ),
   );
   await tester.pumpAndSettle();
+  final fold = find.byKey(const ValueKey('fold-node-meshmapper'));
+  if (open && fold.evaluate().isNotEmpty) {
+    await tester.tap(fold);
+    await tester.pumpAndSettle();
+  }
 }
+
+/// The text of the info tip whose message contains [part].
+String tipWith(WidgetTester tester, String part) => tester
+    .widgetList<Tooltip>(find.byType(Tooltip))
+    .map((t) => t.message ?? '')
+    .firstWhere((m) => m.contains(part));
 
 Map<String, dynamic> node([Map<String, dynamic>? meshmapper]) => {
   'id': 'node-1',
@@ -102,19 +117,68 @@ void main() {
     expect(find.text('1h ago'), findsOneWidget);
     expect(find.textContaining('multibyte'), findsNothing);
     expect(find.text('On the fire tower\neast face'), findsOneWidget);
-    expect(find.text('From MeshMapper'), findsOneWidget);
-    expect(find.text('YOW'), findsOneWidget);
-    expect(find.text('updated 2h ago'), findsOneWidget);
+    expect(tipWith(tester, 'From MeshMapper (YOW)'), contains('updated'));
+    // The summary only shows while the fold is closed.
+    expect(find.text('YOW · 2 scopes'), findsNothing);
     // Beacon's own advert-matched scope stays a separate Identity badge.
     expect(find.text('beacon-scope'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('starts folded with a one-line summary', (tester) async {
+    await pumpNode(
+      tester,
+      node({
+        'iata': 'YOW',
+        'fetchedAt': now,
+        'site': {'hardware': 'RAK4631'},
+        'carpeater': false,
+        'admins': [],
+        'scopes': [
+          {'scope': 'yow', 'observedAt': now},
+        ],
+      }),
+      open: false,
+    );
+    expect(find.text('MESHMAPPER'), findsOneWidget);
+    expect(find.text('YOW · 1 scope'), findsOneWidget);
+    expect(find.text('RAK4631'), findsNothing);
+  });
+
+  testWidgets('shows Details open, above the activity', (tester) async {
+    await pumpNode(tester, {
+      ...node(),
+      'lat': 45.4215,
+      'lng': -75.6972,
+      'minFirmwareVersion': '1.14.0',
+      'firstSeen': now - 48 * hour,
+    });
+    expect(find.byKey(const ValueKey('fold-node-details')), findsNothing);
+    expect(find.text('Coordinates'), findsOneWidget);
+    expect(find.text('Minimum firmware'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('DETAILS')).dy,
+      lessThan(tester.getTopLeft(find.text('PACKETS SENT')).dy),
+    );
+  });
+
+  testWidgets('names the packet list Packets sent and explains it', (
+    tester,
+  ) async {
+    await pumpNode(tester, node());
+    expect(find.text('PACKETS SENT'), findsOneWidget);
+    expect(find.text('OBSERVATIONS'), findsNothing);
+    expect(
+      tipWith(tester, 'Adverts and login requests this node sent.'),
+      contains("can't be listed here"),
+    );
   });
 
   testWidgets('hides the section and badge without meshmapper', (tester) async {
     await pumpNode(tester, node());
     expect(find.text('MESHMAPPER'), findsNothing);
     expect(find.text('CARpeater'), findsNothing);
-    expect(find.text('From MeshMapper'), findsNothing);
+    expect(find.textContaining('From MeshMapper'), findsNothing);
   });
 
   testWidgets('a carpeater with nothing else shows only the badge', (

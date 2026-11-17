@@ -255,119 +255,149 @@ class _NodeTelemetrySectionState extends State<NodeTelemetrySection> {
       ),
     );
     final name = textOf(poller['name'], tr('Unknown'));
-    return section(trKey('nodeTelemetry.title'), [
-      DropdownButtonFormField<String>(
-        isExpanded: true,
-        initialValue: range,
-        decoration: const InputDecoration(
-          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        ),
-        items: [
-          DropdownMenuItem(
-            value: '24h',
-            child: Text(trKey('nodeTelemetry.range24h')),
+    return FoldSection(
+      id: 'node-telemetry',
+      title: trKey('nodeTelemetry.title'),
+      summary: poller.isEmpty && polling['latestReadingAt'] == null
+          ? ''
+          : [
+              trKey(
+                poller.isNotEmpty
+                    ? 'nodePanel.polled'
+                    : 'nodeTelemetry.lastReading',
+              ),
+              if (polling['latestReadingAt'] != null)
+                age(polling['latestReadingAt']),
+            ].join(' · '),
+      children: [
+        DropdownButtonFormField<String>(
+          isExpanded: true,
+          initialValue: range,
+          decoration: const InputDecoration(
+            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           ),
-          DropdownMenuItem(
-            value: '7d',
-            child: Text(trKey('nodeTelemetry.range7d')),
-          ),
-          DropdownMenuItem(
-            value: '30d',
-            child: Text(trKey('nodeTelemetry.range30d')),
-          ),
-        ],
-        onChanged: (v) {
-          if (v == null || v == range) return;
-          setState(() => range = v);
-          loadTelemetry();
-        },
-      ),
-      const SizedBox(height: 12),
-      if (failed) ...[
-        Text(
-          trKey('nodeTelemetry.failed'),
-          style: TextStyle(fontSize: 12, color: colors.danger),
-        ),
-        TextButton.icon(
-          onPressed: loadTelemetry,
-          icon: const Icon(Icons.refresh),
-          label: Text(tr('Retry')),
-        ),
-      ] else if (points.isEmpty)
-        Text(
-          trKey(
-            telemetry['polled'] == true
-                ? 'nodeTelemetry.empty'
-                : 'nodeTelemetry.waiting',
-          ),
-          style: TextStyle(fontSize: 12, color: colors.muted),
-        ),
-      if (has('batteryMv'))
-        chart(trKey('nodeTelemetry.battery'), {
-          trKey('nodeTelemetry.batterySeries'): telemetrySeries(
-            points,
-            'batteryMv',
-            bucketMs,
-            scale: .001,
-          ),
-        }, ' V'),
-      if (has('temperatureC'))
-        chart(
-          trKey('nodeTelemetry.temperature')
-              .replaceAll('{{unit}}', tempSymbol(tempUnit)),
-          {
-            trKey('nodeTelemetry.temperatureSeries'): telemetrySeries(
-              points,
-              'temperatureC',
-              bucketMs,
-              convert: (c) => toDisplayTemp(c, tempUnit),
+          items: [
+            DropdownMenuItem(
+              value: '24h',
+              child: Text(trKey('nodeTelemetry.range24h')),
             ),
+            DropdownMenuItem(
+              value: '7d',
+              child: Text(trKey('nodeTelemetry.range7d')),
+            ),
+            DropdownMenuItem(
+              value: '30d',
+              child: Text(trKey('nodeTelemetry.range30d')),
+            ),
+          ],
+          onChanged: (v) {
+            if (v == null || v == range) return;
+            setState(() => range = v);
+            loadTelemetry();
           },
-          ' ${tempSymbol(tempUnit)}',
         ),
-      if (has('noiseFloorDb'))
-        chart(trKey('nodeTelemetry.noiseFloor'), {
-          trKey('nodeTelemetry.noiseFloorSeries'): telemetrySeries(
-            points,
-            'noiseFloorDb',
-            bucketMs,
+        const SizedBox(height: 12),
+        if (failed) ...[
+          Text(
+            trKey('nodeTelemetry.failed'),
+            style: TextStyle(fontSize: 12, color: colors.danger),
           ),
-        }, ' dBm'),
-      if (has('airtimeTxSecs') || has('airtimeRxSecs'))
-        chart(trKey('nodeTelemetry.airtime'), {
-          'RX': airtimeSeries(points, 'airtimeRxSecs', bucketMs),
-          'TX': airtimeSeries(points, 'airtimeTxSecs', bucketMs),
-        }, '%'),
-      if (poller.isNotEmpty)
-        ListTile(
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          title: Text(
-            trKey('nodeTelemetry.polledBy').replaceAll('{{name}}', name),
-            style: const TextStyle(fontSize: 12),
+          TextButton.icon(
+            onPressed: loadTelemetry,
+            icon: const Icon(Icons.refresh),
+            label: Text(tr('Retry')),
           ),
-          trailing: const Icon(Icons.chevron_right, size: 16),
-          onTap: textOf(poller['observerId']).isEmpty
-              ? null
-              : () => widget.onOpen('observer', textOf(poller['observerId'])),
-        ),
-      if (polling['latestReadingAt'] != null)
-        Tooltip(
-          message: stamp(polling['latestReadingAt']),
-          child: fact(
-            trKey('nodeTelemetry.lastReading'),
-            age(polling['latestReadingAt']),
+        ] else if (points.isEmpty)
+          Text(
+            trKey(
+              telemetry['polled'] == true
+                  ? 'nodeTelemetry.empty'
+                  : 'nodeTelemetry.waiting',
+            ),
+            style: TextStyle(fontSize: 12, color: colors.muted),
           ),
-        ),
-      if (standbys.isNotEmpty)
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 5),
-          child: Text(
-            trKey('nodeTelemetry.standbys', count: standbys.length),
-            style: TextStyle(fontSize: 11, color: colors.muted),
+        if (has('batteryMv'))
+          chart(trKey('nodeTelemetry.battery'), {
+            trKey('nodeTelemetry.batterySeries'): telemetrySeries(
+              points,
+              'batteryMv',
+              bucketMs,
+              scale: .001,
+            ),
+          }, ' V'),
+        if (has('temperatureC'))
+          chart(
+            trKey('nodeTelemetry.temperature')
+                .replaceAll('{{unit}}', tempSymbol(tempUnit)),
+            {
+              trKey('nodeTelemetry.temperatureSeries'): telemetrySeries(
+                points,
+                'temperatureC',
+                bucketMs,
+                convert: (c) => toDisplayTemp(c, tempUnit),
+              ),
+            },
+            ' ${tempSymbol(tempUnit)}',
           ),
-        ),
-      _request(),
-    ]);
+        if (has('noiseFloorDb'))
+          chart(trKey('nodeTelemetry.noiseFloor'), {
+            trKey('nodeTelemetry.noiseFloorSeries'): telemetrySeries(
+              points,
+              'noiseFloorDb',
+              bucketMs,
+            ),
+          }, ' dBm'),
+        if (has('airtimeTxSecs') || has('airtimeRxSecs'))
+          chart(trKey('nodeTelemetry.airtime'), {
+            'RX': airtimeSeries(points, 'airtimeRxSecs', bucketMs),
+            'TX': airtimeSeries(points, 'airtimeTxSecs', bucketMs),
+          }, '%'),
+        if (poller.isNotEmpty || polling['latestReadingAt'] != null)
+          InkWell(
+            key: const ValueKey('poll-line'),
+            onTap: textOf(poller['observerId']).isEmpty
+                ? null
+                : () => widget.onOpen('observer', textOf(poller['observerId'])),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.circle,
+                    size: 7,
+                    color: poller.isNotEmpty
+                        ? colors.success
+                        : colors.dim.withValues(alpha: .3),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      [
+                        trKey(
+                          poller.isNotEmpty
+                              ? 'nodePanel.polled'
+                              : 'nodeTelemetry.lastReading',
+                        ),
+                        if (polling['latestReadingAt'] != null)
+                          age(polling['latestReadingAt']),
+                        if (poller.isNotEmpty) '${trKey('nodePanel.by')} $name',
+                        if (standbys.isNotEmpty)
+                          trKey(
+                            'nodeTelemetry.standbys',
+                            count: standbys.length,
+                          ),
+                      ].join(' · '),
+                      style: TextStyle(fontSize: 12, color: colors.muted),
+                    ),
+                  ),
+                  if (poller.isNotEmpty)
+                    const Icon(Icons.chevron_right, size: 16),
+                ],
+              ),
+            ),
+          ),
+        _request(),
+      ],
+    );
   }
 }

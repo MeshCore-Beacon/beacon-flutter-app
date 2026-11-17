@@ -551,6 +551,17 @@ class _AtlasCardState extends State<AtlasCard> {
         'neighbors',
         args: {'count': number(node['knownNeighborCount'])?.toInt() ?? 0},
       );
+      final heardFresh =
+          lastSeen > 0 && widget.now - lastSeen <= widget.range.hours * 3600000;
+      final hopsAndNeighbors = [
+        if (sample.hops != null)
+          trKey('atlasFooter.hops')
+              .replaceAll('{{value}}', average(sample.hops)),
+        trKey(
+          'atlasFooter.neighbors',
+          count: number(node['knownNeighborCount'])?.toInt() ?? 0,
+        ),
+      ].join(' · ');
       final unsupported = isNotFound(activity?.error);
       final window = sample.partial
           ? at('observerPartialCoverage')
@@ -608,17 +619,18 @@ class _AtlasCardState extends State<AtlasCard> {
             ]),
             const SizedBox(height: 12),
             _Footer(
+              dot: lastSeen > 0 ? _dot(c, heardFresh) : null,
               left: lastSeen > 0
-                  ? '${at('lastSeen')} ${ago(lastSeen, widget.now)}'
+                  ? '${trKey('atlasFooter.heard')} · ${ago(lastSeen, widget.now)}'
                   : null,
-              right: '$meanHops · $neighbors',
+              right: hopsAndNeighbors,
               loading: activity?.loading ?? false,
               failed: activity?.error != null && !unsupported,
               tip: [
                 ?dotLabel,
                 if (lastSeen > 0)
                   '${at('lastSeen')} ${formatAbsolute(lastSeen)}',
-                meanHops,
+                if (sample.hops != null) meanHops,
                 neighbors,
                 if (unsupported) at('activityUnsupported'),
                 at('sampleHelp'),
@@ -898,9 +910,7 @@ class _AtlasCardState extends State<AtlasCard> {
             _Footer(
               dot: status == null || status.isEmpty
                   ? null
-                  : status == 'online'
-                  ? c.success
-                  : c.dim.withValues(alpha: .3),
+                  : _dot(c, status == 'online'),
               left: statusLabel == null && lastStatus == null
                   ? null
                   : [
@@ -1032,9 +1042,17 @@ class _AtlasCardState extends State<AtlasCard> {
                 : trKey('atlasTelemetry.polledBy')
                       .replaceAll('{{name}}', pollerName))
           : trKey('atlasTelemetry.notPolled');
-      final lastLine = latestAt == null
-          ? null
-          : '${trKey('atlasTelemetry.lastReading')} ${ago(latestAt, widget.now)}';
+      final polledNow = polling['poller'] is Map;
+      final String? lead = polling.isEmpty
+          ? (latestAt == null
+                ? null
+                : '${trKey('atlasTelemetry.lastReading')} · ${ago(latestAt, widget.now)}')
+          : polledNow
+          ? [
+              trKey('atlasFooter.polled'),
+              if (latestAt != null) ago(latestAt, widget.now),
+            ].join(' · ')
+          : trKey('atlasFooter.notPolled');
       body.add(
         Column(
           key: _body,
@@ -1046,9 +1064,13 @@ class _AtlasCardState extends State<AtlasCard> {
                 telemetryTile(tiles[slot], slot),
             ]),
             const SizedBox(height: 12),
-            _TelemetryFooter(
-              poll: pollLine,
-              last: lastLine,
+            _Footer(
+              dot: polling.isEmpty ? null : _dot(c, polledNow),
+              left: lead,
+              right: polledNow && pollerName.isNotEmpty
+                  ? trKey('atlasFooter.byPoller')
+                        .replaceAll('{{name}}', pollerName)
+                  : '',
               loading: feed?.loading ?? false,
               failed: feed?.error != null && !isNotFound(feed?.error),
               tip: [
@@ -1147,6 +1169,7 @@ class _Footer extends StatelessWidget {
               children: [
                 if (dot != null) ...[
                   Container(
+                    key: const ValueKey('atlas-footer-dot'),
                     width: 6,
                     height: 6,
                     decoration: BoxDecoration(
@@ -1216,48 +1239,6 @@ class _FooterLayout extends MultiChildLayoutDelegate {
   bool shouldRelayout(_FooterLayout old) => old.height != height;
 }
 
-/// The poller on the first line and the reading age on the second, so a long
-/// poller name wraps and never cuts the age.
-class _TelemetryFooter extends StatelessWidget {
-  const _TelemetryFooter({
-    required this.poll,
-    required this.last,
-    required this.loading,
-    required this.failed,
-    required this.tip,
-  });
-  final String? poll, last;
-  final bool loading, failed;
-  final List<String> tip;
-  @override
-  Widget build(BuildContext context) {
-    final c = BeaconColors.of(context);
-    final style = atlasMono(11, c.muted);
-    final state = failed
-        ? tr('Failed to load')
-        : loading
-        ? tr('Loading…')
-        : null;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (poll != null) Text(poll!, style: style),
-              if (last != null) Text(last!, style: style, softWrap: false),
-              if (state != null)
-                Text(
-                  state,
-                  style: style.copyWith(color: failed ? c.danger : null),
-                ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 12),
-        AtlasInfoTip(tip),
-      ],
-    );
-  }
-}
+/// A footer dot: lit while the fact it leads with is fresh.
+Color _dot(BeaconColors c, bool fresh) =>
+    fresh ? c.success : c.dim.withValues(alpha: .3);

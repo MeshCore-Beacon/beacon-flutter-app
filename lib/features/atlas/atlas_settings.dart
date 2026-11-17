@@ -4,6 +4,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/api.dart';
+
 import '../../core/preferences.dart';
 import 'atlas.dart';
 import 'atlas_store.dart';
@@ -54,8 +56,12 @@ class AtlasSettings extends StatelessWidget {
     required this.preferences,
     this.files = const DeviceAtlasFiles(),
     this.store,
+    this.api,
   });
   final Preferences preferences;
+
+  /// The active server, for its Atlas cap. Without it an import keeps 12.
+  final ApiClient? api;
 
   /// The active server's shared store; a signed-in import goes through it so
   /// it reaches the account.
@@ -84,7 +90,12 @@ class AtlasSettings extends StatelessWidget {
       text = '';
     }
     if (text == null || !context.mounted) return;
-    final result = readAtlasFile(text);
+    final limit = await api?.features().then(
+      (f) => f.atlasLimit,
+      onError: (_) => atlasLimitFallback,
+    );
+    if (!context.mounted) return;
+    final result = readAtlasFile(text, limit: limit ?? atlasLimitFallback);
     if (result == null || result.atlas.pins.isEmpty) {
       return _say(context, at('importInvalid'));
     }

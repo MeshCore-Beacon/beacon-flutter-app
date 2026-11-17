@@ -267,7 +267,7 @@ void main() {
         server([for (var i = 0; i < 10; i++) node(keyN(i))]),
         SavedAtlas(pins: [for (var i = 20; i < 25; i++) node(keyN(i))]),
       );
-      expect(merged.atlas.pins.length, atlasLimit);
+      expect(merged.atlas.pins.length, 12);
       expect(merged.dropped, 3);
       expect(merged.upload, true);
       expect(merged.atlas.pins[10].publicKey, keyN(20));

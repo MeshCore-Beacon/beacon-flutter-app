@@ -13,6 +13,7 @@ import 'package:beacon/features/atlas/atlas_screen.dart';
 import 'package:beacon/features/atlas/atlas_store.dart';
 import 'package:beacon/features/atlas/atlas_widgets.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -72,6 +73,7 @@ class Server {
   Completer<void>? holdObserver;
   bool activity404 = false;
   bool polling = true, atlasTelemetry = false;
+  int? atlasLimit;
   String temperatureUnit = 'c';
 
   /// What /nodes/{id}/polling answers; null is a 404.
@@ -110,6 +112,7 @@ class Server {
       return {
         'features': {'polling': polling, 'atlasTelemetry': atlasTelemetry},
         'display': {'temperatureUnit': temperatureUnit},
+        if (atlasLimit != null) 'limits': {'atlas': atlasLimit},
       };
     }
     if (path == '/nodes/$nodeId/polling') return pollingDoc;
@@ -259,11 +262,34 @@ Future<void> search(WidgetTester tester, String text) async {
   await tester.pumpAndSettle();
 }
 
+/// Whether the footer dot beside [text] is lit; fails when there is no dot.
+bool footerFresh(WidgetTester tester, String text) {
+  final row = find
+      .ancestor(of: find.text(text), matching: find.byType(Row))
+      .first;
+  final dot = find.descendant(
+    of: row,
+    matching: find.byKey(const ValueKey('atlas-footer-dot')),
+  );
+  final color =
+      (tester.widget<Container>(dot).decoration! as BoxDecoration).color;
+  return color == BeaconColors.of(tester.element(dot)).success;
+}
+
 void main() {
   // Asset loads never finish inside a widget test's fake clock.
   setUp(() async {
     fake = Server();
     await BeaconTheme.load();
+  });
+
+  testWidgets('takes its card cap from the server', (tester) async {
+    fake.atlasLimit = 1;
+    await pump(tester, pins: [nodePin()]);
+    expect(find.text('1/1'), findsOneWidget);
+    await search(tester, 'ridge');
+    expect(find.textContaining('All 1 slots are in use'), findsOneWidget);
+    await close(tester);
   });
 
   testWidgets('starts empty, finds a node by name and saves it as a card', (
@@ -334,8 +360,9 @@ void main() {
     expect(find.text('5.3 dB'), findsOneWidget);
     expect(find.text('-101.4 dBm'), findsOneWidget);
     expect(find.text('1/24'), findsOneWidget);
-    expect(find.text('Last seen 3m ago'), findsOneWidget);
-    expect(find.text('Mean hops 2.3 · Neighbors (5)'), findsOneWidget);
+    expect(find.text('Heard · 3m ago'), findsOneWidget);
+    expect(find.text('2.3 hops · 5 neighbors'), findsOneWidget);
+    expect(footerFresh(tester, 'Heard · 3m ago'), isTrue);
     expect(
       fake.requests
           .where((url) => url.path.endsWith('/activity'))
@@ -434,35 +461,41 @@ void main() {
       // Readings exist but no counter pair: the counter tile says so.
       expect(find.text('No readings in this window'), findsNWidgets(2));
       expect(find.text('Needs two status readings'), findsOneWidget);
-      expect(find.text('Polled by Roof'), findsOneWidget);
-      expect(find.text('Last reading 12m ago'), findsOneWidget);
+      expect(find.text('Polled · 12m ago'), findsOneWidget);
+      expect(find.text('by Roof'), findsOneWidget);
+      expect(footerFresh(tester, 'Polled · 12m ago'), isTrue);
       await close(tester);
     });
 
     for (final width in [390.0, 320.0]) {
-      testWidgets('a long poller name wraps and never cuts the age ($width)', (
-        tester,
-      ) async {
-        fake.pollingDoc = {
-          'polled': true,
-          'latestReadingAt': tick - 49 * 60000,
-          'poller': {'observerId': observerId, 'name': 'MrAlders0n_G3_R1'},
-          'standbys': <dynamic>[],
-        };
-        await pump(tester, pins: [nodePin()], size: Size(width, 844));
-        await tester.tap(find.text('Telemetry'));
-        await tester.pumpAndSettle();
-        final poll = find.text('Polled by MrAlders0n_G3_R1');
-        final last = find.text('Last reading 49m ago');
-        expect(poll, findsOneWidget);
-        expect(last, findsOneWidget);
-        expect(
-          tester.getTopLeft(last).dy,
-          greaterThan(tester.getBottomLeft(poll).dy - 1),
-        );
-        expect(tester.takeException(), isNull);
-        await close(tester);
-      });
+      testWidgets(
+        'a long poller name gives way and never cuts the age ($width)',
+        (tester) async {
+          fake.pollingDoc = {
+            'polled': true,
+            'latestReadingAt': tick - 49 * 60000,
+            'poller': {'observerId': observerId, 'name': 'MrAlders0n_G3_R1'},
+            'standbys': <dynamic>[],
+          };
+          await pump(tester, pins: [nodePin()], size: Size(width, 844));
+          await tester.tap(find.text('Telemetry'));
+          await tester.pumpAndSettle();
+          final left = find.text('Polled · 49m ago');
+          final right = find.text('by MrAlders0n_G3_R1');
+          expect(left, findsOneWidget);
+          expect(right, findsOneWidget);
+          expect(
+            tester.renderObject<RenderParagraph>(left).didExceedMaxLines,
+            isFalse,
+          );
+          expect(
+            tester.getTopLeft(right).dy,
+            moreOrLessEquals(tester.getTopLeft(left).dy, epsilon: 1),
+          );
+          expect(tester.takeException(), isNull);
+          await close(tester);
+        },
+      );
     }
 
     testWidgets('says when nobody is polling', (tester) async {
@@ -475,8 +508,9 @@ void main() {
       await pump(tester, pins: [nodePin()]);
       await tester.tap(find.text('Telemetry'));
       await tester.pumpAndSettle();
-      expect(find.text('Not being polled right now'), findsOneWidget);
-      expect(find.text('Last reading 3d ago'), findsOneWidget);
+      expect(find.text('Not polled'), findsOneWidget);
+      expect(find.textContaining('by '), findsNothing);
+      expect(footerFresh(tester, 'Not polled'), isFalse);
       await close(tester);
     });
 
@@ -620,6 +654,24 @@ void main() {
     ]);
     expect(find.byTooltip('The card opens on this tab'), findsOneWidget);
     expect(find.text('Open packet'), findsOneWidget);
+    await close(tester);
+  });
+
+  testWidgets('every card keeps the view it was switched to', (tester) async {
+    await pump(
+      tester,
+      pins: [
+        nodePin(),
+        nodePin({'id': otherId, 'publicKey': otherKey}),
+      ],
+      size: const Size(1200, 1600),
+    );
+    expect(find.text('OBSERVATIONS'), findsNWidgets(2));
+    await tester.tap(find.text('Heard by').at(0));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Heard by').at(1));
+    await tester.pumpAndSettle();
+    expect(find.text('OBSERVATIONS'), findsNothing);
     await close(tester);
   });
 

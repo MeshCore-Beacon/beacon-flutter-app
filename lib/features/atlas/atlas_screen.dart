@@ -59,10 +59,13 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
   final search = TextEditingController();
   Timer? debounce;
   String field = 'name', typed = '';
-  // One card at a time is away from the view it opens on.
-  ({String key, AtlasView view})? open;
+  // Each card keeps the view picked this session; only the pin saves it as where the card opens.
+  final open = <String, AtlasView>{};
   bool resumed = true;
   late int now = widget.clock().millisecondsSinceEpoch;
+
+  /// The server's card cap, from /info.
+  int limit = atlasLimitFallback;
 
   int searchRun = 0;
   bool searching = false, searchFailed = false, hasMore = false;
@@ -80,6 +83,11 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
     store.addListener(changed);
     // Pick up what another device changed since the last visit.
     unawaited(store.sync());
+    unawaited(
+      widget.api.features().then((f) {
+        if (mounted) setState(() => limit = f.atlasLimit);
+      }, onError: (_) {}),
+    );
     ticker = Timer.periodic(atlasRefresh, (_) {
       if (mounted) {
         setState(() => now = widget.clock().millisecondsSinceEpoch);
@@ -90,10 +98,8 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
 
   void changed() {
     if (!mounted) return;
-    // An import replaced the cards, so no card is away from its home view.
-    if (open != null && !saved.pins.any((pin) => pin.key == open!.key)) {
-      open = null;
-    }
+    // An import replaced the cards, so views of cards that are gone go too.
+    open.removeWhere((key, _) => !saved.pins.any((pin) => pin.key == key));
     setState(() {});
   }
 
@@ -114,10 +120,9 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
     super.dispose();
   }
 
-  AtlasView viewOf(AtlasPin pin) =>
-      open?.key == pin.key ? open!.view : pin.homeView;
+  AtlasView viewOf(AtlasPin pin) => open[pin.key] ?? pin.homeView;
   void setView(AtlasPin pin, AtlasView view) => setState(
-    () => open = view == pin.homeView ? null : (key: pin.key, view: view),
+    () => view == pin.homeView ? open.remove(pin.key) : open[pin.key] = view,
   );
 
   void typing(String value) {
@@ -267,7 +272,7 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
 
   void pinView(AtlasPin pin, AtlasView view) {
     replace(pin, (other) => other.isNode ? other.withView(view) : other);
-    if (open?.key == pin.key) setState(() => open = null);
+    if (open.containsKey(pin.key)) setState(() => open.remove(pin.key));
   }
 
   // An observer pin whose key now resolves to a node takes that node's place
@@ -330,7 +335,7 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final c = BeaconColors.of(context);
-    final full = saved.pins.length >= atlasLimit;
+    final full = saved.pins.length >= limit;
     // A detail screen pushed over the tab pauses the polling, as leaving the tab does.
     final active = resumed && (ModalRoute.of(context)?.isCurrent ?? true);
     final hint = field == 'observer'
@@ -375,7 +380,7 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
                   child: Text(
                     at(
                       'savedCountShort',
-                      args: {'count': saved.pins.length, 'limit': atlasLimit},
+                      args: {'count': saved.pins.length, 'limit': limit},
                     ),
                     style: atlasMono(11, full ? c.warning : c.muted),
                   ),
@@ -414,6 +419,10 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
                             count: notice.count,
                           ),
                           AtlasNoticeKind.failed => at('syncFailed'),
+                          AtlasNoticeKind.overLimit => trKey(
+                            'atlasLimits.overLimit',
+                            count: notice.limit,
+                          ).replaceAll('{{remove}}', '${notice.count}'),
                         }, style: atlasMono(11, c.warning)),
                       ),
                     if (store.storageFailed)
@@ -437,7 +446,7 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
                         title: at('emptyTitle'),
                         subtitle: at(
                           'emptyDescription',
-                          args: {'limit': atlasLimit},
+                          args: {'limit': limit},
                         ),
                       )
                     else
@@ -624,10 +633,7 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
         if (hasMore && hint == null)
           note(at('refine', args: {'limit': _searchLimit})),
         if (full && hint == null)
-          note(
-            at('limitReached', args: {'limit': atlasLimit}),
-            color: c.warning,
-          ),
+          note(at('limitReached', args: {'limit': limit}), color: c.warning),
       ],
     );
   }

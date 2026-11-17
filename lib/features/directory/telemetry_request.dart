@@ -10,6 +10,7 @@ import '../../core/strings.dart';
 import '../../core/theme.dart';
 import '../account/profile_screen.dart';
 import '../account/request_text.dart';
+import '../atlas/atlas_widgets.dart' show AtlasInfoTip;
 import 'directory_widgets.dart';
 
 const guestPasswordMaxBytes = 15;
@@ -219,19 +220,33 @@ class _TelemetryRequestBlockState extends State<TelemetryRequestBlock> {
     if (!enabled) return const SizedBox.shrink();
     final colors = BeaconColors.of(context);
     final muted = TextStyle(fontSize: 12, color: colors.muted);
+    final info = [
+      trKey('telemetryRequests.explain'),
+      trKey('telemetryRequests.notice'),
+    ];
     final children = <Widget>[
       if (!widget.standalone)
         Padding(
           padding: const EdgeInsets.only(top: 12, bottom: 6),
-          child: Text(
-            trKey('telemetryRequests.request'),
-            style: const TextStyle(fontWeight: FontWeight.w700),
+          child: Row(
+            children: [
+              Text(
+                trKey('telemetryRequests.request'),
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              AtlasInfoTip(info),
+            ],
           ),
         ),
       ..._body(context, muted),
     ];
     if (widget.standalone) {
-      return section(trKey('telemetryRequests.request'), children);
+      return FoldSection(
+        id: 'node-telemetry',
+        title: trKey('telemetryRequests.request'),
+        info: info,
+        children: children,
+      );
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -262,57 +277,45 @@ class _TelemetryRequestBlockState extends State<TelemetryRequestBlock> {
     final request = mine;
     if (request != null) {
       return [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 8,
           children: [
-            Padding(
-              padding: const EdgeInsets.only(top: 6, right: 8),
-              child: Icon(
-                Icons.circle,
-                size: 9,
-                color: requestDotColor(request, BeaconColors.of(context)),
-              ),
+            Icon(
+              Icons.circle,
+              size: 9,
+              color: requestDotColor(request, BeaconColors.of(context)),
             ),
-            Expanded(child: Text(requestLineText(request))),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: OutlinedButton(
-            key: const ValueKey('request-open-profile'),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute<void>(
-                builder: (_) => ProfileScreen(
-                  account: widget.account,
-                  api: widget.api,
-                  onOpen: widget.onOpen,
+            Text(requestLineText(request)),
+            TextButton(
+              key: const ValueKey('request-open-profile'),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => ProfileScreen(
+                    account: widget.account,
+                    api: widget.api,
+                    onOpen: widget.onOpen,
+                  ),
                 ),
               ),
+              child: Text(trKey('nodePanel.manage')),
             ),
-            child: Text(trKey('telemetryRequests.openProfile')),
-          ),
+          ],
         ),
       ];
     }
     final full = requests.length >= limit;
     return [
-      Text(trKey('telemetryRequests.explain'), style: muted),
-      const SizedBox(height: 8),
       GuestPasswordField(
         key: const ValueKey('request-password'),
         controller: password,
         label: trKey('telemetryRequests.passwordLabel'),
       ),
       const SizedBox(height: 4),
-      Text(trKey('telemetryRequests.notice'), style: muted),
-      const SizedBox(height: 8),
       Text(
-        trKey('telemetryRequests.used')
-            .replaceAll('{{used}}', '${requests.length}')
-            .replaceAll('{{limit}}', '$limit'),
-        style: muted,
+        trKey('nodePanel.passwordHint'),
+        style: TextStyle(fontSize: 12, color: BeaconColors.of(context).warning),
       ),
       if (full)
         Text(
@@ -323,20 +326,30 @@ class _TelemetryRequestBlockState extends State<TelemetryRequestBlock> {
           ),
         ),
       const SizedBox(height: 8),
-      SizedBox(
-        width: double.infinity,
-        child: FilledButton(
-          key: const ValueKey('request-submit'),
-          style: FilledButton.styleFrom(minimumSize: const Size(48, 48)),
-          onPressed: busy || full ? null : submit,
-          child: busy
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : Text(trKey('telemetryRequests.submit')),
-        ),
+      Row(
+        children: [
+          Expanded(
+            child: FilledButton(
+              key: const ValueKey('request-submit'),
+              style: FilledButton.styleFrom(minimumSize: const Size(48, 48)),
+              onPressed: busy || full ? null : submit,
+              child: busy
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(trKey('telemetryRequests.submit')),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            trKey('nodePanel.usedShort')
+                .replaceAll('{{used}}', '${requests.length}')
+                .replaceAll('{{limit}}', '$limit'),
+            style: muted,
+          ),
+        ],
       ),
       if (note != null)
         Padding(

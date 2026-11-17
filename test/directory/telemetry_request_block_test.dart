@@ -12,6 +12,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'folds.dart';
+
 const base = 'https://test.invalid';
 const notice =
     'The guest password is shared with volunteer observers so they can ask this repeater for its stats. Never enter an admin password.';
@@ -40,6 +42,12 @@ Map<String, dynamic> existing(String status, {String? nodeId = 'node-1'}) => {
 
 Finder inner(Finder f) =>
     find.descendant(of: f, matching: find.byType(TextField));
+
+/// The text of the info tip whose message contains [part].
+String tipWith(WidgetTester tester, String part) => tester
+    .widgetList<Tooltip>(find.byType(Tooltip))
+    .map((t) => t.message ?? '')
+    .firstWhere((m) => m.contains(part));
 
 void main() {
   setUp(() async {
@@ -136,6 +144,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await openFolds(tester);
   }
 
   setUp(() {
@@ -157,6 +166,7 @@ void main() {
       await tester.pumpAndSettle();
       account.adopt({'id': 'u2', 'username': 'valley'});
       await tester.pumpAndSettle();
+      await openFolds(tester);
       expect(
         tester.widget<TextField>(inner(field())).controller!.text,
         isEmpty,
@@ -170,12 +180,13 @@ void main() {
     await pump(tester);
     expect(find.text('TELEMETRY'), findsNothing);
     expect(find.text('REQUEST TELEMETRY'), findsOneWidget);
+    expect(find.text(notice), findsNothing);
     expect(
-      find.textContaining('volunteer observers that can hear'),
-      findsOneWidget,
+      tipWith(tester, notice),
+      contains('volunteer observers that can hear'),
     );
-    expect(find.text(notice), findsOneWidget);
-    expect(find.text('0 of 3 requests used'), findsOneWidget);
+    expect(find.text('Guest password only, never admin.'), findsOneWidget);
+    expect(find.text('0 of 3 used'), findsOneWidget);
     expect(
       find.widgetWithText(FilledButton, 'Request telemetry'),
       findsOneWidget,
@@ -189,12 +200,12 @@ void main() {
     expect(find.text('TELEMETRY'), findsOneWidget);
     expect(find.text('REQUEST TELEMETRY'), findsNothing);
     expect(find.text('Request telemetry'), findsWidgets);
-    expect(find.text(notice), findsOneWidget);
+    expect(tipWith(tester, notice), isNotEmpty);
   });
 
   testWidgets('a room server also gets it', (tester) async {
     await pump(tester, type: 'room server');
-    expect(find.text(notice), findsOneWidget);
+    expect(tipWith(tester, notice), isNotEmpty);
   });
 
   testWidgets(
@@ -247,7 +258,7 @@ void main() {
       find.text('Waiting for an observer that can reach it'),
       findsOneWidget,
     );
-    expect(find.text('Open profile'), findsOneWidget);
+    expect(find.text('Manage in profile'), findsOneWidget);
   });
 
   testWidgets('with no password only the node is sent', (tester) async {
@@ -281,7 +292,7 @@ void main() {
     expect(find.text('Being polled'), findsOneWidget);
     expect(field(), findsNothing);
     expect(find.text(notice), findsNothing);
-    await tester.tap(find.text('Open profile'));
+    await tester.tap(find.text('Manage in profile'));
     await tester.pumpAndSettle();
     expect(find.text('Profile'), findsWidgets);
   });
@@ -326,7 +337,7 @@ void main() {
       },
     ];
     await pump(tester);
-    expect(find.text('1 of 1 requests used'), findsOneWidget);
+    expect(find.text('1 of 1 used'), findsOneWidget);
     expect(find.textContaining('used all your requests'), findsOneWidget);
     final button = tester.widget<FilledButton>(
       find.widgetWithText(FilledButton, 'Request telemetry'),

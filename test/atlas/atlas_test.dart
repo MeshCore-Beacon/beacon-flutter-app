@@ -116,7 +116,8 @@ void main() {
           ],
         }),
       );
-      expect(result.pins, hasLength(atlasLimit));
+      // Loading keeps up to the highest cap; the screen enforces the server's.
+      expect(result.pins, hasLength(20));
       expect(result.range, AtlasRange.day);
     });
 
@@ -154,9 +155,9 @@ void main() {
         parse([
           observer(1),
           observer(1),
-          for (var i = 0; i < 14; i++) observer(i + 2),
+          for (var i = 0; i < atlasLimitMax + 5; i++) observer(i + 2),
         ]),
-        hasLength(atlasLimit),
+        hasLength(atlasLimitMax),
       );
     });
 
