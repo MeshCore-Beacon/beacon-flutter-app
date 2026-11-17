@@ -1595,6 +1595,10 @@
       "noPacketsSent": "Inga skickade paket",
       "packetsSentInfo": "Annonser och inloggningsförfrågningar som den här noden skickat. Andra paket anger inte avsändaren i sin helhet, så de kan inte listas här.",
       "packetsSentExpire": "Äldre paket försvinner efter serverns lagringstid."
+    },
+    "atlasLimits": {
+      "overLimit_one": "Den här servern tillåter {{count}} kort. Ta bort {{remove}} till för att spara din Atlas i ditt konto.",
+      "overLimit_other": "Den här servern tillåter {{count}} kort. Ta bort {{remove}} till för att spara din Atlas i ditt konto."
     }
   }
 }

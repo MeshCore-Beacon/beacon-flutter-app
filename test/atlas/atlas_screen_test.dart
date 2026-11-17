@@ -73,6 +73,7 @@ class Server {
   Completer<void>? holdObserver;
   bool activity404 = false;
   bool polling = true, atlasTelemetry = false;
+  int? atlasLimit;
   String temperatureUnit = 'c';
 
   /// What /nodes/{id}/polling answers; null is a 404.
@@ -111,6 +112,7 @@ class Server {
       return {
         'features': {'polling': polling, 'atlasTelemetry': atlasTelemetry},
         'display': {'temperatureUnit': temperatureUnit},
+        if (atlasLimit != null) 'limits': {'atlas': atlasLimit},
       };
     }
     if (path == '/nodes/$nodeId/polling') return pollingDoc;
@@ -279,6 +281,15 @@ void main() {
   setUp(() async {
     fake = Server();
     await BeaconTheme.load();
+  });
+
+  testWidgets('takes its card cap from the server', (tester) async {
+    fake.atlasLimit = 1;
+    await pump(tester, pins: [nodePin()]);
+    expect(find.text('1/1'), findsOneWidget);
+    await search(tester, 'ridge');
+    expect(find.textContaining('All 1 slots are in use'), findsOneWidget);
+    await close(tester);
   });
 
   testWidgets('starts empty, finds a node by name and saves it as a card', (

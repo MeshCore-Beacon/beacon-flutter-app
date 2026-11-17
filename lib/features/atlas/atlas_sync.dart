@@ -20,8 +20,12 @@ class ServerAtlas {
     required this.revision,
     required this.atlas,
     required this.observerKeys,
+    this.limit = atlasLimitFallback,
   });
   final int revision;
+
+  /// The server's cap on pins.
+  final int limit;
   final SavedAtlas atlas;
 
   /// Observer id to public key. A local observer pin holds only the id, and the
@@ -69,7 +73,13 @@ ServerAtlas? parseServerAtlas(Json doc) {
   final atlas = parseAtlas(
     jsonEncode({'version': 2, 'range': doc['range'], 'pins': local}),
   );
-  return ServerAtlas(revision: revision, atlas: atlas, observerKeys: keys);
+  final limit = doc['limit'];
+  return ServerAtlas(
+    revision: revision,
+    atlas: atlas,
+    observerKeys: keys,
+    limit: limit is int && limit > 0 ? limit : atlasLimitFallback,
+  );
 }
 
 /// The PUT body for [saved]. A stand-in observer goes out by key; any other
@@ -132,7 +142,14 @@ Set<String> _identities(AtlasPin pin, Map<String, String> keys) => {
 /// not already there, up to the limit.
 AtlasMerge mergeFirstSignIn(ServerAtlas server, SavedAtlas local) {
   if (local.pins.isEmpty) return AtlasMerge(server.atlas, upload: false);
-  if (server.atlas.pins.isEmpty) return AtlasMerge(local, upload: true);
+  if (server.atlas.pins.isEmpty) {
+    final kept = local.pins.take(server.limit).toList();
+    return AtlasMerge(
+      local.copyWith(pins: kept),
+      upload: true,
+      dropped: local.pins.length - kept.length,
+    );
+  }
   final pins = [...server.atlas.pins];
   final seen = <String>{
     for (final pin in pins) ..._identities(pin, server.observerKeys),
@@ -141,7 +158,7 @@ AtlasMerge mergeFirstSignIn(ServerAtlas server, SavedAtlas local) {
   for (final pin in local.pins) {
     final ids = _identities(pin, const {});
     if (ids.any(seen.contains)) continue;
-    if (pins.length >= atlasLimit) {
+    if (pins.length >= server.limit) {
       dropped++;
       continue;
     }

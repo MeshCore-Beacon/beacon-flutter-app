@@ -8,6 +8,24 @@ import 'package:http/testing.dart';
 
 void main() {
   group('ServerFeatures.fromInfo', () {
+    test('reads the Atlas cap and falls back to 12', () {
+      expect(ServerFeatures.fromInfo(null).atlasLimit, 12);
+      expect(
+        ServerFeatures.fromInfo({
+          'limits': {'atlas': 20},
+        }).atlasLimit,
+        20,
+      );
+      for (final bad in [0, 101, 'x', 20.5]) {
+        expect(
+          ServerFeatures.fromInfo({
+            'limits': {'atlas': bad},
+          }).atlasLimit,
+          12,
+        );
+      }
+    });
+
     test('null info is all off', () {
       final f = ServerFeatures.fromInfo(null);
       expect(f.polling, false);

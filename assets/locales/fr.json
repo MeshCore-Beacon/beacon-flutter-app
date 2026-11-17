@@ -1644,6 +1644,10 @@
       "noPacketsSent": "Aucun paquet envoyé",
       "packetsSentInfo": "Annonces et demandes de connexion envoyées par ce nœud. Les autres paquets ne nomment pas leur expéditeur en entier, ils ne peuvent donc pas être listés ici.",
       "packetsSentExpire": "Les paquets plus anciens expirent après la période de conservation du serveur."
+    },
+    "atlasLimits": {
+      "overLimit_one": "Ce serveur permet {{count}} carte. Retirez-en encore {{remove}} pour enregistrer votre Atlas dans votre compte.",
+      "overLimit_other": "Ce serveur permet {{count}} cartes. Retirez-en encore {{remove}} pour enregistrer votre Atlas dans votre compte."
     }
   }
 }

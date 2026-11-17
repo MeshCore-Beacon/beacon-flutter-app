@@ -1595,6 +1595,10 @@
       "noPacketsSent": "No packets sent",
       "packetsSentInfo": "Adverts and login requests this node sent. Other packets don't name their sender in full, so they can't be listed here.",
       "packetsSentExpire": "Older packets expire after the server's retention period."
+    },
+    "atlasLimits": {
+      "overLimit_one": "This server allows {{count}} card. Remove {{remove}} more to save your Atlas to your account.",
+      "overLimit_other": "This server allows {{count}} cards. Remove {{remove}} more to save your Atlas to your account."
     }
   }
 }

@@ -64,6 +64,9 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
   bool resumed = true;
   late int now = widget.clock().millisecondsSinceEpoch;
 
+  /// The server's card cap, from /info.
+  int limit = atlasLimitFallback;
+
   int searchRun = 0;
   bool searching = false, searchFailed = false, hasMore = false;
   List<Json>? matches;
@@ -80,6 +83,11 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
     store.addListener(changed);
     // Pick up what another device changed since the last visit.
     unawaited(store.sync());
+    unawaited(
+      widget.api.features().then((f) {
+        if (mounted) setState(() => limit = f.atlasLimit);
+      }, onError: (_) {}),
+    );
     ticker = Timer.periodic(atlasRefresh, (_) {
       if (mounted) {
         setState(() => now = widget.clock().millisecondsSinceEpoch);
@@ -327,7 +335,7 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final c = BeaconColors.of(context);
-    final full = saved.pins.length >= atlasLimit;
+    final full = saved.pins.length >= limit;
     // A detail screen pushed over the tab pauses the polling, as leaving the tab does.
     final active = resumed && (ModalRoute.of(context)?.isCurrent ?? true);
     final hint = field == 'observer'
@@ -372,7 +380,7 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
                   child: Text(
                     at(
                       'savedCountShort',
-                      args: {'count': saved.pins.length, 'limit': atlasLimit},
+                      args: {'count': saved.pins.length, 'limit': limit},
                     ),
                     style: atlasMono(11, full ? c.warning : c.muted),
                   ),
@@ -411,6 +419,10 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
                             count: notice.count,
                           ),
                           AtlasNoticeKind.failed => at('syncFailed'),
+                          AtlasNoticeKind.overLimit => trKey(
+                            'atlasLimits.overLimit',
+                            count: notice.limit,
+                          ).replaceAll('{{remove}}', '${notice.count}'),
                         }, style: atlasMono(11, c.warning)),
                       ),
                     if (store.storageFailed)
@@ -434,7 +446,7 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
                         title: at('emptyTitle'),
                         subtitle: at(
                           'emptyDescription',
-                          args: {'limit': atlasLimit},
+                          args: {'limit': limit},
                         ),
                       )
                     else
@@ -621,10 +633,7 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
         if (hasMore && hint == null)
           note(at('refine', args: {'limit': _searchLimit})),
         if (full && hint == null)
-          note(
-            at('limitReached', args: {'limit': atlasLimit}),
-            color: c.warning,
-          ),
+          note(at('limitReached', args: {'limit': limit}), color: c.warning),
       ],
     );
   }

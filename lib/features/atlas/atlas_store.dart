@@ -3,21 +3,26 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../../core/account.dart';
+import '../../core/api.dart';
 import '../../core/auth_api.dart';
 import '../../core/json.dart';
 import '../../core/preferences.dart';
 import 'atlas.dart';
 import 'atlas_sync.dart';
 
-enum AtlasNoticeKind { conflict, overflow, failed }
+enum AtlasNoticeKind { conflict, overflow, failed, overLimit }
 
 /// The one inline line above the cards.
 class AtlasNotice {
-  const AtlasNotice(this.kind, [this.count = 0]);
+  const AtlasNotice(this.kind, [this.count = 0, this.limit = 0]);
   final AtlasNoticeKind kind;
 
-  /// Local cards that did not fit, for [AtlasNoticeKind.overflow].
+  /// Local cards that did not fit, for [AtlasNoticeKind.overflow], or cards to
+  /// remove, for [AtlasNoticeKind.overLimit].
   final int count;
+
+  /// The server's cap, for [AtlasNoticeKind.overLimit].
+  final int limit;
 }
 
 /// One server's saved Atlas. Each saved server keeps its own cards, as each
@@ -290,6 +295,21 @@ class AtlasStore extends ChangeNotifier {
       notice = const AtlasNotice(AtlasNoticeKind.conflict);
       _notify();
       return true;
+    } on ApiException catch (e) {
+      if (!_live(user, epoch)) return true;
+      // A save over the server's cap is refused as "at most N pins".
+      final cap = e.status == 422
+          ? RegExp(r'^at most (\d+) pins$').firstMatch(e.message)?.group(1)
+          : null;
+      final over = cap == null ? 0 : saved.pins.length - int.parse(cap);
+      if (over > 0) {
+        _dirty = false;
+        notice = AtlasNotice(AtlasNoticeKind.overLimit, over, int.parse(cap!));
+        _notify();
+        return true;
+      }
+      _dirty = true;
+      return false;
     } catch (_) {
       if (_live(user, epoch)) _dirty = true;
       return false;
