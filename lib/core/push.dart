@@ -112,13 +112,30 @@ class PushHub {
       final first = await client.initialMessage();
       if (first != null) await tap(first);
     } catch (_) {}
+    try {
+      await _reconcile();
+    } catch (_) {}
   }
 
-  /// The handles stay; only the token behind them moves.
+  /// Catches up handles a refresh missed or failed to move, once per launch.
+  Future<void> _reconcile() async {
+    if ((await store.all()).isEmpty) return;
+    if (await client.permission() != PushPermission.granted) return;
+    final token = await client.token();
+    if (token != null) await _tokenChanged(token);
+  }
+
+  /// The handles stay; only the token behind them moves. An entry keeps its
+  /// old token until the push server takes the new one, so it retries later.
   Future<void> _tokenChanged(String token) async {
     if (token.isEmpty) return;
+    final stale = [
+      for (final e in await store.all())
+        if (e.token != token) e,
+    ];
+    if (stale.isEmpty) return;
     final environment = await client.apnsEnvironment();
-    for (final e in await store.all()) {
+    for (final e in stale) {
       try {
         await relay.updateHandle(
           e.relay,

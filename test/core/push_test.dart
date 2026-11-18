@@ -442,6 +442,48 @@ void main() {
       expect(seen, isEmpty);
     });
 
+    test(
+      'start moves stale handles and retries failures next launch',
+      () async {
+        push.state = PushPermission.granted;
+        await store.write(
+          entryFor('inst_a', _base, 1).copyWith(token: 'tok-0'),
+        );
+        await store.write(
+          entryFor('inst_b', 'https://b.example', 2).copyWith(token: 'tok-0'),
+        );
+        relayAnswer = (r) =>
+            r.url.path.endsWith('/h_inst_b') ? http.Response('', 500) : null;
+        await hub.start();
+        expect(relayCalls(), [
+          'PUT /v1/handles/h_inst_a',
+          'PUT /v1/handles/h_inst_b',
+        ]);
+        expect((await store.read('inst_a'))!.token, 'tok-1');
+        expect((await store.read('inst_b'))!.token, 'tok-0');
+
+        relaySeen.clear();
+        relayAnswer = null;
+        final relaunched = PushHub(
+          client: push,
+          store: store,
+          relay: hub.relay,
+        );
+        await relaunched.start();
+        relaunched.dispose();
+        expect(relayCalls(), ['PUT /v1/handles/h_inst_b']);
+        expect(jsonDecode(relaySeen.single.body)['token'], 'tok-1');
+        expect((await store.read('inst_b'))!.token, 'tok-1');
+      },
+    );
+
+    test('start leaves handles alone without permission', () async {
+      await store.write(entryFor('inst_a', _base, 1).copyWith(token: 'tok-0'));
+      await hub.start();
+      expect(relaySeen, isEmpty);
+      expect(push.calls, isNot(contains('token')));
+    });
+
     test('an iOS token refresh carries the APNs environment', () async {
       push.environment = 'sandbox';
       await store.write(entryFor('inst_a', _base, 1));
