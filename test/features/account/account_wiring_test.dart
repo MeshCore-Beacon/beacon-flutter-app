@@ -1,3 +1,8 @@
+import 'package:beacon/features/directory/entity_detail_screen.dart';
+import 'package:beacon/core/push_store.dart';
+
+import 'dart:convert';
+
 import 'package:beacon/app.dart';
 import 'package:beacon/core/account.dart';
 import 'package:beacon/core/api.dart';
@@ -66,8 +71,16 @@ void main() {
     return json(200, {'items': [], 'hasMore': false});
   }
 
-  Future<SignInFlow> pumpApp(WidgetTester tester, {FakePush? push}) async {
+  Future<SignInFlow> pumpApp(
+    WidgetTester tester, {
+    FakePush? push,
+    PushStore? store,
+    String? other,
+  }) async {
     final prefs = await Preferences.load();
+    if (other != null) {
+      await prefs.saveServer(BeaconInstance.create('Other mesh', other));
+    }
     await prefs.saveServer(BeaconInstance.create('Home mesh', server));
     final flow = SignInFlow(
       apiFor: (url) =>
@@ -86,7 +99,9 @@ void main() {
         tokens: tokens,
         accounts: registry,
         signInFlow: flow,
-        push: push == null ? null : fakeHub(push, relaySeen: relaySeen),
+        push: push == null
+            ? null
+            : fakeHub(push, relaySeen: relaySeen, store: store),
         authFactory: (url, store) =>
             AuthApi(url, store, client: MockClient((r) async => serve(r))),
         apiFactory: (base) =>
@@ -207,5 +222,40 @@ void main() {
     expect(deviceCalls, ['POST', 'DELETE']);
     expect([for (final r in relaySeen) r.method], ['POST', 'DELETE']);
     expect(app.preferences.servers, isEmpty);
+  });
+
+  testWidgets('a tap for another saved server switches to it and opens', (
+    tester,
+  ) async {
+    const other = 'https://other.example.com';
+    final store = MemoryPushStore();
+    await store.write(
+      PushEntry(
+        pushId: 'inst_b',
+        relay: Uri.parse('https://push.example'),
+        handle: 'h_b',
+        handleSecret: 's_b',
+        key: base64.encode(List.filled(32, 1)),
+        url: other,
+        name: 'Other mesh',
+      ),
+    );
+    final push = FakePush();
+    addTearDown(push.close);
+    await pumpApp(tester, push: push, store: store, other: other);
+    final app = tester.widget<BeaconApp>(find.byType(BeaconApp));
+    expect(app.preferences.active!.url, server);
+    push.taps.add({
+      'pushId': 'inst_b',
+      'targetKind': 'node',
+      'publicKey': 'aabb',
+      'id': 'node-1',
+    });
+    await tester.pumpAndSettle();
+    expect(app.preferences.active!.url, other);
+    final opened = tester.widget<EntityDetailScreen>(
+      find.byType(EntityDetailScreen),
+    );
+    expect((opened.kind, opened.id), ('node', 'node-1'));
   });
 }

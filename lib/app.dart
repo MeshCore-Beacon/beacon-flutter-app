@@ -607,8 +607,12 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
     if (widget.connectLive) live.start();
   }
 
-  void _pushTapped(PushTarget t) =>
-      unawaited(openAlertTarget(t.kind, t.publicKey, t.id));
+  // A tap that switched servers lands in initState, before the shell pops to root.
+  void _pushTapped(PushTarget t) => unawaited(
+    Future(() {
+      if (mounted) return openAlertTarget(t.kind, t.publicKey, t.id);
+    }),
+  );
 
   /// A tapped alert carries the radio's id; without one it names the radio by
   /// public key, and the detail routes take ids, which the Atlas holds. A cold
