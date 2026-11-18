@@ -228,10 +228,9 @@ packages:
   firebase_core:
     dependency: "direct main"
     description:
-      name: firebase_core
-      sha256: "253da727a1eb7ed91a72cb4eb4a1b6db6993e04c228c2dcfa9e573901c252e35"
-      url: "https://pub.dev"
-    source: hosted
+      path: "third_party/firebase_core"
+      relative: true
+    source: path
     version: "4.15.2"
   firebase_core_platform_interface:
     dependency: transitive
@@ -252,10 +251,9 @@ packages:
   firebase_messaging:
     dependency: "direct main"
     description:
-      name: firebase_messaging
-      sha256: "4c42147d1ad7d614eb5c8fb1cd110397a0a1108419e26c05d3dad8ac1cac06c3"
-      url: "https://pub.dev"
-    source: hosted
+      path: "third_party/firebase_messaging"
+      relative: true
+    source: path
     version: "16.7.1"
   firebase_messaging_platform_interface:
     dependency: transitive

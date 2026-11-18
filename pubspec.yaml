@@ -31,6 +31,14 @@ dependencies:
   cryptography: ^2.9.0
   flutter_local_notifications: ^22.3.3
 
+# Vendored without their iOS plugins so the iOS build carries no Firebase;
+# see third_party/README.md.
+dependency_overrides:
+  firebase_core:
+    path: third_party/firebase_core
+  firebase_messaging:
+    path: third_party/firebase_messaging
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
