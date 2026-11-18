@@ -1,6 +1,3 @@
-import 'package:beacon/features/directory/entity_detail_screen.dart';
-import 'package:beacon/core/push_store.dart';
-
 import 'dart:convert';
 
 import 'package:beacon/app.dart';
@@ -10,8 +7,10 @@ import 'package:beacon/core/auth_api.dart';
 import 'package:beacon/core/instance.dart';
 import 'package:beacon/core/preferences.dart';
 import 'package:beacon/core/push.dart';
+import 'package:beacon/core/push_store.dart';
 import 'package:beacon/core/token_store.dart';
 import 'package:beacon/features/account/sign_in.dart';
+import 'package:beacon/features/directory/entity_detail_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
