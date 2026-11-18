@@ -81,9 +81,9 @@ class LocalNotifier implements Notifier {
   );
 }
 
-/// The only file that touches the Firebase plugins. Nothing here runs until
-/// `available()` is asked, and without google-services.json or
-/// GoogleService-Info.plist in the build it answers false and stays idle.
+/// Android push through FCM; the only file that touches the Firebase plugins.
+/// Nothing runs until `available()` is asked, and without google-services.json
+/// in the build it answers false and stays idle. iOS uses push_apns.dart.
 class FirebasePushClient implements PushClient {
   FirebasePushClient({PushStore? store}) : _store = store ?? SecurePushStore();
   final PushStore _store;
@@ -92,18 +92,13 @@ class FirebasePushClient implements PushClient {
   Json? _localLaunch;
 
   @override
-  String get platform =>
-      defaultTargetPlatform == TargetPlatform.iOS ? 'ios' : 'android';
+  String get platform => 'android';
 
   @override
   Future<bool> available() => _ready ??= _init();
 
   Future<bool> _init() async {
-    if (kIsWeb ||
-        (defaultTargetPlatform != TargetPlatform.android &&
-            defaultTargetPlatform != TargetPlatform.iOS)) {
-      return false;
-    }
+    if (!_android) return false;
     try {
       // Reads the native configuration; throws when the build has none.
       await Firebase.initializeApp();
@@ -111,28 +106,20 @@ class FirebasePushClient implements PushClient {
       return false;
     }
     try {
-      if (_android) {
-        // Android gets data only; the app opens and shows each message itself.
-        final notifier = await LocalNotifier.ready(
-          onTap: (r) => _localTaps.add(_payload(r.payload)),
-        );
-        final launch = await notifier.plugin.getNotificationAppLaunchDetails();
-        if (launch?.didNotificationLaunchApp ?? false) {
-          _localLaunch = _payload(launch?.notificationResponse?.payload);
-        }
-        FirebaseMessaging.onBackgroundMessage(beaconBackgroundMessage);
-        FirebaseMessaging.onMessage.listen((m) async {
-          try {
-            await deliverNotice(m.data, store: _store, notifier: notifier);
-          } catch (_) {}
-        });
-      } else {
-        // The extension already rewrote the alert; let it show in the foreground too.
-        await _messaging.setForegroundNotificationPresentationOptions(
-          alert: true,
-          sound: true,
-        );
+      // Android gets data only; the app opens and shows each message itself.
+      final notifier = await LocalNotifier.ready(
+        onTap: (r) => _localTaps.add(_payload(r.payload)),
+      );
+      final launch = await notifier.plugin.getNotificationAppLaunchDetails();
+      if (launch?.didNotificationLaunchApp ?? false) {
+        _localLaunch = _payload(launch?.notificationResponse?.payload);
       }
+      FirebaseMessaging.onBackgroundMessage(beaconBackgroundMessage);
+      FirebaseMessaging.onMessage.listen((m) async {
+        try {
+          await deliverNotice(m.data, store: _store, notifier: notifier);
+        } catch (_) {}
+      });
     } catch (_) {}
     return true;
   }
@@ -171,14 +158,11 @@ class FirebasePushClient implements PushClient {
   Stream<String> get tokenRefreshes => _messaging.onTokenRefresh;
 
   @override
-  Stream<Json> get opened => _android
-      ? _localTaps.stream
-      : FirebaseMessaging.onMessageOpenedApp.map((m) => object(m.data));
+  Future<String?> apnsEnvironment() async => null;
 
   @override
-  Future<Json?> initialMessage() async {
-    if (_android) return _localLaunch;
-    final message = await _messaging.getInitialMessage();
-    return message == null ? null : object(message.data);
-  }
+  Stream<Json> get opened => _localTaps.stream;
+
+  @override
+  Future<Json?> initialMessage() async => _localLaunch;
 }

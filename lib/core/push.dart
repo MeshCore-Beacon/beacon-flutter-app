@@ -15,22 +15,25 @@ import 'push_store.dart';
 
 enum PushPermission { granted, denied, notAsked }
 
-/// Everything the app needs from a push plugin. The Firebase one lives in
-/// push_firebase.dart; tests use a fake and a build without Firebase
-/// configuration answers false from `available()`.
+/// Everything the app needs from push: APNs on iOS (push_apns.dart), FCM on
+/// Android (push_firebase.dart). Tests use a fake.
 abstract class PushClient {
   /// The OS name the push server and `/me/devices` expect: ios or android.
   String get platform;
 
-  /// True only when this build carries Firebase configuration.
+  /// False when this build cannot get push, e.g. Android without Firebase
+  /// configuration.
   Future<bool> available();
   Future<PushPermission> permission();
   Future<PushPermission> requestPermission();
   Future<String?> token();
   Stream<String> get tokenRefreshes;
 
+  /// sandbox or production for an iOS token; null on Android.
+  Future<String?> apnsEnvironment();
+
   /// The data of each notification the user taps while the app runs: the
-  /// sealed FCM data on iOS, the shown notification's payload on Android.
+  /// push server's sealed data on iOS, the shown notification's payload on Android.
   Stream<Json> get opened;
 
   /// The same for the notification that launched the app, if any.
@@ -52,6 +55,8 @@ class NoPush implements PushClient {
   Future<String?> token() async => null;
   @override
   Stream<String> get tokenRefreshes => const Stream.empty();
+  @override
+  Future<String?> apnsEnvironment() async => null;
   @override
   Stream<Json> get opened => const Stream.empty();
   @override
@@ -112,13 +117,15 @@ class PushHub {
   /// The handles stay; only the token behind them moves.
   Future<void> _tokenChanged(String token) async {
     if (token.isEmpty) return;
+    final environment = await client.apnsEnvironment();
     for (final e in await store.all()) {
       try {
         await relay.updateHandle(
           e.relay,
           e.handle,
           handleSecret: e.handleSecret,
-          fcmToken: token,
+          token: token,
+          apnsEnvironment: environment,
         );
         await store.write(e.copyWith(token: token));
       } catch (_) {}
@@ -205,7 +212,8 @@ enum PushStatus {
   /// Signed out, or the server does not send push.
   off,
 
-  /// The server sends push, but this build has no Firebase configuration.
+  /// The server sends push, but this build cannot get push (Android without
+  /// Firebase configuration).
   notSetUp,
   needsPermission,
   denied,
@@ -352,6 +360,7 @@ class PushRegistration extends ChangeNotifier {
     PushEntry? old,
   ) async {
     final key = old?.key ?? hub.newKey();
+    final environment = await client.apnsEnvironment();
     if (old != null && old.relay == info.server) {
       final current = old.copyWith(
         url: serverUrl,
@@ -364,7 +373,8 @@ class PushRegistration extends ChangeNotifier {
           old.relay,
           old.handle,
           handleSecret: old.handleSecret,
-          fcmToken: token,
+          token: token,
+          apnsEnvironment: environment,
         );
         return current;
       } on PushRelayException catch (e) {
@@ -375,7 +385,8 @@ class PushRegistration extends ChangeNotifier {
       info.server,
       pushId: info.pushId,
       platform: client.platform,
-      fcmToken: token,
+      token: token,
+      apnsEnvironment: environment,
     );
     if (old != null && old.relay != info.server) {
       try {

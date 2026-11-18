@@ -188,7 +188,7 @@ void main() {
       expect(jsonDecode(relaySeen.single.body), {
         'pushId': 'inst_a',
         'platform': 'android',
-        'fcmToken': 'tok-1',
+        'token': 'tok-1',
       });
       final entry = (await store.read('inst_a'))!;
       expect(entry.handle, 'h_1');
@@ -270,10 +270,39 @@ void main() {
       expect(relayCalls(), ['PUT /v1/handles/h_old']);
       expect(jsonDecode(relaySeen.single.body), {
         'handleSecret': 's_old',
-        'fcmToken': 'tok-1',
+        'token': 'tok-1',
       });
       final entry = (await store.read('inst_a'))!;
       expect((entry.handle, entry.token), ('h_old', 'tok-1'));
+    });
+
+    test('iOS sends its APNs environment with a new handle', () async {
+      push
+        ..platform = 'ios'
+        ..environment = 'sandbox';
+      await signIn();
+      await registration.enable();
+      expect(jsonDecode(relaySeen.single.body), {
+        'pushId': 'inst_a',
+        'platform': 'ios',
+        'token': 'tok-1',
+        'apnsEnvironment': 'sandbox',
+      });
+      expect(jsonDecode(devices('POST').single.body)['platform'], 'ios');
+    });
+
+    test('iOS sends its APNs environment when the token moves', () async {
+      push
+        ..platform = 'ios'
+        ..environment = 'production'
+        ..state = PushPermission.granted;
+      await store.write(stored(token: 'tok-0'));
+      await signIn();
+      expect(jsonDecode(relaySeen.single.body), {
+        'handleSecret': 's_old',
+        'token': 'tok-1',
+        'apnsEnvironment': 'production',
+      });
     });
 
     test(
@@ -408,9 +437,22 @@ void main() {
         'PUT /v1/handles/h_inst_a',
         'PUT /v1/handles/h_inst_b',
       });
-      expect(jsonDecode(relaySeen.first.body)['fcmToken'], 'tok-2');
+      expect(jsonDecode(relaySeen.first.body)['token'], 'tok-2');
       expect((await store.read('inst_b'))!.token, 'tok-2');
       expect(seen, isEmpty);
+    });
+
+    test('an iOS token refresh carries the APNs environment', () async {
+      push.environment = 'sandbox';
+      await store.write(entryFor('inst_a', _base, 1));
+      await hub.start();
+      push.refresh.add('tok-2');
+      await pump();
+      expect(jsonDecode(relaySeen.single.body), {
+        'handleSecret': 's_inst_a',
+        'token': 'tok-2',
+        'apnsEnvironment': 'sandbox',
+      });
     });
 
     test('nothing starts in a build without configuration', () async {

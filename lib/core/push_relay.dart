@@ -46,12 +46,14 @@ class PushRelay {
     Uri server, {
     required String pushId,
     required String platform,
-    required String fcmToken,
+    required String token,
+    String? apnsEnvironment,
   }) async {
     final r = await _send('POST', _url(server), {
       'pushId': pushId,
       'platform': platform,
-      'fcmToken': fcmToken,
+      'token': token,
+      'apnsEnvironment': ?apnsEnvironment,
     });
     if (r.statusCode < 200 || r.statusCode > 299) throw _error(r);
     try {
@@ -64,16 +66,19 @@ class PushRelay {
     throw PushRelayException(r.statusCode, 'bad_answer');
   }
 
-  /// Moves the handle to a refreshed FCM token.
+  /// Moves the handle to a refreshed token. iOS sends its APNs environment
+  /// every time; Android sends none.
   Future<void> updateHandle(
     Uri server,
     String handle, {
     required String handleSecret,
-    required String fcmToken,
+    required String token,
+    String? apnsEnvironment,
   }) async {
     final r = await _send('PUT', _url(server, handle), {
       'handleSecret': handleSecret,
-      'fcmToken': fcmToken,
+      'token': token,
+      'apnsEnvironment': ?apnsEnvironment,
     });
     if (r.statusCode < 200 || r.statusCode > 299) throw _error(r);
   }

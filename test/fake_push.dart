@@ -13,7 +13,12 @@ class FakePush implements PushClient {
     this.isAvailable = true,
     this.state = PushPermission.notAsked,
     this.deviceToken = 'tok-1',
+    this.platform = 'android',
+    this.environment,
   });
+  @override
+  String platform;
+  String? environment;
   bool isAvailable;
   PushPermission state;
   String? deviceToken;
@@ -27,8 +32,6 @@ class FakePush implements PushClient {
     await taps.close();
   }
 
-  @override
-  String get platform => 'android';
   @override
   Future<bool> available() async {
     calls.add('available');
@@ -55,6 +58,8 @@ class FakePush implements PushClient {
 
   @override
   Stream<String> get tokenRefreshes => refresh.stream;
+  @override
+  Future<String?> apnsEnvironment() async => environment;
   @override
   Stream<Json> get opened => taps.stream;
   @override

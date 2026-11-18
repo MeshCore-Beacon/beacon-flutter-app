@@ -90,16 +90,16 @@ void main() {
       final (handle, secret) = await relay.createHandle(
         server,
         pushId: 'inst_a',
-        platform: 'ios',
-        fcmToken: 'fcm-1',
+        platform: 'android',
+        token: 'fcm-1',
       );
       expect((handle, secret), ('h_1', 'sec'));
       expect(seen.single.method, 'POST');
       expect(seen.single.url.toString(), 'https://push.example/v1/handles');
       expect(jsonDecode(seen.single.body), {
         'pushId': 'inst_a',
-        'platform': 'ios',
-        'fcmToken': 'fcm-1',
+        'platform': 'android',
+        'token': 'fcm-1',
       });
       expect(seen.single.headers['content-type'], contains('json'));
     });
@@ -107,7 +107,7 @@ void main() {
     test('a bad answer or an error throws', () async {
       answer = (_) => http.Response(jsonEncode({'handle': 'h_1'}), 200);
       expect(
-        relay.createHandle(server, pushId: 'a', platform: 'ios', fcmToken: 't'),
+        relay.createHandle(server, pushId: 'a', platform: 'ios', token: 't'),
         throwsA(isA<PushRelayException>()),
       );
       answer = (_) => http.Response(
@@ -117,7 +117,7 @@ void main() {
         404,
       );
       await expectLater(
-        relay.createHandle(server, pushId: 'a', platform: 'ios', fcmToken: 't'),
+        relay.createHandle(server, pushId: 'a', platform: 'ios', token: 't'),
         throwsA(
           isA<PushRelayException>().having(
             (e) => e.code,
@@ -133,13 +133,45 @@ void main() {
         server,
         'h_1/x',
         handleSecret: 'sec',
-        fcmToken: 'fcm-2',
+        token: 'fcm-2',
       );
       expect(seen.single.method, 'PUT');
       expect(seen.single.url.path, '/v1/handles/h_1%2Fx');
       expect(jsonDecode(seen.single.body), {
         'handleSecret': 'sec',
-        'fcmToken': 'fcm-2',
+        'token': 'fcm-2',
+      });
+    });
+
+    test('iOS adds its APNs environment to both calls', () async {
+      answer = (_) => http.Response(
+        jsonEncode({'handle': 'h_1', 'handleSecret': 'sec'}),
+        201,
+      );
+      await relay.createHandle(
+        server,
+        pushId: 'inst_a',
+        platform: 'ios',
+        token: 'ab01',
+        apnsEnvironment: 'sandbox',
+      );
+      await relay.updateHandle(
+        server,
+        'h_1',
+        handleSecret: 'sec',
+        token: 'ab02',
+        apnsEnvironment: 'production',
+      );
+      expect(jsonDecode(seen.first.body), {
+        'pushId': 'inst_a',
+        'platform': 'ios',
+        'token': 'ab01',
+        'apnsEnvironment': 'sandbox',
+      });
+      expect(jsonDecode(seen.last.body), {
+        'handleSecret': 'sec',
+        'token': 'ab02',
+        'apnsEnvironment': 'production',
       });
     });
 

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,6 +10,7 @@ import 'core/account.dart';
 import 'core/auth_api.dart';
 import 'core/preferences.dart';
 import 'core/push.dart';
+import 'core/push_apns.dart';
 import 'core/push_firebase.dart';
 import 'core/push_relay.dart';
 import 'core/push_store.dart';
@@ -43,7 +46,10 @@ Future<void> main() async {
       ),
       linkSource: AppLinksSource(),
       push: PushHub(
-        client: FirebasePushClient(store: pushStore),
+        // A platform constant, so release iOS builds drop the Firebase client.
+        client: Platform.isIOS
+            ? ApnsPushClient()
+            : FirebasePushClient(store: pushStore),
         store: pushStore,
         relay: PushRelay(),
       ),
