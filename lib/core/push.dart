@@ -120,6 +120,7 @@ class PushHub {
           handleSecret: e.handleSecret,
           fcmToken: token,
         );
+        await store.write(e.copyWith(token: token));
       } catch (_) {}
     }
   }
@@ -317,41 +318,22 @@ class PushRegistration extends ChangeNotifier {
     if (gone()) return;
     if (token == null || token.isEmpty) return _set(PushStatus.failed);
     final old = await hub.store.read(info.pushId);
-    final String handle, secret;
+    final PushEntry entry;
     try {
-      (handle, secret) = await hub.relay.createHandle(
-        info.server,
-        pushId: info.pushId,
-        platform: client.platform,
-        fcmToken: token,
-      );
+      entry = await _handleFor(info, token, old);
     } on Exception {
       if (!gone()) _set(PushStatus.failed);
       return;
     }
-    final entry = PushEntry(
-      pushId: info.pushId,
-      relay: info.server,
-      handle: handle,
-      handleSecret: secret,
-      key: old?.key ?? hub.newKey(),
-      url: serverUrl,
-      name: serverName(),
-    );
     // Stored before the server can seal anything for it.
     await hub.store.write(entry);
-    if (old != null && (old.handle != handle || old.relay != info.server)) {
-      try {
-        await hub.relay.deleteHandle(
-          old.relay,
-          old.handle,
-          handleSecret: old.handleSecret,
-        );
-      } catch (_) {}
-    }
     if (gone()) return;
     try {
-      await account.api.registerDevice(client.platform, handle, entry.key);
+      await account.api.registerDevice(
+        client.platform,
+        entry.handle,
+        entry.key,
+      );
     } on ApiException catch (e) {
       if (gone()) return;
       return _set(
@@ -360,6 +342,60 @@ class PushRegistration extends ChangeNotifier {
     }
     if (gone()) return;
     _set(PushStatus.registered);
+  }
+
+  /// The stored handle when it still fits, else one moved or made for [token].
+  /// Making one is rate-limited per IP at the push server, so it is the last resort.
+  Future<PushEntry> _handleFor(
+    PushServerInfo info,
+    String token,
+    PushEntry? old,
+  ) async {
+    final key = old?.key ?? hub.newKey();
+    if (old != null && old.relay == info.server) {
+      final current = old.copyWith(
+        url: serverUrl,
+        name: serverName(),
+        token: token,
+      );
+      if (old.token == token) return current;
+      try {
+        await hub.relay.updateHandle(
+          old.relay,
+          old.handle,
+          handleSecret: old.handleSecret,
+          fcmToken: token,
+        );
+        return current;
+      } on PushRelayException catch (e) {
+        if (e.status != 404) rethrow;
+      }
+    }
+    final (handle, secret) = await hub.relay.createHandle(
+      info.server,
+      pushId: info.pushId,
+      platform: client.platform,
+      fcmToken: token,
+    );
+    if (old != null && old.relay != info.server) {
+      try {
+        await hub.relay.deleteHandle(
+          old.relay,
+          old.handle,
+          handleSecret: old.handleSecret,
+        );
+      } catch (_) {}
+    }
+    return PushEntry(
+      pushId: info.pushId,
+      relay: info.server,
+      handle: handle,
+      handleSecret: secret,
+      key: key,
+      url: serverUrl,
+      name: serverName(),
+      token: token,
+    );
   }
 
   /// Removes this phone from the account and the push server. Call before the

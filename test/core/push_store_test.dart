@@ -15,6 +15,7 @@ PushEntry entry(String pushId, {String url = 'https://a.example'}) => PushEntry(
   key: base64.encode(List.filled(32, 7)),
   url: url,
   name: 'Server $pushId',
+  token: 'fcm-$pushId',
 );
 
 void main() {
@@ -30,6 +31,7 @@ void main() {
       expect(a.relay, Uri.parse('https://push.example'));
       expect(a.keyBytes, List.filled(32, 7));
       expect(a.name, 'Server inst_a');
+      expect(a.token, 'fcm-inst_a');
       expect((await store.all()).map((e) => e.pushId), {'inst_a', 'inst_b'});
       expect((await store.forUrl('https://b.example'))!.pushId, 'inst_b');
       await store.delete('inst_a');

@@ -19,6 +19,7 @@ class PushEntry {
     required this.key,
     required this.url,
     required this.name,
+    this.token = '',
   });
 
   /// The Beacon server's Push ID, which every notification carries.
@@ -34,18 +35,21 @@ class PushEntry {
   /// The saved server URL and name, to route a tap and title a notification.
   final String url, name;
 
+  /// The FCM token [handle] points at, so an unchanged one needs no call.
+  final String token;
+
   List<int> get keyBytes => base64.decode(key);
 
-  PushEntry copyWith({String? handleSecret, String? url, String? name}) =>
-      PushEntry(
-        pushId: pushId,
-        relay: relay,
-        handle: handle,
-        handleSecret: handleSecret ?? this.handleSecret,
-        key: key,
-        url: url ?? this.url,
-        name: name ?? this.name,
-      );
+  PushEntry copyWith({String? url, String? name, String? token}) => PushEntry(
+    pushId: pushId,
+    relay: relay,
+    handle: handle,
+    handleSecret: handleSecret,
+    key: key,
+    url: url ?? this.url,
+    name: name ?? this.name,
+    token: token ?? this.token,
+  );
 
   Map<String, String> toJson() => {
     'pushId': pushId,
@@ -55,6 +59,7 @@ class PushEntry {
     'key': key,
     'url': url,
     'name': name,
+    'token': token,
   };
 
   static PushEntry? fromJson(Object? json) {
@@ -79,6 +84,7 @@ class PushEntry {
       key: v['key']!,
       url: json['url'] is String ? json['url'] as String : '',
       name: json['name'] is String ? json['name'] as String : '',
+      token: json['token'] is String ? json['token'] as String : '',
     );
   }
 }

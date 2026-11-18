@@ -31,6 +31,7 @@ void main() {
   late Map<String, Object?> deviceError;
   late bool pushEnabled;
   late int relayStatus;
+  late http.Response? Function(http.Request)? relayAnswer;
   late int handles;
 
   setUp(() {
@@ -41,6 +42,7 @@ void main() {
     deviceError = {};
     pushEnabled = true;
     relayStatus = 200;
+    relayAnswer = null;
     handles = 0;
     features = ServerFeatures(
       polling: false,
@@ -87,6 +89,8 @@ void main() {
       relay: PushRelay(
         client: MockClient((r) async {
           relaySeen.add(r);
+          final answer = relayAnswer?.call(r);
+          if (answer != null) return answer;
           if (relayStatus != 200) return http.Response('', relayStatus);
           if (r.method == 'POST') {
             handles++;
@@ -231,30 +235,76 @@ void main() {
       },
     );
 
-    test('a stored key is reused and a stale handle is stopped', () async {
-      push.state = PushPermission.granted;
-      await store.write(
+    PushEntry stored({String relay = _relay, String token = 'tok-1'}) =>
         PushEntry(
           pushId: 'inst_a',
-          relay: Uri.parse(_relay),
+          relay: Uri.parse(relay),
           handle: 'h_old',
           handleSecret: 's_old',
           key: base64.encode(List.filled(32, 3)),
           url: _base,
           name: 'Old name',
-        ),
-      );
+          token: token,
+        );
+
+    test('a stored handle for the same token is reused as it is', () async {
+      push.state = PushPermission.granted;
+      await store.write(stored());
       await signIn();
+      expect(relaySeen, isEmpty);
       final entry = (await store.read('inst_a'))!;
-      expect(entry.handle, 'h_1');
-      expect(entry.keyBytes, List.filled(32, 3));
+      expect(entry.handle, 'h_old');
       expect(entry.name, 'Ottawa Mesh');
+      expect(jsonDecode(devices('POST').single.body), {
+        'platform': 'android',
+        'pushToken': 'h_old',
+        'payloadKey': base64.encode(List.filled(32, 3)),
+      });
+      expect(registration.status, PushStatus.registered);
+    });
+
+    test('a changed token moves the stored handle', () async {
+      push.state = PushPermission.granted;
+      await store.write(stored(token: 'tok-0'));
+      await signIn();
+      expect(relayCalls(), ['PUT /v1/handles/h_old']);
+      expect(jsonDecode(relaySeen.single.body), {
+        'handleSecret': 's_old',
+        'fcmToken': 'tok-1',
+      });
+      final entry = (await store.read('inst_a'))!;
+      expect((entry.handle, entry.token), ('h_old', 'tok-1'));
+    });
+
+    test(
+      'a handle the push server forgot is replaced, keeping the key',
+      () async {
+        push.state = PushPermission.granted;
+        await store.write(stored(token: 'tok-0'));
+        relayAnswer = (r) => r.method == 'PUT'
+            ? http.Response(
+                jsonEncode({
+                  'error': {'code': 'unknown_handle', 'message': 'x'},
+                }),
+                404,
+              )
+            : null;
+        await signIn();
+        expect(relayCalls(), ['PUT /v1/handles/h_old', 'POST /v1/handles']);
+        final entry = (await store.read('inst_a'))!;
+        expect(entry.handle, 'h_1');
+        expect(entry.keyBytes, List.filled(32, 3));
+        expect(jsonDecode(devices('POST').single.body)['pushToken'], 'h_1');
+      },
+    );
+
+    test('a new push server gets a new handle and the old one stops', () async {
+      push.state = PushPermission.granted;
+      await store.write(stored(relay: 'https://old-push.example'));
+      await signIn();
       expect(relayCalls(), ['POST /v1/handles', 'DELETE /v1/handles/h_old']);
-      expect(jsonDecode(relaySeen.last.body), {'handleSecret': 's_old'});
-      expect(
-        jsonDecode(devices('POST').single.body)['payloadKey'],
-        base64.encode(List.filled(32, 3)),
-      );
+      expect(relaySeen.last.url.host, 'old-push.example');
+      expect((await store.read('inst_a'))!.handle, 'h_1');
     });
 
     test('a push server error reads as failed and skips the device', () async {
@@ -345,6 +395,7 @@ void main() {
       key: base64.encode(List.filled(32, k)),
       url: url,
       name: 'Server $pushId',
+      token: 'tok-1',
     );
 
     test('a token refresh moves every stored handle', () async {
@@ -358,6 +409,7 @@ void main() {
         'PUT /v1/handles/h_inst_b',
       });
       expect(jsonDecode(relaySeen.first.body)['fcmToken'], 'tok-2');
+      expect((await store.read('inst_b'))!.token, 'tok-2');
       expect(seen, isEmpty);
     });
 
