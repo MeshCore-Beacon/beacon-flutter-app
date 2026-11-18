@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:beacon/core/api.dart';
 import 'package:beacon/core/auth_api.dart';
+import 'package:beacon/core/json.dart';
 import 'package:beacon/core/token_store.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -500,9 +501,9 @@ void main() {
 
     test('alerts() reads with the Bearer token', () async {
       final api = await signedIn(
-        (_) => _json(200, {'delivery': 'push', 'targets': []}),
+        (_) => _json(200, {'channels': {}, 'targets': []}),
       );
-      expect((await api.alerts())['delivery'], 'push');
+      expect((await api.alerts())['targets'], isEmpty);
       expect(seen.single.method, 'GET');
       expect(seen.single.url.path, '/api/v1/me/alerts');
       expect(seen.single.headers['authorization'], 'Bearer abc');
@@ -540,22 +541,39 @@ void main() {
     });
 
     test(
-      'registerDevice posts the platform and token, removeDevice deletes',
+      'registerDevice posts the handle and payload key, removeDevice deletes',
       () async {
         final api = await signedIn((_) => http.Response('', 204));
-        await api.registerDevice('android', 'tok-1');
+        await api.registerDevice('android', 'h_1', 'a2V5');
         await api.removeDevice();
         expect(seen[0].method, 'POST');
         expect(seen[0].url.path, '/api/v1/me/devices');
         expect(jsonDecode(seen[0].body), {
           'platform': 'android',
-          'pushToken': 'tok-1',
+          'pushToken': 'h_1',
+          'payloadKey': 'a2V5',
         });
         expect(seen[1].method, 'DELETE');
         expect(seen[1].url.path, '/api/v1/me/devices');
         expect(seen[1].body, isEmpty);
       },
     );
+
+    test('putAlertChannels sends only the switches given', () async {
+      final api = await signedIn(
+        (_) => _json(200, {
+          'email': {'available': true, 'enabled': false, 'reason': ''},
+          'push': {'available': true, 'enabled': true, 'hasDevice': false},
+        }),
+      );
+      final channels = await api.putAlertChannels(email: false);
+      expect(seen.single.method, 'PUT');
+      expect(seen.single.url.path, '/api/v1/me/alerts/channels');
+      expect(jsonDecode(seen.single.body), {'email': false});
+      expect(object(channels['email'])['enabled'], false);
+      await api.putAlertChannels(push: true);
+      expect(jsonDecode(seen.last.body), {'push': true});
+    });
 
     test('a not_on_atlas answer keeps its code', () async {
       final api = await signedIn((_) => _error(409, 'not_on_atlas'));

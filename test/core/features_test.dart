@@ -65,22 +65,61 @@ void main() {
       expect(f.alerts, true);
     });
 
-    test('alertDelivery and portalUrl are read, bad values are dropped', () {
+    test('portalUrl is read, a bad one is dropped', () {
       final f = ServerFeatures.fromInfo({
         'features': {
           'accounts': 'portal',
-          'alertDelivery': 'push',
           'portalUrl': 'https://portal.example',
         },
       });
-      expect(f.alertDelivery, 'push');
       expect(f.portalUrl, 'https://portal.example');
       final bad = ServerFeatures.fromInfo({
-        'features': {'alertDelivery': 'sms', 'portalUrl': 4},
+        'features': {'portalUrl': 4},
       });
-      expect(bad.alertDelivery, isNull);
       expect(bad.portalUrl, isNull);
-      expect(ServerFeatures.fromInfo(null).alertDelivery, isNull);
+    });
+
+    test('alert channels and the push server are read', () {
+      final f = ServerFeatures.fromInfo({
+        'features': {
+          'alerts': true,
+          'alertChannels': {'email': false, 'push': true},
+          'push': {
+            'server': 'https://push.meshcorebeacon.ca',
+            'pushId': 'inst_7f3k2m9qxa',
+          },
+        },
+      });
+      expect(f.alertEmail, false);
+      expect(f.alertPush, true);
+      expect(f.push!.server, Uri.parse('https://push.meshcorebeacon.ca'));
+      expect(f.push!.pushId, 'inst_7f3k2m9qxa');
+    });
+
+    test('missing channels read as off and no push server', () {
+      final f = ServerFeatures.fromInfo({'features': {}});
+      expect(f.alertEmail, false);
+      expect(f.alertPush, false);
+      expect(f.push, isNull);
+      expect(ServerFeatures.fromInfo(null).push, isNull);
+    });
+
+    test('a push server that is not https, or has no id, is ignored', () {
+      for (final push in [
+        {'server': 'http://push.example', 'pushId': 'inst_a'},
+        {'server': 'https://push.example', 'pushId': ''},
+        {'server': 'https://push.example'},
+        {'server': 4, 'pushId': 'inst_a'},
+        'https://push.example',
+      ]) {
+        final f = ServerFeatures.fromInfo({
+          'features': {
+            'alertChannels': {'push': true},
+            'push': push,
+          },
+        });
+        expect(f.push, isNull, reason: '$push');
+      }
     });
 
     test('display units and mapTelemetry default and parse', () {

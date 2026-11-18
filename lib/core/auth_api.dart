@@ -324,16 +324,32 @@ class AuthApi {
     await send('DELETE', '/me/alerts/rules/${Uri.encodeComponent(id)}');
   }
 
-  /// Registers this session's push token; [platform] is ios or android.
-  Future<void> registerDevice(String platform, String pushToken) async {
+  /// Registers this session's push device: [handle] from the push server and
+  /// [payloadKey], base64 of the 32-byte key notices are sealed with.
+  Future<void> registerDevice(
+    String platform,
+    String handle,
+    String payloadKey,
+  ) async {
     await send(
       'POST',
       '/me/devices',
-      body: {'platform': platform, 'pushToken': pushToken},
+      body: {
+        'platform': platform,
+        'pushToken': handle,
+        'payloadKey': payloadKey,
+      },
     );
   }
 
-  /// Removes the push token of this session.
+  /// Turns the user's email and push switches on or off; null leaves one as it is.
+  Future<Json> putAlertChannels({bool? email, bool? push}) => send(
+    'PUT',
+    '/me/alerts/channels',
+    body: {'email': ?email, 'push': ?push},
+  );
+
+  /// Removes the push device of this session.
   Future<void> removeDevice() async {
     await send('DELETE', '/me/devices');
   }

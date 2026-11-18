@@ -70,11 +70,34 @@ void main() {
   late Map<String, dynamic> data;
   late List<http.Request> puts;
   late http.Response Function(http.Request)? putAnswer;
+  late List<Map<String, dynamic>> channelPuts;
+  late http.Response? Function(http.Request)? channelAnswer;
+
+  Map<String, dynamic> channels({
+    bool emailAvailable = true,
+    bool emailOn = true,
+    String reason = '',
+    bool pushAvailable = false,
+    bool pushOn = true,
+    bool hasDevice = false,
+  }) => {
+    'email': {
+      'available': emailAvailable,
+      'enabled': emailOn,
+      'reason': reason,
+    },
+    'push': {
+      'available': pushAvailable,
+      'enabled': pushOn,
+      'hasDevice': hasDevice,
+    },
+  };
 
   Future<Harness> open(
     WidgetTester tester, {
     bool alerts = true,
-    String mode = 'email',
+    bool email = true,
+    bool pushChannel = false,
     FakePush? push,
     bool collapsed = false,
     String unit = 'c',
@@ -87,6 +110,21 @@ void main() {
       final key = '${r.method} ${r.url.path.replaceFirst('/api/v1', '')}';
       if (key == 'GET /me/sessions') return json(200, {'sessions': []});
       if (key == 'GET /me/alerts') return json(200, data);
+      if (key == 'PUT /me/alerts/channels') {
+        channelPuts.add(jsonDecode(r.body) as Map<String, dynamic>);
+        final answer = channelAnswer?.call(r);
+        if (answer != null) return answer;
+        final next = {
+          for (final MapEntry(:key, :value)
+              in (data['channels'] as Map).entries)
+            key as String: {...value as Map},
+        };
+        for (final MapEntry(:key, :value) in channelPuts.last.entries) {
+          next[key]!['enabled'] = value;
+        }
+        data['channels'] = next;
+        return json(200, next);
+      }
       if (key == 'PUT /me/alerts/rules') {
         puts.add(r);
         return putAnswer?.call(r) ?? json(200, rule('x'));
@@ -101,7 +139,9 @@ void main() {
           'features': {
             'accounts': 'local',
             'alerts': alerts,
-            'alertDelivery': ?(alerts ? mode : null),
+            'alertChannels': {'email': email, 'push': pushChannel},
+            if (pushChannel)
+              'push': {'server': 'https://push.example', 'pushId': 'inst_a'},
           },
           'display': {'temperatureUnit': unit},
         }),
@@ -109,9 +149,11 @@ void main() {
     );
     if (push != null) {
       h.account.push = PushRegistration(
-        client: push,
+        hub: fakeHub(push),
         account: h.account,
         features: api.features,
+        serverUrl: server,
+        serverName: () => 'Ottawa Mesh',
       );
       addTearDown(h.account.push!.dispose);
       await h.account.push!.refresh();
@@ -119,7 +161,11 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         theme: BeaconTheme.all.first.data,
-        home: ProfileScreen(account: h.account, api: api),
+        home: ProfileScreen(
+          account: h.account,
+          api: api,
+          serverName: 'Ottawa Mesh',
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -140,9 +186,10 @@ void main() {
   setUp(() {
     puts = [];
     putAnswer = null;
+    channelPuts = [];
+    channelAnswer = null;
     data = {
-      'delivery': 'email',
-      'hasDevice': true,
+      'channels': channels(),
       'targets': [
         target(),
         target(
@@ -203,7 +250,13 @@ void main() {
     ) async {
       data['targets'] = [target()];
       await open(tester, collapsed: true);
-      expect(find.byType(Switch), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byType(ExpansionTile),
+          matching: find.byType(Switch),
+        ),
+        findsNothing,
+      );
       expect(find.text('Hilltop'), findsOneWidget);
       expect(find.textContaining('always told'), findsOneWidget);
       expect(find.text('Alerts are sent to a@example.org'), findsOneWidget);
@@ -255,7 +308,13 @@ void main() {
         find.textContaining('Alerting: 2 alerts · 2 alerts on'),
         findsOneWidget,
       );
-      expect(find.byType(Switch), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byType(ExpansionTile),
+          matching: find.byType(Switch),
+        ),
+        findsNothing,
+      );
     });
 
     testWidgets(
@@ -320,44 +379,124 @@ void main() {
     expect(h.calls('GET', '/me/alerts'), isEmpty);
   });
 
-  testWidgets('email delivery names the address', (tester) async {
-    await open(tester);
-    expect(find.text('Alerts are sent to a@example.org'), findsOneWidget);
-  });
+  Finder switchOf(String id) =>
+      find.descendant(of: k(id), matching: find.byType(Switch));
+  bool on(WidgetTester tester, String id) =>
+      tester.widget<Switch>(switchOf(id)).value;
+  bool live(WidgetTester tester, String id) =>
+      tester.widget<Switch>(switchOf(id)).onChanged != null;
 
-  testWidgets('push delivery says the phone, and the empty Atlas line', (
+  testWidgets('email on names the address; push off without a push server', (
     tester,
   ) async {
-    data = {'delivery': 'push', 'hasDevice': true, 'targets': []};
-    await open(tester, mode: 'push', push: FakePush(isAvailable: false));
+    await open(tester);
+    expect(find.text('HOW ALERTS REACH YOU'), findsOneWidget);
+    expect(on(tester, 'channel-email'), isTrue);
+    expect(live(tester, 'channel-email'), isTrue);
+    expect(find.text('Alerts are sent to a@example.org'), findsOneWidget);
+    expect(live(tester, 'channel-push'), isFalse);
     expect(
-      find.text('Alerts are sent to the Beacon app on your phone'),
+      find.text("This server doesn't send push notifications."),
       findsOneWidget,
     );
-    expect(find.textContaining('set on radios in your Atlas'), findsOneWidget);
+  });
+
+  for (final (reason, text) in [
+    ('server_off', "This server doesn't send alert emails."),
+    (
+      'portal_account',
+      'Accounts that sign in through the portal have no email address here.',
+    ),
+    ('unverified_email', 'Confirm your email address to get alert emails.'),
+  ]) {
+    testWidgets('email unavailable for $reason says why', (tester) async {
+      data['channels'] = channels(emailAvailable: false, reason: reason);
+      await open(tester);
+      expect(live(tester, 'channel-email'), isFalse);
+      expect(find.text(text), findsOneWidget);
+      expect(find.text('Alerts are sent to a@example.org'), findsNothing);
+    });
+  }
+
+  testWidgets('turning email off is sent at once and kept', (tester) async {
+    data['channels'] = channels(pushAvailable: true);
+    await open(tester, pushChannel: true);
+    await tester.tap(switchOf('channel-email'));
+    await tester.pump();
+    expect(on(tester, 'channel-email'), isFalse);
+    await tester.pumpAndSettle();
+    expect(channelPuts, [
+      {'email': false},
+    ]);
+    expect(on(tester, 'channel-email'), isFalse);
+  });
+
+  testWidgets('a failed change rolls the switch back and says so', (
+    tester,
+  ) async {
+    channelAnswer = (_) => json(500, {
+      'error': {'code': 'internal', 'message': 'x'},
+    });
+    await open(tester);
+    await tester.tap(switchOf('channel-email'));
+    await tester.pumpAndSettle();
+    expect(on(tester, 'channel-email'), isTrue);
+    expect(find.text('Could not change this. Try again.'), findsOneWidget);
+  });
+
+  testWidgets('push names the push server and what it sees', (tester) async {
+    data['channels'] = channels(pushAvailable: true);
+    await open(
+      tester,
+      pushChannel: true,
+      push: FakePush(state: PushPermission.granted),
+    );
+    expect(on(tester, 'channel-push'), isTrue);
+    expect(
+      find.text(
+        'Alerts from Ottawa Mesh are delivered via the MeshCore Beacon push '
+        'server. It sees which server sent them, not what they say.',
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('push without Firebase configuration says it is not set up', (
     tester,
   ) async {
-    data['delivery'] = 'push';
+    data['channels'] = channels(pushAvailable: true);
     final push = FakePush(isAvailable: false);
-    await open(tester, mode: 'push', push: push);
+    await open(tester, pushChannel: true, push: push);
     expect(
       find.text('Push notifications are not set up in this build.'),
       findsOneWidget,
     );
     expect(k('alerts-enable-push'), findsNothing);
-    expect(push.calls, ['available']);
   });
 
-  testWidgets('push offers a button that asks for permission and registers', (
+  testWidgets('turning push on asks for permission, then registers', (
     tester,
   ) async {
-    data['delivery'] = 'push';
+    data['channels'] = channels(pushAvailable: true, pushOn: false);
     final push = FakePush();
-    final h = await open(tester, mode: 'push', push: push);
+    final h = await open(tester, pushChannel: true, push: push);
     expect(push.calls, isNot(contains('request')));
+    expect(on(tester, 'channel-push'), isFalse);
+    await tester.tap(switchOf('channel-push'));
+    await tester.pumpAndSettle();
+    expect(channelPuts, [
+      {'push': true},
+    ]);
+    expect(push.calls, contains('request'));
+    expect(h.calls('POST', '/me/devices'), hasLength(1));
+    expect(on(tester, 'channel-push'), isTrue);
+    expect(k('alerts-enable-push'), findsNothing);
+  });
+
+  testWidgets('push on without permission offers the button', (tester) async {
+    data['channels'] = channels(pushAvailable: true);
+    final push = FakePush();
+    final h = await open(tester, pushChannel: true, push: push);
     expect(k('alerts-enable-push'), findsOneWidget);
     await tap(tester, 'alerts-enable-push');
     expect(push.calls, contains('request'));
@@ -368,11 +507,55 @@ void main() {
   testWidgets('refused permission points to the phone settings', (
     tester,
   ) async {
-    data['delivery'] = 'push';
+    data['channels'] = channels(pushAvailable: true, pushOn: false);
     final push = FakePush()..afterRequest = PushPermission.denied;
-    await open(tester, mode: 'push', push: push);
-    await tap(tester, 'alerts-enable-push');
+    await open(tester, pushChannel: true, push: push);
+    await tester.tap(switchOf('channel-push'));
+    await tester.pumpAndSettle();
     expect(find.textContaining('turned off for Beacon'), findsOneWidget);
+  });
+
+  testWidgets('turning push off is sent and registers nothing', (tester) async {
+    data['channels'] = channels(pushAvailable: true);
+    final push = FakePush(state: PushPermission.granted);
+    final h = await open(tester, pushChannel: true, push: push);
+    final before = h.calls('POST', '/me/devices').length;
+    await tester.tap(switchOf('channel-push'));
+    await tester.pumpAndSettle();
+    expect(channelPuts, [
+      {'push': false},
+    ]);
+    expect(h.calls('POST', '/me/devices'), hasLength(before));
+    expect(
+      find.textContaining('delivered via the MeshCore Beacon push server'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('both off with rules on warns that nothing arrives', (
+    tester,
+  ) async {
+    const warning =
+        "Email and push are both off, so your alerts won't reach you.";
+    data['channels'] = channels(emailOn: false);
+    (data['targets'] as List)[0] = target(rules: [rule('battery_low')]);
+    await open(tester);
+    expect(find.text(warning), findsOneWidget);
+    await tester.tap(switchOf('channel-email'));
+    await tester.pumpAndSettle();
+    expect(find.text(warning), findsNothing);
+  });
+
+  testWidgets('both off without rules does not warn', (tester) async {
+    data['channels'] = channels(emailOn: false);
+    await open(tester);
+    expect(find.textContaining('both off'), findsNothing);
+  });
+
+  testWidgets('the empty Atlas line', (tester) async {
+    data = {'channels': channels(), 'targets': []};
+    await open(tester);
+    expect(find.textContaining('set on radios in your Atlas'), findsOneWidget);
   });
 
   testWidgets('one block per target, rows in table order, closing sentence', (

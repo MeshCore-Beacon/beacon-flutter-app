@@ -48,8 +48,8 @@ class BeaconApp extends StatefulWidget {
   final bool connectLive;
   final ApiClient Function(Uri)? apiFactory;
 
-  /// The push plugin behind its interface; null leaves push off, as in tests.
-  final PushClient? push;
+  /// App-wide push state; null leaves push off, as in tests.
+  final PushHub? push;
 
   /// Minimum-app-version checks. Defaults to one that reads `/api/v1/info`
   /// through [apiFactory].
@@ -95,6 +95,16 @@ class _BeaconAppState extends State<BeaconApp> with WidgetsBindingObserver {
     }
     active = widget.preferences.active?.url;
     widget.preferences.addListener(changed);
+    if (widget.push case final hub?) {
+      hub.activeUrl = () => widget.preferences.active?.url;
+      hub.selectServer = widget.preferences.selectServer;
+      // Before the token goes, while it still authorizes the device removal.
+      widget.preferences.beforeRemove = (url) => hub.forget(
+        url,
+        widget.authFactory?.call(url, tokens) ?? AuthApi(url, tokens),
+      );
+      unawaited(hub.start());
+    }
     final server = widget.preferences.active;
     if (server != null) gate.check(server);
     gate.addListener(gateChanged);
@@ -482,7 +492,7 @@ class BeaconHome extends StatefulWidget {
     this.authFactory,
     this.push,
   });
-  final PushClient? push;
+  final PushHub? push;
   final Preferences preferences;
   final bool connectLive;
   final ApiClient Function(Uri)? apiFactory;
@@ -517,13 +527,21 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
           AuthApi(instance.url, widget.tokens),
     );
     widget.accounts.register(instance.url, account);
-    if (widget.push case final client?) {
+    if (widget.push case final hub?) {
       pushRegistration = PushRegistration(
-        client: client,
+        hub: hub,
         account: account,
         features: api.features,
-      )..onOpened = openAlertTarget;
+        serverUrl: instance.url,
+        serverName: () =>
+            widget.preferences.servers
+                .where((s) => s.url == instance.url)
+                .firstOrNull
+                ?.name ??
+            instance.name,
+      );
       account.push = pushRegistration;
+      hub.attach(instance.url, _pushTapped);
     }
     atlas = AtlasStore(widget.preferences, instance.url, account: account);
     unawaited(account.refresh());
@@ -557,6 +575,7 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
     api.close();
     widget.accounts.unregister(account.api.base, account);
     atlas.dispose();
+    widget.push?.detach(account.api.base, _pushTapped);
     pushRegistration?.dispose();
     account.dispose();
     super.dispose();
@@ -588,7 +607,9 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
     if (widget.connectLive) live.start();
   }
 
-  /// A tapped alert names a radio by public key; a pinned node opens by its id.
+  void _pushTapped(PushTarget t) =>
+      unawaited(openAlertTarget(t.kind, t.publicKey, t.id));
+
   /// A tapped alert carries the radio's id; without one it names the radio by
   /// public key, and the detail routes take ids, which the Atlas holds. A cold
   /// start waits for the Atlas to load first.

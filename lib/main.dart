@@ -7,7 +7,10 @@ import 'app.dart';
 import 'core/account.dart';
 import 'core/auth_api.dart';
 import 'core/preferences.dart';
+import 'core/push.dart';
 import 'core/push_firebase.dart';
+import 'core/push_relay.dart';
+import 'core/push_store.dart';
 import 'core/strings.dart';
 import 'core/theme.dart';
 import 'core/token_store.dart';
@@ -26,6 +29,7 @@ Future<void> main() async {
   final tokens = SecureTokenStore();
   final preferences = await Preferences.load(tokens: tokens);
   final accounts = AccountRegistry();
+  final pushStore = SecurePushStore();
   runApp(
     BeaconApp(
       preferences: preferences,
@@ -38,7 +42,11 @@ Future<void> main() async {
         accountFor: (url) => accounts[url],
       ),
       linkSource: AppLinksSource(),
-      push: FirebasePushClient(),
+      push: PushHub(
+        client: FirebasePushClient(store: pushStore),
+        store: pushStore,
+        relay: PushRelay(),
+      ),
     ),
   );
 }

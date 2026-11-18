@@ -1406,8 +1406,6 @@
       "title": "Aviseringar",
       "retry": "Försök igen",
       "toEmail": "Aviseringar skickas till {{email}}",
-      "byEmail": "Aviseringar skickas till din e-postadress.",
-      "toPhone": "Aviseringar skickas till Beacon-appen på din telefon",
       "empty": "Aviseringar ställs in på radioapparater i din Atlas. Lägg först till en radio.",
       "requestAttention": "Du får alltid besked när en av dina telemetribegäranden behöver uppmärksamhet.",
       "needsGoneQuiet": "Slå först på {{name}}.",
@@ -1599,6 +1597,22 @@
     "atlasLimits": {
       "overLimit_one": "Den här servern tillåter {{count}} kort. Ta bort {{remove}} till för att spara din Atlas i ditt konto.",
       "overLimit_other": "Den här servern tillåter {{count}} kort. Ta bort {{remove}} till för att spara din Atlas i ditt konto."
+    },
+    "alertChannels": {
+      "title": "Hur larm når dig",
+      "email": "E-post",
+      "push": "Push",
+      "thisServer": "den här servern",
+      "reason": {
+        "server_off": "Den här servern skickar inte larm via e-post.",
+        "portal_account": "Konton som loggar in via portalen har ingen e-postadress här.",
+        "unverified_email": "Bekräfta din e-postadress för att få larm via e-post.",
+        "other": "Larm via e-post är inte tillgängliga för det här kontot."
+      },
+      "pushOff": "Den här servern skickar inte pushnotiser.",
+      "pushVia": "Larm från {{server}} levereras via MeshCore Beacons pushserver. Den ser vilken server som skickade dem, men inte vad de säger.",
+      "noChannel": "Både e-post och push är avstängda, så dina larm når dig inte.",
+      "failed": "Det gick inte att ändra. Försök igen."
     }
   }
 }

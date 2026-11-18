@@ -1,7 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:beacon/core/json.dart';
 import 'package:beacon/core/push.dart';
+import 'package:beacon/core/push_relay.dart';
+import 'package:beacon/core/push_store.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 class FakePush implements PushClient {
   FakePush({
@@ -51,9 +56,31 @@ class FakePush implements PushClient {
   @override
   Stream<String> get tokenRefreshes => refresh.stream;
   @override
-  Future<void> deleteToken() async => calls.add('deleteToken');
-  @override
   Stream<Json> get opened => taps.stream;
   @override
   Future<Json?> initialMessage() async => initial;
+}
+
+/// A hub on [push] whose push server answers every call and records it.
+PushHub fakeHub(
+  FakePush push, {
+  PushStore? store,
+  List<http.Request>? relaySeen,
+}) {
+  var handles = 0;
+  return PushHub(
+    client: push,
+    store: store ?? MemoryPushStore(),
+    relay: PushRelay(
+      client: MockClient((r) async {
+        relaySeen?.add(r);
+        if (r.method != 'POST') return http.Response('', 204);
+        handles++;
+        return http.Response(
+          jsonEncode({'handle': 'h_$handles', 'handleSecret': 's_$handles'}),
+          201,
+        );
+      }),
+    ),
+  );
 }

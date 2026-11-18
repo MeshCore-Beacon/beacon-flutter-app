@@ -141,7 +141,13 @@ class Preferences extends ChangeNotifier {
     await _persist();
   }
 
+  /// Runs before a server's data and token go; a failure never blocks removal.
+  Future<void> Function(String url)? beforeRemove;
+
   Future<void> removeServer(String url) async {
+    try {
+      await beforeRemove?.call(url);
+    } catch (_) {}
     servers.removeWhere((e) => e.url == url);
     if (_activeUrl == url) {
       _activeUrl = servers.isEmpty ? null : servers.first.url;

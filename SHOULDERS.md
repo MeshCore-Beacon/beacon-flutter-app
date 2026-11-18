@@ -15,6 +15,13 @@ projects that make this possible. Add new dependencies here in the PR that intro
 - [package_info_plus](https://pub.dev/packages/package_info_plus): app version for the
   server compatibility check
 
+## Alerts
+
+- [cryptography](https://pub.dev/packages/cryptography): AES-256-GCM to open end-to-end
+  encrypted alert notifications
+- [flutter_local_notifications](https://pub.dev/packages/flutter_local_notifications):
+  showing decrypted alerts on Android
+
 ## Map and charts
 
 - [MapLibre Native](https://maplibre.org) via

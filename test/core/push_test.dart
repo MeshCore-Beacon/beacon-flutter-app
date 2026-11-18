@@ -4,6 +4,9 @@ import 'package:beacon/core/account.dart';
 import 'package:beacon/core/auth_api.dart';
 import 'package:beacon/core/features.dart';
 import 'package:beacon/core/push.dart';
+import 'package:beacon/core/push_notice.dart';
+import 'package:beacon/core/push_relay.dart';
+import 'package:beacon/core/push_store.dart';
 import 'package:beacon/core/token_store.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -12,28 +15,43 @@ import 'package:http/testing.dart';
 import '../fake_push.dart';
 
 const _base = 'https://beacon.example.com';
+const _relay = 'https://push.example';
 
 void main() {
   late MemoryTokenStore tokens;
   late List<http.Request> seen;
+  late List<http.Request> relaySeen;
   late AccountState account;
   late FakePush push;
   late ServerFeatures features;
+  late MemoryPushStore store;
+  late PushHub hub;
   late PushRegistration registration;
-  var deviceStatus = 204;
+  late int deviceStatus;
+  late Map<String, Object?> deviceError;
+  late bool pushEnabled;
+  late int relayStatus;
+  late int handles;
 
   setUp(() {
     tokens = MemoryTokenStore();
     seen = [];
+    relaySeen = [];
     deviceStatus = 204;
-    features = const ServerFeatures(
+    deviceError = {};
+    pushEnabled = true;
+    relayStatus = 200;
+    handles = 0;
+    features = ServerFeatures(
       polling: false,
       accounts: 'local',
       telemetryRequests: false,
       alerts: true,
-      alertDelivery: 'push',
+      alertPush: true,
+      push: PushServerInfo(Uri.parse(_relay), 'inst_a'),
     );
     push = FakePush();
+    store = MemoryPushStore();
     account = AccountState(
       AuthApi(
         _base,
@@ -41,22 +59,63 @@ void main() {
         client: MockClient((r) async {
           seen.add(r);
           if (r.url.path.endsWith('/me/devices')) {
-            return http.Response('', deviceStatus);
+            return http.Response(jsonEncode(deviceError), deviceStatus);
+          }
+          if (r.url.path.endsWith('/me/alerts')) {
+            return http.Response(
+              jsonEncode({
+                'channels': {
+                  'email': {'available': true, 'enabled': true, 'reason': ''},
+                  'push': {
+                    'available': true,
+                    'enabled': pushEnabled,
+                    'hasDevice': false,
+                  },
+                },
+                'targets': [],
+              }),
+              200,
+            );
           }
           return http.Response(jsonEncode({}), 200);
         }),
       ),
     );
-    registration = PushRegistration(
+    hub = PushHub(
       client: push,
+      store: store,
+      relay: PushRelay(
+        client: MockClient((r) async {
+          relaySeen.add(r);
+          if (relayStatus != 200) return http.Response('', relayStatus);
+          if (r.method == 'POST') {
+            handles++;
+            return http.Response(
+              jsonEncode({
+                'handle': 'h_$handles',
+                'handleSecret': 's_$handles',
+              }),
+              201,
+            );
+          }
+          return http.Response('', 204);
+        }),
+      ),
+      random: () => 9,
+    );
+    registration = PushRegistration(
+      hub: hub,
       account: account,
       features: () async => features,
+      serverUrl: _base,
+      serverName: () => 'Ottawa Mesh',
     );
     account.push = registration;
   });
 
   tearDown(() async {
     registration.dispose();
+    hub.dispose();
     await push.close();
   });
 
@@ -68,164 +127,368 @@ void main() {
 
   Iterable<http.Request> devices(String method) =>
       seen.where((r) => r.method == method && r.url.path.endsWith('/devices'));
+  List<String> relayCalls() => [
+    for (final r in relaySeen) '${r.method} ${r.url.path}',
+  ];
 
-  test('signed out does nothing at all', () async {
-    await registration.refresh();
-    expect(registration.status, PushStatus.off);
-    expect(push.calls, isEmpty);
-  });
-
-  test('a build without configuration never asks or registers', () async {
-    push.isAvailable = false;
-    await signIn();
-    expect(registration.status, PushStatus.notSetUp);
-    expect(push.calls, ['available']);
-    expect(seen, isEmpty);
-    await registration.enable();
-    expect(push.calls, ['available', 'available']);
-    expect(seen, isEmpty);
-  });
-
-  test('email delivery or alerts off leaves push alone', () async {
-    features = const ServerFeatures(
-      polling: false,
-      accounts: 'local',
-      telemetryRequests: false,
-      alerts: true,
-      alertDelivery: 'email',
-    );
-    await signIn();
-    expect(registration.status, PushStatus.off);
-    expect(push.calls, isEmpty);
-  });
-
-  test('never asks for permission on its own', () async {
-    await signIn();
-    expect(registration.status, PushStatus.needsPermission);
-    expect(push.calls, ['available', 'permission']);
-    expect(seen, isEmpty);
-  });
-
-  test('enable asks, then registers the token with the platform', () async {
-    await signIn();
-    await registration.enable();
-    expect(push.calls, contains('request'));
-    expect(registration.status, PushStatus.registered);
-    final post = devices('POST').single;
-    expect(jsonDecode(post.body), {
-      'platform': 'android',
-      'pushToken': 'tok-1',
+  group('PushRegistration', () {
+    test('signed out does nothing at all', () async {
+      await registration.refresh();
+      expect(registration.status, PushStatus.off);
+      expect(push.calls, isEmpty);
     });
-    expect(post.headers['authorization'], 'Bearer abc');
-  });
 
-  test('a refusal is remembered and nothing is sent', () async {
-    await signIn();
-    push.afterRequest = PushPermission.denied;
-    await registration.enable();
-    expect(registration.status, PushStatus.denied);
-    expect(seen, isEmpty);
-  });
+    test('a build without configuration never asks or registers', () async {
+      push.isAvailable = false;
+      await signIn();
+      expect(registration.status, PushStatus.notSetUp);
+      expect(push.calls, ['available']);
+      expect(seen, isEmpty);
+      await registration.enable();
+      expect(seen, isEmpty);
+      expect(relaySeen, isEmpty);
+    });
 
-  test('already granted registers after sign-in without asking', () async {
-    push.state = PushPermission.granted;
-    await signIn();
-    expect(registration.status, PushStatus.registered);
-    expect(push.calls, isNot(contains('request')));
-    expect(devices('POST'), hasLength(1));
-  });
+    test(
+      'a server without features.push, or alerts off, is left alone',
+      () async {
+        features = const ServerFeatures(
+          polling: false,
+          accounts: 'local',
+          telemetryRequests: false,
+          alerts: true,
+          alertEmail: true,
+        );
+        await signIn();
+        expect(registration.status, PushStatus.off);
+        await registration.enable();
+        expect(registration.status, PushStatus.off);
+        expect(push.calls, isEmpty);
+        expect(relaySeen, isEmpty);
+      },
+    );
 
-  test('a token refresh registers the new token', () async {
-    push.state = PushPermission.granted;
-    await signIn();
-    push.refresh.add('tok-2');
-    await pump();
-    final bodies = devices('POST').map((r) => jsonDecode(r.body)['pushToken']);
-    expect(bodies, ['tok-1', 'tok-2']);
-  });
+    test('never asks for permission on its own', () async {
+      await signIn();
+      expect(registration.status, PushStatus.needsPermission);
+      expect(push.calls, ['available', 'permission']);
+      expect(seen, isEmpty);
+    });
 
-  test('a server error while registering reads as failed', () async {
-    push.state = PushPermission.granted;
-    deviceStatus = 500;
-    await signIn();
-    expect(registration.status, PushStatus.failed);
-  });
+    test('enable asks, gets a handle, keeps a new key and registers', () async {
+      await signIn();
+      await registration.enable();
+      expect(push.calls, contains('request'));
+      expect(registration.status, PushStatus.registered);
+      expect(relayCalls(), ['POST /v1/handles']);
+      expect(jsonDecode(relaySeen.single.body), {
+        'pushId': 'inst_a',
+        'platform': 'android',
+        'fcmToken': 'tok-1',
+      });
+      final entry = (await store.read('inst_a'))!;
+      expect(entry.handle, 'h_1');
+      expect(entry.handleSecret, 's_1');
+      expect(entry.keyBytes, List.filled(32, 9));
+      expect(entry.relay, Uri.parse(_relay));
+      expect(entry.url, _base);
+      expect(entry.name, 'Ottawa Mesh');
+      final post = devices('POST').single;
+      expect(jsonDecode(post.body), {
+        'platform': 'android',
+        'pushToken': 'h_1',
+        'payloadKey': base64.encode(List.filled(32, 9)),
+      });
+      expect(post.headers['authorization'], 'Bearer abc');
+    });
 
-  test('no token from the plugin reads as failed and sends nothing', () async {
-    push.state = PushPermission.granted;
-    push.deviceToken = null;
-    await signIn();
-    expect(registration.status, PushStatus.failed);
-    expect(seen, isEmpty);
-  });
+    test('a refusal is remembered and nothing is sent', () async {
+      await signIn();
+      push.afterRequest = PushPermission.denied;
+      await registration.enable();
+      expect(registration.status, PushStatus.denied);
+      expect(seen, isEmpty);
+      expect(relaySeen, isEmpty);
+    });
 
-  test(
-    'sign out removes the device and the token before the session',
-    () async {
+    test('already granted registers after sign-in without asking', () async {
       push.state = PushPermission.granted;
       await signIn();
-      await account.signOut();
-      expect(devices('DELETE'), hasLength(1));
-      expect(push.calls.last, 'deleteToken');
-      final order = seen.map((r) => '${r.method} ${r.url.path}').toList();
-      expect(
-        order.indexOf('DELETE /api/v1/me/devices'),
-        lessThan(order.indexOf('POST /api/v1/auth/logout')),
-      );
-      expect(registration.status, PushStatus.off);
-      push.refresh.add('tok-3');
-      await pump();
+      expect(registration.status, PushStatus.registered);
+      expect(push.calls, isNot(contains('request')));
       expect(devices('POST'), hasLength(1));
-    },
-  );
-
-  test('sign out still completes when removing the device fails', () async {
-    push.state = PushPermission.granted;
-    await signIn();
-    deviceStatus = 500;
-    await account.signOut();
-    expect(await tokens.read(_base), isNull);
-  });
-
-  test('sign out with push never set up sends no device call', () async {
-    push.isAvailable = false;
-    await signIn();
-    await account.signOut();
-    expect(devices('DELETE'), isEmpty);
-    expect(push.calls, isNot(contains('deleteToken')));
-  });
-
-  test('a tapped notification reports the target it names', () async {
-    push.state = PushPermission.granted;
-    final tapped = <String>[];
-    registration.onOpened = (kind, key, id) =>
-        tapped.add('$kind:$key:${id ?? '-'}');
-    await signIn();
-    push.taps.add({'targetKind': 'node', 'publicKey': 'aabb'});
-    push.taps.add({
-      'targetKind': 'node',
-      'publicKey': 'aabb',
-      'id': '11111111-1111-1111-1111-111111111111',
     });
-    push.taps.add({'targetKind': 'node', 'publicKey': 'aabb', 'id': ''});
-    push.taps.add({'other': 'x'});
-    await pump();
-    expect(tapped, [
-      'node:aabb:-',
-      'node:aabb:11111111-1111-1111-1111-111111111111',
-      'node:aabb:-',
-    ]);
+
+    test(
+      'the user\'s push switch off is respected, not turned back on',
+      () async {
+        push.state = PushPermission.granted;
+        pushEnabled = false;
+        await signIn();
+        expect(registration.status, PushStatus.paused);
+        expect(devices('POST'), isEmpty);
+        expect(relaySeen, isEmpty);
+      },
+    );
+
+    test('a stored key is reused and a stale handle is stopped', () async {
+      push.state = PushPermission.granted;
+      await store.write(
+        PushEntry(
+          pushId: 'inst_a',
+          relay: Uri.parse(_relay),
+          handle: 'h_old',
+          handleSecret: 's_old',
+          key: base64.encode(List.filled(32, 3)),
+          url: _base,
+          name: 'Old name',
+        ),
+      );
+      await signIn();
+      final entry = (await store.read('inst_a'))!;
+      expect(entry.handle, 'h_1');
+      expect(entry.keyBytes, List.filled(32, 3));
+      expect(entry.name, 'Ottawa Mesh');
+      expect(relayCalls(), ['POST /v1/handles', 'DELETE /v1/handles/h_old']);
+      expect(jsonDecode(relaySeen.last.body), {'handleSecret': 's_old'});
+      expect(
+        jsonDecode(devices('POST').single.body)['payloadKey'],
+        base64.encode(List.filled(32, 3)),
+      );
+    });
+
+    test('a push server error reads as failed and skips the device', () async {
+      push.state = PushPermission.granted;
+      relayStatus = 503;
+      await signIn();
+      expect(registration.status, PushStatus.failed);
+      expect(devices('POST'), isEmpty);
+    });
+
+    test('push_disabled from the server reads as off', () async {
+      push.state = PushPermission.granted;
+      deviceStatus = 404;
+      deviceError = {
+        'error': {'code': 'push_disabled', 'message': 'x'},
+      };
+      await signIn();
+      expect(registration.status, PushStatus.off);
+    });
+
+    test('a server error while registering reads as failed', () async {
+      push.state = PushPermission.granted;
+      deviceStatus = 500;
+      await signIn();
+      expect(registration.status, PushStatus.failed);
+    });
+
+    test(
+      'no token from the plugin reads as failed and sends nothing',
+      () async {
+        push.state = PushPermission.granted;
+        push.deviceToken = null;
+        await signIn();
+        expect(registration.status, PushStatus.failed);
+        expect(seen.where((r) => r.method == 'POST'), isEmpty);
+        expect(relaySeen, isEmpty);
+      },
+    );
+
+    test(
+      'sign out removes the device, then the handle, then the entry',
+      () async {
+        push.state = PushPermission.granted;
+        await signIn();
+        relaySeen.clear();
+        await account.signOut();
+        final order = [for (final r in seen) '${r.method} ${r.url.path}']
+            .where((e) => !e.startsWith('GET'))
+            .toList();
+        expect(order, [
+          'POST /api/v1/me/devices',
+          'DELETE /api/v1/me/devices',
+          'POST /api/v1/auth/logout',
+        ]);
+        expect(relayCalls(), ['DELETE /v1/handles/h_1']);
+        expect(jsonDecode(relaySeen.single.body), {'handleSecret': 's_1'});
+        expect(await store.read('inst_a'), isNull);
+        expect(registration.status, PushStatus.off);
+        expect(push.calls, isNot(contains('deleteToken')));
+      },
+    );
+
+    test('sign out still completes when the removals fail', () async {
+      push.state = PushPermission.granted;
+      await signIn();
+      deviceStatus = 500;
+      relayStatus = 500;
+      await account.signOut();
+      expect(await tokens.read(_base), isNull);
+      expect(await store.read('inst_a'), isNull);
+    });
+
+    test('sign out with push never set up sends no device call', () async {
+      push.isAvailable = false;
+      await signIn();
+      await account.signOut();
+      expect(devices('DELETE'), isEmpty);
+      expect(relaySeen, isEmpty);
+    });
   });
 
-  test('the notification that launched the app is opened once', () async {
-    push.state = PushPermission.granted;
-    push.initial = {'targetKind': 'observer', 'publicKey': 'ccdd'};
-    final tapped = <String>[];
-    registration.onOpened = (kind, key, id) =>
-        tapped.add('$kind:$key:${id ?? '-'}');
-    await signIn();
-    await registration.refresh();
-    expect(tapped, ['observer:ccdd:-']);
+  group('PushHub', () {
+    PushEntry entryFor(String pushId, String url, int k) => PushEntry(
+      pushId: pushId,
+      relay: Uri.parse(_relay),
+      handle: 'h_$pushId',
+      handleSecret: 's_$pushId',
+      key: base64.encode(List.filled(32, k)),
+      url: url,
+      name: 'Server $pushId',
+    );
+
+    test('a token refresh moves every stored handle', () async {
+      await store.write(entryFor('inst_a', _base, 1));
+      await store.write(entryFor('inst_b', 'https://b.example', 2));
+      await hub.start();
+      push.refresh.add('tok-2');
+      await pump();
+      expect(relayCalls(), {
+        'PUT /v1/handles/h_inst_a',
+        'PUT /v1/handles/h_inst_b',
+      });
+      expect(jsonDecode(relaySeen.first.body)['fcmToken'], 'tok-2');
+      expect(seen, isEmpty);
+    });
+
+    test('nothing starts in a build without configuration', () async {
+      push.isAvailable = false;
+      await store.write(entryFor('inst_a', _base, 1));
+      await hub.start();
+      push.refresh.add('tok-2');
+      await pump();
+      expect(relaySeen, isEmpty);
+    });
+
+    Future<Map<String, Object?>> sealed(
+      String pushId,
+      int k,
+      Object plain,
+    ) async => {
+      'v': '1',
+      'pushId': pushId,
+      'serverName': 'X',
+      'messageId': 'm_1',
+      'ct': await sealNotice(List.filled(32, k), pushId, jsonEncode(plain)),
+    };
+
+    test(
+      'a tapped sealed notice opens its radio on the active server',
+      () async {
+        await store.write(entryFor('inst_a', _base, 1));
+        final opened = <PushTarget>[];
+        hub.activeUrl = () => _base;
+        hub.attach(_base, opened.add);
+        await hub.start();
+        push.taps.add(
+          await sealed('inst_a', 1, {
+            'kind': 'battery_low',
+            'targetKind': 'node',
+            'publicKey': 'aabb',
+            'id': 'n1',
+          }),
+        );
+        push.taps.add(
+          await sealed('inst_a', 1, {
+            'kind': 'rebooted',
+            'targetKind': 'observer',
+            'publicKey': 'ccdd',
+            'id': '',
+          }),
+        );
+        await pump();
+        expect(
+          [for (final t in opened) '${t.kind}:${t.publicKey}:${t.id}'],
+          ['node:aabb:n1', 'observer:ccdd:null'],
+        );
+      },
+    );
+
+    test('a tap for another server switches to it, then opens', () async {
+      await store.write(entryFor('inst_b', 'https://b.example', 2));
+      String active = _base;
+      final selected = <String>[];
+      hub.activeUrl = () => active;
+      hub.selectServer = (url) async {
+        selected.add(url);
+        active = url;
+      };
+      final onA = <PushTarget>[];
+      hub.attach(_base, onA.add);
+      await hub.start();
+      push.taps.add({
+        'pushId': 'inst_b',
+        'targetKind': 'node',
+        'publicKey': 'eeff',
+        'id': 'n2',
+      });
+      await pump();
+      expect(selected, ['https://b.example']);
+      expect(onA, isEmpty);
+      final onB = <PushTarget>[];
+      hub.attach('https://b.example', onB.add);
+      expect(onB.single.publicKey, 'eeff');
+      hub.attach('https://b.example', onB.add);
+      expect(onB, hasLength(1));
+    });
+
+    test('unknown servers, wrong keys and junk open nothing', () async {
+      await store.write(entryFor('inst_a', _base, 1));
+      final opened = <PushTarget>[];
+      hub.activeUrl = () => _base;
+      hub.attach(_base, opened.add);
+      await hub.start();
+      push.taps.add(
+        await sealed('inst_a', 5, {'kind': 'rebooted', 'publicKey': 'aa'}),
+      );
+      push.taps.add(
+        await sealed('inst_z', 1, {'kind': 'rebooted', 'publicKey': 'aa'}),
+      );
+      push.taps.add({'pushId': 'inst_a'});
+      push.taps.add({'other': 'x'});
+      await pump();
+      expect(opened, isEmpty);
+    });
+
+    test('the notification that launched the app is opened once', () async {
+      await store.write(entryFor('inst_a', _base, 1));
+      push.initial = {
+        'pushId': 'inst_a',
+        'targetKind': 'observer',
+        'publicKey': 'ccdd',
+      };
+      final opened = <PushTarget>[];
+      hub.activeUrl = () => _base;
+      hub.attach(_base, opened.add);
+      await hub.start();
+      await hub.start();
+      await pump();
+      expect(opened.single.publicKey, 'ccdd');
+    });
+
+    test('forgetting a server removes its device, handle and entry', () async {
+      await store.write(entryFor('inst_a', _base, 1));
+      await store.write(entryFor('inst_b', 'https://b.example', 2));
+      await tokens.write(_base, 'abc');
+      await hub.forget(_base, account.api);
+      expect(devices('DELETE'), hasLength(1));
+      expect(relayCalls(), ['DELETE /v1/handles/h_inst_a']);
+      expect(await store.read('inst_a'), isNull);
+      expect(await store.read('inst_b'), isNotNull);
+      seen.clear();
+      await hub.forget('https://none.example', account.api);
+      expect(seen, isEmpty);
+    });
   });
 }
 

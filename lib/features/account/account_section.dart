@@ -277,6 +277,7 @@ class _AccountSectionState extends State<AccountSection> {
               account: widget.account,
               api: widget.api,
               onOpen: widget.onOpen,
+              serverName: widget.serverName,
             ),
           ),
         ),

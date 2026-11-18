@@ -5,8 +5,8 @@ part of 'profile_screen.dart';
 class _Alerts extends StatefulWidget {
   const _Alerts({
     required this.account,
-    required this.deliveryHint,
     required this.unit,
+    this.serverName = '',
     this.refresh,
   });
   final AccountState account;
@@ -15,8 +15,8 @@ class _Alerts extends StatefulWidget {
   /// The instance's temperature unit, 'c' or 'f'.
   final String unit;
 
-  /// The delivery the server's features announce, used until the list loads.
-  final String? deliveryHint;
+  /// The saved server's name, for the push line.
+  final String serverName;
   @override
   State<_Alerts> createState() => _AlertsState();
 }
@@ -66,9 +66,11 @@ class _AlertsState extends State<_Alerts> {
       color: BeaconColors.of(context).muted,
     );
     final loaded = data;
-    final delivery = textOf(loaded?['delivery'], widget.deliveryHint ?? '');
     final targets = rows(loaded?['targets']);
-    return section(trKey('alerts.title'), [
+    final hasRules = targets.any(
+      (t) => rows(t['rules']).any((r) => r['enabled'] == true),
+    );
+    final alerts = section(trKey('alerts.title'), [
       if (loaded == null && error != null)
         _LoadFailed(
           text: alertError(error!),
@@ -81,8 +83,6 @@ class _AlertsState extends State<_Alerts> {
       else if (loaded == null)
         const _Loading()
       else ...[
-        _delivery(delivery),
-        if (delivery == 'push') _PushStatus(push: widget.account.push),
         if (targets.isEmpty) _Empty(trKey('alerts.empty')),
         for (final target in targets)
           _AlertTarget(
@@ -98,15 +98,20 @@ class _AlertsState extends State<_Alerts> {
         ),
       ],
     ]);
-  }
-
-  Widget _delivery(String delivery) {
-    if (delivery == 'push') return Text(trKey('alerts.toPhone'));
-    final email = textOf(widget.account.user?['email']);
-    return Text(
-      email.isEmpty
-          ? trKey('alerts.byEmail')
-          : trKey('alerts.toEmail').replaceAll('{{email}}', email),
+    if (loaded == null) return alerts;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _AlertChannels(
+          account: widget.account,
+          channels: object(loaded['channels']),
+          hasRules: hasRules,
+          serverName: widget.serverName,
+          changed: (next) =>
+              setState(() => data = {...?data, 'channels': next}),
+        ),
+        alerts,
+      ],
     );
   }
 }

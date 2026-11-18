@@ -19,6 +19,7 @@ import 'alert_rules.dart';
 import 'password_rule.dart';
 import 'request_text.dart';
 
+part 'alert_channels.dart';
 part 'alerts_section.dart';
 part 'telemetry_requests_section.dart';
 
@@ -29,8 +30,12 @@ class ProfileScreen extends StatefulWidget {
     required this.account,
     this.api,
     this.onOpen,
+    this.serverName = '',
   });
   final AccountState account;
+
+  /// The saved server's name, shown in the push line.
+  final String serverName;
 
   /// With the server's client the profile can show telemetry requests, and
   /// [onOpen] opens a repeater from one.
@@ -142,8 +147,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               if (features.alerts)
                 _Alerts(
                   account: widget.account,
-                  deliveryHint: features.alertDelivery,
                   unit: features.temperatureUnit,
+                  serverName: widget.serverName,
                   refresh: refresh,
                 ),
               section(trKey('account.sectionDevices'), [

@@ -28,6 +28,7 @@ void main() {
   late int meCalls;
   late bool pushMode;
   late List<String> deviceCalls;
+  late List<http.Request> relaySeen;
 
   http.Response serve(http.Request r) {
     final path = r.url.path.replaceFirst('/api/v1', '');
@@ -35,8 +36,20 @@ void main() {
       return json(200, {
         'features': {
           'accounts': 'local',
-          if (pushMode) ...{'alerts': true, 'alertDelivery': 'push'},
+          if (pushMode) ...{
+            'alerts': true,
+            'alertChannels': {'email': false, 'push': true},
+            'push': {'server': 'https://push.example', 'pushId': 'inst_a'},
+          },
         },
+      });
+    }
+    if (path == '/me/alerts') {
+      return json(200, {
+        'channels': {
+          'push': {'available': true, 'enabled': true, 'hasDevice': false},
+        },
+        'targets': [],
       });
     }
     if (path == '/me/devices') {
@@ -73,7 +86,7 @@ void main() {
         tokens: tokens,
         accounts: registry,
         signInFlow: flow,
-        push: push,
+        push: push == null ? null : fakeHub(push, relaySeen: relaySeen),
         authFactory: (url, store) =>
             AuthApi(url, store, client: MockClient((r) async => serve(r))),
         apiFactory: (base) =>
@@ -103,6 +116,7 @@ void main() {
     meCalls = 0;
     pushMode = false;
     deviceCalls = [];
+    relaySeen = [];
   });
 
   testWidgets('a browser sign-in shows the user without a restart', (
@@ -159,6 +173,7 @@ void main() {
       await account.signOut();
       await tester.pumpAndSettle();
       expect(deviceCalls, ['POST', 'DELETE']);
+      expect([for (final r in relaySeen) r.method], ['POST', 'DELETE']);
     },
   );
 
@@ -173,5 +188,24 @@ void main() {
     expect(deviceCalls, isEmpty);
     expect(push.calls, isNot(contains('request')));
     expect(push.calls, isNot(contains('token')));
+    expect(relaySeen, isEmpty);
+  });
+
+  testWidgets('removing a server removes its push device and handle', (
+    tester,
+  ) async {
+    pushMode = true;
+    await tokens.write(server, 'tok');
+    final push = FakePush(state: PushPermission.granted);
+    addTearDown(push.close);
+    await pumpApp(tester, push: push);
+    expect(deviceCalls, ['POST']);
+    // The app's own Preferences holds the hook; reach it through the widget.
+    final app = tester.widget<BeaconApp>(find.byType(BeaconApp));
+    await app.preferences.removeServer(server);
+    await tester.pumpAndSettle();
+    expect(deviceCalls, ['POST', 'DELETE']);
+    expect([for (final r in relaySeen) r.method], ['POST', 'DELETE']);
+    expect(app.preferences.servers, isEmpty);
   });
 }
