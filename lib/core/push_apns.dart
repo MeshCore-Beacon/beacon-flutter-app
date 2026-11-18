@@ -10,7 +10,7 @@ import 'push.dart';
 class ApnsPushClient implements PushClient {
   ApnsPushClient({MethodChannel? channel, Duration? tokenTimeout})
     : _channel = channel ?? const MethodChannel('beacon/push'),
-      _tokenTimeout = tokenTimeout ?? const Duration(seconds: 30) {
+      _tokenTimeout = tokenTimeout ?? const Duration(seconds: 35) {
     _channel.setMethodCallHandler(_fromNative);
   }
   final MethodChannel _channel;
@@ -60,7 +60,8 @@ class ApnsPushClient implements PushClient {
   Future<PushPermission> requestPermission() async =>
       _map(await _channel.invokeMethod<String>('requestPermission'));
 
-  /// The device token as lowercase hex; null when APNs does not answer in time.
+  /// The device token as lowercase hex; null when APNs does not answer in time
+  /// (the native side gives up after 30 s, this is a backstop).
   /// A registration failure throws a [PlatformException].
   @override
   Future<String?> token() => _channel

@@ -75,6 +75,8 @@ final class PushChannel {
   // Taps wait here until Dart asks for the launch tap.
   private var launchTap: [String: Any]?
   private var dartReady = false
+  // Bumped whenever the waiting results are answered, so a stale timeout does nothing.
+  private var registration = 0
   private static let lastTokenKey = "beacon.push.apnsToken"
 
   /// A notice from a Beacon push server, as opposed to a local notification.
@@ -106,7 +108,14 @@ final class PushChannel {
     case "token":
       if let token = token { return result(token) }
       waiting.append(result)
+      // One registration at a time; later callers share its answer.
+      guard waiting.count == 1 else { return }
       UIApplication.shared.registerForRemoteNotifications()
+      let round = registration
+      DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
+        guard let self = self, self.registration == round else { return }
+        self.answerWaiting(nil)
+      }
     case "initialMessage":
       dartReady = true
       result(launchTap)
@@ -129,9 +138,7 @@ final class PushChannel {
   func registered(_ deviceToken: Data) {
     let hex = deviceToken.map { String(format: "%02x", $0) }.joined()
     token = hex
-    let results = waiting
-    waiting = []
-    results.forEach { $0(hex) }
+    answerWaiting(hex)
     // Like FCM's refresh: only a token that differs from the last one known.
     let defaults = UserDefaults.standard
     let last = defaults.string(forKey: Self.lastTokenKey)
@@ -140,11 +147,16 @@ final class PushChannel {
   }
 
   func failed(_ error: Error) {
+    answerWaiting(
+      FlutterError(code: "register_failed", message: error.localizedDescription, details: nil))
+  }
+
+  /// Answers every waiting token request exactly once.
+  private func answerWaiting(_ answer: Any?) {
+    registration += 1
     let results = waiting
     waiting = []
-    let failure = FlutterError(
-      code: "register_failed", message: error.localizedDescription, details: nil)
-    results.forEach { $0(failure) }
+    results.forEach { $0(answer) }
   }
 
   func tapped(_ info: [AnyHashable: Any]) {
@@ -161,6 +173,15 @@ final class PushChannel {
 
   /// sandbox or production, from the provisioning profile the build was signed with.
   static func apnsEnvironment() -> String {
+    // The simulator has no profile and gets its pushes from the sandbox.
+    #if targetEnvironment(simulator)
+      return "sandbox"
+    #else
+      return profileEnvironment()
+    #endif
+  }
+
+  private static func profileEnvironment() -> String {
     // App Store builds carry no profile and always use production.
     guard let url = Bundle.main.url(forResource: "embedded", withExtension: "mobileprovision"),
       let data = try? Data(contentsOf: url)
