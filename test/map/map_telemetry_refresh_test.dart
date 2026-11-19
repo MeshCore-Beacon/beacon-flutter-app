@@ -185,6 +185,36 @@ void main() {
     expect(h.telemetryCalls, before + 2);
     await unmount(tester, api);
   });
+  testWidgets('a short cover costs no telemetry read on return', (
+    tester,
+  ) async {
+    final h = Harness();
+    final api = await pump(tester, h);
+    final navigator = Navigator.of(tester.element(find.byType(MapScreen)));
+    final before = h.telemetryCalls;
+    Future<void> cover(Duration time) async {
+      unawaited(
+        navigator.push<void>(
+          MaterialPageRoute(
+            builder: (_) => const Scaffold(body: Text('Covered')),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.pump(time);
+      navigator.pop();
+      await tester.pumpAndSettle();
+    }
+
+    await cover(const Duration(minutes: 1));
+    expect(h.telemetryCalls, before);
+    // A tick missed under the cover is read once, quietly.
+    h.failTelemetry = true;
+    await cover(const Duration(minutes: 5));
+    expect(h.telemetryCalls, before + 1);
+    expect(find.textContaining('Telemetry:'), findsNothing);
+    await unmount(tester, api);
+  });
   testWidgets(
     'returning to a map does not revive an obsolete telemetry retry',
     (tester) async {

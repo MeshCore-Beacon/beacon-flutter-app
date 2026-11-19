@@ -71,6 +71,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       _telemetry = false;
   int _generation = 0;
   int _telemetryGeneration = 0;
+  bool _telemetryBusy = false, _telemetryMissed = false;
   final _canvas = GlobalKey<_NativeMapState>();
   final _layers = MapLayers();
   @override
@@ -255,13 +256,11 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       _frame();
       if (_selected != null) unawaited(_select(_selected));
       if (_showBorders) unawaited(_loadBorders());
+      unawaited(_loadTelemetry(userAction: true));
     } catch (e) {
       if (_current(gen)) setState(() => _error = e.toString());
     } finally {
-      if (_current(gen)) {
-        setState(() => _loading = false);
-        unawaited(_loadTelemetry(userAction: _error == null));
-      }
+      if (_current(gen)) setState(() => _loading = false);
     }
   }
 
@@ -308,36 +307,58 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
 
   void _stopTelemetryTimers() {
     _telemetryGeneration++;
+    _telemetryBusy = false;
     _telemetryTimer?.cancel();
     _telemetryTimer = null;
     _ageTimer?.cancel();
     _ageTimer = null;
   }
 
+  void _startTelemetryTimer() {
+    _telemetryTimer?.cancel();
+    _telemetryTimer = Timer.periodic(
+      const Duration(minutes: 5),
+      (_) => unawaited(_loadTelemetry()),
+    );
+  }
+
   /// Refetch and age labels only while enabled, resumed and visible.
   void _syncTelemetry({bool fetch = true}) {
     if (!_telemetryOn) {
       _stopTelemetryTimers();
+      _telemetryMissed = false;
       _readings = const [];
       if (_labels.isNotEmpty) setState(() => _labels = const {});
       return;
     }
-    if (!_resumed || !_visible) {
+    if (!_resumed) {
       _stopTelemetryTimers();
       return;
     }
-    if (_telemetryTimer == null) {
-      _telemetryTimer = Timer.periodic(
-        const Duration(minutes: 5),
-        (_) => unawaited(_loadTelemetry()),
-      );
-      _ageTimer = Timer.periodic(
-        const Duration(minutes: 1),
-        (_) => _rebuildLabels(),
-      );
-      _rebuildLabels();
-      // An active map load performs the initial read when it settles.
+    final started = _telemetryTimer == null;
+    // The refetch timer keeps running under a cover; its ticks read nothing and one is made up on return.
+    if (started) _startTelemetryTimer();
+    if (!_visible) {
+      _ageTimer?.cancel();
+      _ageTimer = null;
+      if (_telemetryBusy || (started && fetch)) {
+        _telemetryGeneration++;
+        _telemetryBusy = false;
+        _telemetryMissed = true;
+      }
+      return;
+    }
+    _ageTimer ??= Timer.periodic(
+      const Duration(minutes: 1),
+      (_) => _rebuildLabels(),
+    );
+    _rebuildLabels();
+    if (started) {
+      // A map load in progress does the first read when it finishes.
       if (fetch && !_loading) unawaited(_loadTelemetry(userAction: true));
+    } else if (_telemetryMissed) {
+      _startTelemetryTimer();
+      unawaited(_loadTelemetry());
     }
   }
 
@@ -357,7 +378,12 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
 
   /// Only a load the user caused (toggle, region) shows an error; a timer refetch keeps the labels.
   Future<void> _loadTelemetry({bool userAction = false}) async {
-    if (!_telemetryOn || !_resumed || !_visible) return;
+    if (!_telemetryOn || !_resumed) return;
+    if (!_visible) {
+      _telemetryMissed = true;
+      return;
+    }
+    _telemetryMissed = false;
     if (_emptyRegion) {
       _readings = const [];
       if (_labels.isNotEmpty) setState(() => _labels = const {});
@@ -365,6 +391,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     }
     final gen = _generation;
     final request = ++_telemetryGeneration;
+    _telemetryBusy = true;
     bool current() =>
         _current(gen) &&
         request == _telemetryGeneration &&
@@ -388,6 +415,8 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       if (userAction && current()) {
         setState(() => _error = '${tr('Telemetry')}: $e');
       }
+    } finally {
+      if (request == _telemetryGeneration) _telemetryBusy = false;
     }
   }
 
