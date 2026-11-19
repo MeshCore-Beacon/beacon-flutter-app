@@ -32,6 +32,8 @@ class _AlertChannelsState extends State<_AlertChannels> {
       pending[channel] ?? value['enabled'] != false;
 
   Future<void> toggle(String channel, bool next) async {
+    // Each save returns both preferences. Finish it and any push registration before another change.
+    if (pending.isNotEmpty) return;
     final epoch = widget.account.epoch;
     setState(() {
       pending[channel] = next;
@@ -44,6 +46,10 @@ class _AlertChannelsState extends State<_AlertChannels> {
       );
       if (!mounted || widget.account.epoch != epoch) return;
       widget.changed(answer);
+      if (channel == 'push' && next) {
+        await widget.account.push?.enable();
+        if (!mounted || widget.account.epoch != epoch) return;
+      }
       setState(() => pending.remove(channel));
     } catch (_) {
       if (!mounted || widget.account.epoch != epoch) return;
@@ -51,9 +57,7 @@ class _AlertChannelsState extends State<_AlertChannels> {
         pending.remove(channel);
         error = trKey('alertChannels.failed');
       });
-      return;
     }
-    if (channel == 'push' && next) await widget.account.push?.enable();
   }
 
   @override
@@ -74,7 +78,9 @@ class _AlertChannelsState extends State<_AlertChannels> {
         id: 'channel-email',
         label: trKey('alertChannels.email'),
         value: emailAvailable && emailOn,
-        onChanged: emailAvailable ? (v) => toggle('email', v) : null,
+        onChanged: emailAvailable && pending.isEmpty
+            ? (v) => toggle('email', v)
+            : null,
         note: !emailAvailable
             ? trKey(switch (reason) {
                 'server_off' ||
@@ -91,7 +97,9 @@ class _AlertChannelsState extends State<_AlertChannels> {
         id: 'channel-push',
         label: trKey('alertChannels.push'),
         value: pushAvailable && pushOn,
-        onChanged: pushAvailable ? (v) => toggle('push', v) : null,
+        onChanged: pushAvailable && pending.isEmpty
+            ? (v) => toggle('push', v)
+            : null,
         note: pushAvailable
             ? trKey('alertChannels.pushVia').replaceAll('{{server}}', server)
             : trKey('alertChannels.pushOff'),
