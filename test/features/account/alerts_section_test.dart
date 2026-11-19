@@ -409,6 +409,23 @@ void main() {
     expect(live(tester, 'channel-push'), isTrue);
   });
 
+  testWidgets('a save that outlives its account leaves the switches free', (
+    tester,
+  ) async {
+    final h = await open(tester);
+    final save = Completer<http.Response>();
+    h.hold = (r) => r.method == 'PUT' ? save.future : null;
+    await tester.tap(switchOf('channel-email'));
+    await tester.pump();
+    expect(live(tester, 'channel-email'), isFalse);
+    h.hold = null;
+    h.account.adopt({...h.account.user!, 'id': 'someone-else'});
+    await tester.pumpAndSettle();
+    save.complete(json(200, channels(emailOn: false)));
+    await tester.pumpAndSettle();
+    expect(live(tester, 'channel-email'), isTrue);
+  });
+
   testWidgets('push stays busy until device registration completes', (
     tester,
   ) async {
