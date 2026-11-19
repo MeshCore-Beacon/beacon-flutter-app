@@ -9,6 +9,63 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 void main() {
+  testWidgets(
+    'a cover or an inactive spell with nothing missed costs no read',
+    (tester) async {
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      var requests = 0;
+      final answer = Completer<http.Response>();
+      final api = ApiClient(
+        Uri.parse('https://example.test'),
+        client: MockClient((r) {
+          requests++;
+          return requests == 1
+              ? answer.future
+              : Future.value(http.Response('[2]', 200));
+        }),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StatsQuery(
+              api: api,
+              path: '/stats/example',
+              pollInterval: const Duration(minutes: 1),
+              builder: (data) => Text('Chart $data'),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(requests, 1);
+      // The read in flight survives the system sheet and still lands.
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      await tester.pump();
+      answer.complete(http.Response('[1]', 200));
+      await tester.pumpAndSettle();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      expect(find.text('Chart [1]'), findsOneWidget);
+      expect(requests, 1);
+      final navigator = Navigator.of(tester.element(find.byType(StatsQuery)));
+      unawaited(
+        navigator.push<void>(
+          MaterialPageRoute(
+            builder: (_) => const Scaffold(body: Text('Covered')),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 40));
+      navigator.pop();
+      await tester.pumpAndSettle();
+      expect(requests, 1);
+      expect(find.text('Chart [1]'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+      api.close();
+    },
+  );
+
   testWidgets('covered charts defer periodic and changed-parameter reads', (
     tester,
   ) async {

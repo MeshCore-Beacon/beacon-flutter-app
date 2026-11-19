@@ -132,11 +132,13 @@ class StatsQuery extends StatefulWidget {
 }
 
 class _StatsQueryState extends State<StatsQuery> with WidgetsBindingObserver {
-  late Future<dynamic> future;
+  Future<dynamic>? future;
   Timer? timer;
   int generation = 0;
   int? lastStatus;
-  bool visible = true, refreshPending = true, freshPending = false;
+  bool visible = true, busy = false;
+  // A read owed to the view: the first one, a missed poll or changed parameters.
+  bool refreshPending = true, freshPending = false;
   bool resumed =
       WidgetsBinding.instance.lifecycleState == null ||
       WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
@@ -147,12 +149,11 @@ class _StatsQueryState extends State<StatsQuery> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     if (widget.pollInterval != null) {
       timer = Timer.periodic(widget.pollInterval!, (_) {
-        if (mounted && lastStatus != 404) {
-          if (!active) {
-            load(fresh: true);
-            return;
-          }
+        if (!mounted || lastStatus == 404) return;
+        if (active) {
           setState(() => load(fresh: true));
+        } else {
+          refreshPending = freshPending = true;
         }
       });
     }
@@ -162,30 +163,39 @@ class _StatsQueryState extends State<StatsQuery> with WidgetsBindingObserver {
   void didChangeDependencies() {
     super.didChangeDependencies();
     final next = TickerMode.valuesOf(context).enabled;
-    if (visible == next && !refreshPending) return;
+    if (visible == next && !(next && refreshPending)) return;
     visible = next;
-    activityChanged();
+    if (next) {
+      resume();
+    } else {
+      suspend();
+    }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!mounted) return;
     final next = state == AppLifecycleState.resumed;
-    if (!mounted || resumed == next) return;
-    setState(() {
-      resumed = next;
-      activityChanged();
-    });
+    // A brief inactive spell (a system sheet, the app switcher) lets a read in flight finish.
+    if (!next && state != AppLifecycleState.inactive && busy) {
+      setState(suspend);
+    }
+    if (resumed == next) return;
+    resumed = next;
+    if (next) setState(resume);
   }
 
-  void activityChanged() {
-    if (!active) {
-      generation++;
-      refreshPending = refreshPending || lastStatus != 404;
-    } else if (refreshPending) {
-      final fresh = freshPending;
-      refreshPending = freshPending = false;
-      load(fresh: fresh);
-    }
+  /// Drops a read in flight so no retry runs unseen; it is owed on return.
+  void suspend() {
+    if (!busy) return;
+    generation++;
+    busy = false;
+    future = null;
+    refreshPending = true;
+  }
+
+  void resume() {
+    if (active && refreshPending) load(fresh: freshPending);
   }
 
   @override
@@ -198,13 +208,17 @@ class _StatsQueryState extends State<StatsQuery> with WidgetsBindingObserver {
 
   void load({bool fresh = false}) {
     if (!active) {
+      // The old answer has the wrong shape for the new parameters.
       generation++;
+      busy = false;
+      future = null;
       refreshPending = true;
       freshPending = freshPending || fresh;
       return;
     }
     refreshPending = freshPending = false;
     final token = ++generation;
+    busy = true;
     future =
         (fresh ? widget.api.get : widget.api.getCached)(
           widget.path,
@@ -212,12 +226,16 @@ class _StatsQueryState extends State<StatsQuery> with WidgetsBindingObserver {
           () => mounted && token == generation,
         ).then(
           (value) {
-            if (token == generation) lastStatus = null;
+            if (token == generation) {
+              lastStatus = null;
+              busy = false;
+            }
             return value;
           },
           onError: (Object error) {
             if (token == generation) {
               lastStatus = error is ApiException ? error.status : null;
+              busy = false;
             }
             throw error;
           },
@@ -236,7 +254,7 @@ class _StatsQueryState extends State<StatsQuery> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) => FutureBuilder<dynamic>(
-    future: refreshPending ? null : future,
+    future: future,
     builder: (context, s) {
       if (s.connectionState != ConnectionState.done) {
         final cached = widget.api.peekCache(widget.path, widget.params);
