@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:beacon/core/api.dart';
@@ -385,6 +386,49 @@ void main() {
       tester.widget<Switch>(switchOf(id)).value;
   bool live(WidgetTester tester, String id) =>
       tester.widget<Switch>(switchOf(id)).onChanged != null;
+
+  testWidgets('only one channel change can be sent while a save is pending', (
+    tester,
+  ) async {
+    data['channels'] = channels(pushAvailable: true, pushOn: false);
+    final h = await open(tester, pushChannel: true);
+    final save = Completer<http.Response>();
+    h.hold = (r) => r.method == 'PUT' ? save.future : null;
+    final pushSwitch = tester.widget<Switch>(switchOf('channel-push'));
+    await tester.tap(switchOf('channel-email'));
+    pushSwitch.onChanged!(true);
+    await tester.pump();
+    expect(h.calls('PUT', '/me/alerts/channels'), hasLength(1));
+    expect(live(tester, 'channel-email'), isFalse);
+    expect(live(tester, 'channel-push'), isFalse);
+    save.complete(
+      json(200, channels(emailOn: false, pushAvailable: true, pushOn: false)),
+    );
+    await tester.pumpAndSettle();
+    expect(on(tester, 'channel-email'), isFalse);
+    expect(live(tester, 'channel-push'), isTrue);
+  });
+
+  testWidgets('push stays busy until device registration completes', (
+    tester,
+  ) async {
+    data['channels'] = channels(pushAvailable: true, pushOn: false);
+    final h = await open(tester, pushChannel: true, push: FakePush());
+    final registration = Completer<http.Response>();
+    h.hold = (r) => r.method == 'POST' && r.url.path.endsWith('/me/devices')
+        ? registration.future
+        : null;
+    await tester.tap(switchOf('channel-push'));
+    await tester.pumpAndSettle();
+    expect(h.calls('POST', '/me/devices'), hasLength(1));
+    expect(on(tester, 'channel-push'), isTrue);
+    expect(live(tester, 'channel-push'), isFalse);
+    expect(live(tester, 'channel-email'), isFalse);
+    registration.complete(http.Response('', 204));
+    await tester.pumpAndSettle();
+    expect(live(tester, 'channel-push'), isTrue);
+    expect(on(tester, 'channel-push'), isTrue);
+  });
 
   testWidgets('email on names the address; push off without a push server', (
     tester,
