@@ -61,7 +61,48 @@ Map<String, dynamic> activityOf([Map<String, dynamic> extra = const {}]) => {
 };
 
 void main() {
+  SavedAtlas fullAtlas(String name) => SavedAtlas(
+    range: AtlasRange.threeDays,
+    pins: [
+      for (var i = 0; i < atlasLimitMax; i++)
+        AtlasPin.node(
+          id: nodeId,
+          publicKey: i.toRadixString(16).padLeft(64, '0'),
+          name: name,
+          observerId: observerId,
+          tiles: const ['snr', 'battery', 'queue', 'errors'],
+          telemetryTiles: const ['temperature', 'packets', 'signal', 'errors'],
+          view: AtlasView.telemetry,
+        ),
+    ],
+  );
+
   group('saved Atlas', () {
+    test(
+      'restores and appends the full configured Atlas without data loss',
+      () {
+        for (final name in ['N' * 160, '\u0000' * 160]) {
+          final saved = fullAtlas(name);
+          final raw = saved.encode();
+          expect(raw.length, greaterThan(32000));
+          expect(utf8.encode(raw).length, lessThan(atlasFileMaxBytes));
+          expect(parseAtlas(raw).toJson(), saved.toJson());
+          final before = saved.copyWith(pins: saved.pins.take(99).toList());
+          expect(before.appended(saved.pins.last).toJson(), saved.toJson());
+        }
+      },
+    );
+
+    test('still rejects persisted Atlas text over the bounded file budget', () {
+      final raw = jsonEncode({
+        'version': 2,
+        'pins': [nodePin],
+      });
+      final bounded = raw.padRight(atlasFileMaxBytes);
+      expect(parseAtlas(bounded).pins, hasLength(1));
+      expect(parseAtlas('$bounded ').pins, isEmpty);
+    });
+
     test(
       'restores ordered identities, normalizes keys, removes duplicates',
       () {
@@ -410,6 +451,19 @@ void main() {
   });
 
   group('Atlas export file', () {
+    test('round-trips 100 fully configured cards including escaped names', () {
+      for (final name in ['N' * 160, '\u0000' * 160]) {
+        final saved = fullAtlas(name);
+        final text = atlasFile(saved);
+        expect(utf8.encode(text).length, lessThan(atlasFileMaxBytes));
+        final read = readAtlasFile(text, limit: atlasLimitMax)!;
+        expect(read.skipped, 0);
+        expect(read.atlas.toJson(), saved.toJson());
+        expect(readAtlasFile(text)!.atlas.pins, hasLength(atlasLimitFallback));
+        expect(readAtlasFile('$text${' ' * atlasFileMaxBytes}'), isNull);
+      }
+    });
+
     final saved = parseAtlas(
       jsonEncode({
         'version': 2,
