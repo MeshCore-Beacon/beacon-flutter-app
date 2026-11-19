@@ -110,7 +110,7 @@ Future<http.Response> requestLimited(
   Map<String, String> headers = const {},
   String? body,
   Duration timeout = const Duration(seconds: 25),
-}) async {
+}) {
   // Keep dart:io's "Dart/" UA: the analyzer's scrape block lets it in.
   final abort = Completer<void>();
   final request = http.AbortableRequest(
@@ -120,8 +120,7 @@ Future<http.Response> requestLimited(
   );
   request.headers.addAll(headers);
   if (body != null) request.body = body;
-  final timer = Timer(timeout, () => abort.complete());
-  try {
+  Future<http.Response> exchange() async {
     final response = await client.send(request);
     const tooLarge = ApiException('Server response is too large.');
     if ((response.contentLength ?? 0) > maxBytes) {
@@ -142,11 +141,16 @@ Future<http.Response> requestLimited(
       persistentConnection: response.persistentConnection,
       reasonPhrase: response.reasonPhrase,
     );
-  } on http.RequestAbortedException {
-    throw TimeoutException('The server took too long to respond.', timeout);
-  } finally {
-    timer.cancel();
   }
+
+  // The abort only reaches a connected request, so the wait ends here too.
+  return exchange().timeout(
+    timeout,
+    onTimeout: () {
+      abort.complete();
+      throw TimeoutException('The server took too long to respond.', timeout);
+    },
+  );
 }
 
 class ApiClient {

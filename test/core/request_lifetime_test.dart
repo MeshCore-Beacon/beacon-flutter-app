@@ -73,6 +73,26 @@ void main() {
       await stream.close();
     },
   );
+
+  test('a connect that never finishes still ends as a timeout', () async {
+    // dart:io only sees the abort once the socket is connected.
+    final read = getLimited(
+      _HungClient(),
+      Uri.parse('https://example.test'),
+      4,
+      timeout: const Duration(milliseconds: 50),
+    );
+    await expectLater(
+      read.timeout(const Duration(seconds: 2), onTimeout: () => throw 'hung'),
+      throwsA(isA<TimeoutException>()),
+    );
+  });
+}
+
+class _HungClient extends http.BaseClient {
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) =>
+      Completer<http.StreamedResponse>().future;
 }
 
 class _StreamClient extends http.BaseClient {
