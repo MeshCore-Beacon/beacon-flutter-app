@@ -26,6 +26,7 @@ void main() {
   late List<Uri> launched;
   late List<http.Request> requests;
   late http.Response Function(http.Request) exchange;
+  late http.Response Function() info;
   late DateTime now;
   late Map<String, AccountState> accounts;
   late bool launchOk;
@@ -35,6 +36,7 @@ void main() {
       url,
       tokens,
       client: MockClient((r) async {
+        if (r.url.path.endsWith('/info')) return info();
         requests.add(r);
         return exchange(r);
       }),
@@ -55,6 +57,9 @@ void main() {
     launchOk = true;
     now = DateTime.utc(2026, 11, 15, 12);
     accounts = {};
+    info = () => _json(200, {
+      'features': {'appDeviceLabel': true},
+    });
     exchange = (_) => _json(200, {
       'token': 'tok',
       'expiresAt': 1,
@@ -122,8 +127,22 @@ void main() {
     expect(jsonDecode(requests.single.body), {
       'code': 'the-code',
       'codeVerifier': pending.verifier,
+      'deviceLabel': appDeviceLabel(),
     });
     expect(flow.pending, isNull);
+  });
+
+  test('a server that does not take a device label gets none', () async {
+    info = () => _json(200, {'features': <String, Object>{}});
+    final flow = make();
+    await flow.start(_server);
+    final pending = flow.pending!;
+    final result = await flow.handleCallback(callback(pending.state));
+    expect(result.outcome, SignInOutcome.success);
+    expect(jsonDecode(requests.single.body), {
+      'code': 'the-code',
+      'codeVerifier': pending.verifier,
+    });
   });
 
   test('the active server account is told about the new user', () async {

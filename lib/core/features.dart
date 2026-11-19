@@ -11,6 +11,7 @@ class ServerFeatures {
     this.registration = false,
     this.atlasTelemetry = false,
     this.mapTelemetry = false,
+    this.appDeviceLabel = false,
     this.temperatureUnit = 'c',
     this.distanceUnit = 'metric',
     this.atlasLimit = 12,
@@ -27,6 +28,7 @@ class ServerFeatures {
       registration = false,
       atlasTelemetry = false,
       mapTelemetry = false,
+      appDeviceLabel = false,
       temperatureUnit = 'c',
       distanceUnit = 'metric',
       atlasLimit = 12,
@@ -48,6 +50,7 @@ class ServerFeatures {
       registration: f['registration'] == true,
       atlasTelemetry: f['atlasTelemetry'] == true,
       mapTelemetry: f['mapTelemetry'] == true,
+      appDeviceLabel: f['appDeviceLabel'] == true,
       temperatureUnit: d['temperatureUnit'] == 'f' ? 'f' : 'c',
       distanceUnit: d['distanceUnit'] == 'imperial' ? 'imperial' : 'metric',
       atlasLimit: atlas is int && atlas >= 1 && atlas <= 100 ? atlas : 12,
@@ -72,6 +75,9 @@ class ServerFeatures {
 
   /// Map labels may carry the latest telemetry; the toggle hides without it.
   final bool mapTelemetry;
+
+  /// The app sign-in takes the app's own device label.
+  final bool appDeviceLabel;
 
   /// Instance display units: 'c' or 'f', 'metric' or 'imperial'.
   final String temperatureUnit, distanceUnit;

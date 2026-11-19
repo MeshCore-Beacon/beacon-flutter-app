@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import 'api.dart';
@@ -24,6 +25,15 @@ class SignInSuperseded implements Exception {
   @override
   String toString() => 'Sign-in was superseded';
 }
+
+/// How this device is listed under the account's devices. Without it the
+/// session would be named after the browser that did the sign-in.
+String appDeviceLabel([TargetPlatform? platform]) =>
+    switch (platform ?? defaultTargetPlatform) {
+      TargetPlatform.iOS => 'Beacon app on iOS',
+      TargetPlatform.android => 'Beacon app on Android',
+      _ => 'Beacon app',
+    };
 
 /// Signed-in calls for one server. Separate from [ApiClient] so a token never
 /// rides on a cached read: no cache, no shared state, default User-Agent.
@@ -158,10 +168,17 @@ class AuthApi {
   /// Trades the sign-in code for a session token and stores it.
   Future<Json> exchangeAppCode(String code, String verifier) async {
     final generation = _generation;
+    // An older server refuses fields it does not know, so the label goes
+    // only to one that says it takes it.
+    final labels = (await _serverFeatures())?.appDeviceLabel ?? false;
     final result = await _request(
       'POST',
       '/auth/app/token',
-      body: {'code': code, 'codeVerifier': verifier},
+      body: {
+        'code': code,
+        'codeVerifier': verifier,
+        if (labels) 'deviceLabel': appDeviceLabel(),
+      },
       authorize: false,
     );
     final token = result['token'];
@@ -354,26 +371,31 @@ class AuthApi {
     await send('DELETE', '/me/devices');
   }
 
-  bool? _atlasTelemetry;
-  DateTime? _atlasTelemetryAt;
+  ServerFeatures? _features;
+  DateTime? _featuresAt;
 
-  /// Whether the server stores Telemetry tiles and views in the account Atlas.
-  /// Read from `/info`, kept for a few minutes; any failure reads as no.
-  Future<bool> atlasTelemetry() async {
-    final at = _atlasTelemetryAt;
+  /// The server's optional features from `/info`, kept for a few minutes;
+  /// null when it cannot be read.
+  Future<ServerFeatures?> _serverFeatures() async {
+    final at = _featuresAt;
     if (at != null &&
         DateTime.now().difference(at) < const Duration(minutes: 5)) {
-      return _atlasTelemetry ?? false;
+      return _features;
     }
     try {
       final info = await _request('GET', '/info', authorize: false);
-      _atlasTelemetry = ServerFeatures.fromInfo(info).atlasTelemetry;
-      _atlasTelemetryAt = DateTime.now();
-      return _atlasTelemetry!;
+      _features = ServerFeatures.fromInfo(info);
+      _featuresAt = DateTime.now();
+      return _features;
     } catch (_) {
-      return false;
+      return null;
     }
   }
+
+  /// Whether the server stores Telemetry tiles and views in the account Atlas.
+  /// Any failure reads as no.
+  Future<bool> atlasTelemetry() async =>
+      (await _serverFeatures())?.atlasTelemetry ?? false;
 
   /// The account Atlas as the server holds it.
   Future<Json> atlas() => send('GET', '/me/atlas');

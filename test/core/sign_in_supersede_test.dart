@@ -141,7 +141,8 @@ void main() {
     final slow = AuthApi(
       base,
       tokens,
-      client: MockClient((_) async {
+      client: MockClient((r) async {
+        if (r.url.path.endsWith('/info')) return http.Response('{}', 200);
         sent.complete();
         return delayed.future;
       }),

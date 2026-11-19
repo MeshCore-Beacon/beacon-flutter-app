@@ -5,6 +5,7 @@ import 'package:beacon/core/api.dart';
 import 'package:beacon/core/auth_api.dart';
 import 'package:beacon/core/json.dart';
 import 'package:beacon/core/token_store.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -390,28 +391,43 @@ void main() {
   });
 
   group('exchangeAppCode', () {
-    test(
-      'posts code and verifier, stores the token, sends no Bearer',
-      () async {
-        await tokens.write(_base, 'stale');
-        final api = make(
-          (_) => _json(200, {
-            'token': 'fresh',
-            'expiresAt': 1,
-            'user': {'username': 'ridge'},
-          }),
-        );
-        final result = await api.exchangeAppCode('c', 'v');
-        expect(seen.single.url.path, '/api/v1/auth/app/token');
-        expect(jsonDecode(seen.single.body), {
-          'code': 'c',
-          'codeVerifier': 'v',
-        });
-        expect(seen.single.headers.containsKey('authorization'), false);
-        expect(result['user']['username'], 'ridge');
-        expect(await tokens.read(_base), 'fresh');
-      },
-    );
+    for (final takesLabel in [true, false]) {
+      test(
+        'posts code and verifier${takesLabel ? ' and device label' : ' only, to an older server'}, '
+        'stores the token, sends no Bearer',
+        () async {
+          await tokens.write(_base, 'stale');
+          final api = make(
+            (r) => r.url.path.endsWith('/info')
+                ? _json(200, {
+                    'features': {'appDeviceLabel': takesLabel},
+                  })
+                : _json(200, {
+                    'token': 'fresh',
+                    'expiresAt': 1,
+                    'user': {'username': 'ridge'},
+                  }),
+          );
+          final result = await api.exchangeAppCode('c', 'v');
+          final post = seen.last;
+          expect(post.url.path, '/api/v1/auth/app/token');
+          expect(jsonDecode(post.body), {
+            'code': 'c',
+            'codeVerifier': 'v',
+            if (takesLabel) 'deviceLabel': appDeviceLabel(),
+          });
+          expect(post.headers.containsKey('authorization'), false);
+          expect(result['user']['username'], 'ridge');
+          expect(await tokens.read(_base), 'fresh');
+        },
+      );
+    }
+
+    test('the device label names the platform', () {
+      expect(appDeviceLabel(TargetPlatform.iOS), 'Beacon app on iOS');
+      expect(appDeviceLabel(TargetPlatform.android), 'Beacon app on Android');
+      expect(appDeviceLabel(TargetPlatform.macOS), 'Beacon app');
+    });
 
     test('a failure leaves the stored token alone', () async {
       await tokens.write(_base, 'stale');
