@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -144,6 +145,16 @@ class SettingsPage extends StatelessWidget {
               mode: LaunchMode.externalApplication,
             ),
           ),
+          // Apple doesn't allow tip links outside in-app purchase.
+          if (defaultTargetPlatform == TargetPlatform.android)
+            ListTile(
+              title: Text(tr('Support on Ko-fi')),
+              trailing: const Icon(Icons.open_in_new, size: 18),
+              onTap: () => launchUrl(
+                Uri.parse('https://ko-fi.com/mralders0n'),
+                mode: LaunchMode.externalApplication,
+              ),
+            ),
           ListTile(
             title: Text(tr('Licenses')),
             onTap: () =>

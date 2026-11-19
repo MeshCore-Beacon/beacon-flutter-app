@@ -956,6 +956,7 @@
       "manageServers": "Hantera servrar",
       "removeServer": "Ta bort server",
       "licenses": "Licenser",
+      "kofi": "Stöd på Ko-fi",
       "notBeacon": "Den här servern verkar inte erbjuda Beacon-API:t.",
       "invalidUrl": "Ange en fullständig http://- eller https://-serveradress utan inloggningsuppgifter, frågesträng eller fragment.",
       "betaBuild": "Betaversion",

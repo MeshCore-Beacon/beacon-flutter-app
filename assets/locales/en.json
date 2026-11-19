@@ -956,6 +956,7 @@
       "manageServers": "Manage servers",
       "removeServer": "Remove server",
       "licenses": "Licenses",
+      "kofi": "Support on Ko-fi",
       "notBeacon": "This server does not appear to expose the Beacon API.",
       "invalidUrl": "Enter a complete http:// or https:// server URL without credentials, query or fragment.",
       "betaBuild": "Beta build",

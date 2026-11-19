@@ -994,6 +994,7 @@
       "manageServers": "Gérer les serveurs",
       "removeServer": "Supprimer le serveur",
       "licenses": "Licences",
+      "kofi": "Soutenir sur Ko-fi",
       "notBeacon": "Ce serveur ne semble pas exposer l’API Beacon.",
       "invalidUrl": "Saisissez une URL de serveur http:// ou https:// complète, sans identifiants, requête ni fragment.",
       "betaBuild": "Version bêta",
