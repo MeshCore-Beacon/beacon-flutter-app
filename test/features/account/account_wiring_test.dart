@@ -76,7 +76,7 @@ void main() {
     PushStore? store,
     String? other,
   }) async {
-    final prefs = await Preferences.load();
+    final prefs = await Preferences.load(tokens: tokens);
     if (other != null) {
       await prefs.saveServer(BeaconInstance.create('Other mesh', other));
     }
@@ -119,7 +119,6 @@ void main() {
       200,
       scrollable: find.byType(Scrollable).first,
     );
-    await tester.drag(find.byType(Scrollable).first, const Offset(0, -300));
     await tester.pumpAndSettle();
   }
 
@@ -172,6 +171,27 @@ void main() {
     await openSettings(tester);
     expect(find.text('Ridge Walker'), findsOneWidget);
     expect(find.text('Sign out'), findsOneWidget);
+  });
+
+  testWidgets('each server row says which account it is signed in to', (
+    tester,
+  ) async {
+    const other = 'https://other.example';
+    await tokens.write(server, 'tok');
+    await tokens.write(other, 'tok2');
+    SharedPreferences.setMockInitialValues({
+      'beacon.account.$other': 'Valley Runner',
+    });
+    await pumpApp(tester, other: other);
+    await tester.tap(find.byTooltip('Settings'));
+    await tester.pumpAndSettle();
+    expect(find.text('Signed in as Ridge Walker'), findsOneWidget);
+    expect(find.text('Signed in as Valley Runner'), findsOneWidget);
+
+    await tokens.delete(other);
+    await tester.tap(find.text('Home mesh'));
+    await tester.pumpAndSettle();
+    expect(find.text('Signed in as Valley Runner'), findsNothing);
   });
 
   testWidgets(

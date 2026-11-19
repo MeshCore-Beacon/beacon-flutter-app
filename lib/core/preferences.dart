@@ -88,6 +88,13 @@ class Preferences extends ChangeNotifier {
       }
       // The sign-in token follows too; a keystore failure must not block the edit.
       if (replacing != server.url) {
+        final name = _store.getString('$_accountPrefix$replacing');
+        if (name != null) {
+          if (!_store.containsKey('$_accountPrefix${server.url}')) {
+            await _store.setString('$_accountPrefix${server.url}', name);
+          }
+          await _store.remove('$_accountPrefix$replacing');
+        }
         try {
           await _tokens?.move(replacing, server.url);
         } catch (_) {}
@@ -156,10 +163,38 @@ class Preferences extends ChangeNotifier {
     await _store.remove('beacon.atlas.$url');
     await _moveAtlasMarkers(url, null);
     await _store.remove('beacon.atlas.owner.$url');
+    await _store.remove('$_accountPrefix$url');
     try {
       await _tokens?.delete(url);
     } catch (_) {}
     await _persist();
+  }
+
+  static const _accountPrefix = 'beacon.account.';
+
+  /// The username last signed in on [url], so Settings can name the account
+  /// of a server that is not open. Only a label: the token decides sign-in.
+  String? accountNameFor(String url) => _store.getString('$_accountPrefix$url');
+
+  Future<void> setAccountName(String url, String? name) async {
+    if (name == accountNameFor(url)) return;
+    if (name == null || name.isEmpty) {
+      await _store.remove('$_accountPrefix$url');
+    } else {
+      await _store.setString('$_accountPrefix$url', name);
+    }
+    notifyListeners();
+  }
+
+  /// The servers this phone holds a sign-in token for.
+  Future<Set<String>> signedInServers() async {
+    final result = <String>{};
+    for (final server in servers) {
+      try {
+        if (await _tokens?.read(server.url) != null) result.add(server.url);
+      } catch (_) {}
+    }
+    return result;
   }
 
   Future<void> setTheme(String id) async {

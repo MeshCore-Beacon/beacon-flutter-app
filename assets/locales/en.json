@@ -1294,6 +1294,8 @@
     },
     "account": {
       "heading": "Account on {{server}}",
+      "signedInAs": "Signed in as {{name}}",
+      "signedIn": "Signed in",
       "signIn": "Sign in",
       "signInNote": "Your browser opens so you can sign in, then returns you to the app.",
       "signInPortal": "Sign in with MeshMapper",

@@ -527,6 +527,7 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
           AuthApi(instance.url, widget.tokens),
     );
     widget.accounts.register(instance.url, account);
+    account.addListener(_rememberAccountName);
     if (widget.push case final hub?) {
       pushRegistration = PushRegistration(
         hub: hub,
@@ -557,6 +558,26 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
     if (widget.connectLive) loadConfig();
   }
 
+  bool _wasSignedIn = false;
+
+  /// Keeps the username for this server's row in Settings.
+  void _rememberAccountName() {
+    final url = account.api.base;
+    final user = account.user;
+    if (user != null) {
+      final username = textOf(user['username']);
+      unawaited(
+        widget.preferences.setAccountName(
+          url,
+          textOf(user['displayName'], username),
+        ),
+      );
+    } else if (_wasSignedIn) {
+      unawaited(widget.preferences.setAccountName(url, null));
+    }
+    _wasSignedIn = user != null;
+  }
+
   Future<void> loadConfig() async {
     final loaded = await RuntimeConfig.load(api.base);
     if (mounted) {
@@ -574,6 +595,7 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
     live.dispose();
     api.close();
     widget.accounts.unregister(account.api.base, account);
+    account.removeListener(_rememberAccountName);
     atlas.dispose();
     widget.push?.detach(account.api.base, _pushTapped);
     pushRegistration?.dispose();

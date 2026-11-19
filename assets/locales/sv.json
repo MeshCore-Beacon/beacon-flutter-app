@@ -1294,6 +1294,8 @@
     },
     "account": {
       "heading": "Konto på {{server}}",
+      "signedInAs": "Inloggad som {{name}}",
+      "signedIn": "Inloggad",
       "signIn": "Logga in",
       "signInNote": "Webbläsaren öppnas så att du kan logga in och tar dig sedan tillbaka till appen.",
       "signInPortal": "Logga in med MeshMapper",
