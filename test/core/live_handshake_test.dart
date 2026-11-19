@@ -35,12 +35,13 @@ void main() {
         final live = LiveConnection(
           Uri.parse('ws://127.0.0.1:${server.port}/ws'),
           {'iatas': 'YOW'},
+          handshakeTimeout: Duration(seconds: stop ? 20 : 1),
         );
         try {
           live.start();
           await received.future.timeout(const Duration(seconds: 5));
           if (stop) live.stop();
-          await closed.future.timeout(Duration(seconds: stop ? 2 : 24));
+          await closed.future.timeout(const Duration(seconds: 5));
           if (stop) expect(live.status, 'offline');
         } finally {
           live.dispose();
@@ -50,7 +51,6 @@ void main() {
           await server.close();
         }
       }, _RealHttp()),
-      timeout: const Timeout(Duration(seconds: 35)),
     );
   }
 }

@@ -28,12 +28,16 @@ class LiveConnection extends ChangeNotifier {
     DateTime Function()? now,
     this.ticket,
     this.reconnectGrace = const Duration(seconds: 3),
+    this.handshakeTimeout = const Duration(seconds: 20),
   }) : _now = now ?? DateTime.now;
   final DateTime Function() _now;
 
   /// A healthy link that drops keeps showing live this long, so a server reload goes unseen.
   final Duration reconnectGrace;
   Timer? _grace;
+
+  /// How long an unanswered upgrade may take before the attempt is closed.
+  final Duration handshakeTimeout;
 
   /// Fetches a /ws ticket before each connect; null, or a failure, connects without one.
   final Future<String> Function()? ticket;
@@ -111,7 +115,7 @@ class LiveConnection extends ChangeNotifier {
                   }
                   return socket;
                 })
-                .timeout(const Duration(seconds: 20));
+                .timeout(handshakeTimeout);
       } finally {
         // Successfully upgraded sockets are detached from their HTTP client.
         client.close(force: true);
