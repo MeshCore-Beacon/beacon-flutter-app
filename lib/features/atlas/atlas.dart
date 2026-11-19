@@ -204,7 +204,9 @@ AtlasPin? _pin(dynamic raw) {
   if (raw is! Map) return null;
   final rawName = raw['name'];
   final name = rawName is String
-      ? (rawName.length > 160 ? rawName.substring(0, 160) : rawName)
+      ? (rawName.length > 160
+            ? String.fromCharCodes(rawName.runes.take(160))
+            : rawName)
       : '';
   final tiles = _tiles(raw['tiles'], observerTiles, defaultTiles);
   final observerId = raw['observerId'];
