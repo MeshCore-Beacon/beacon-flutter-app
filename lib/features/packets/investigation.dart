@@ -219,8 +219,9 @@ class _PacketInvestigationState extends State<PacketInvestigation> {
                 children: [
                   Text(age(o['heardAt'])),
                   Text(textOf(o['iata'])),
-                  Text('RSSI ${textOf(o['rssi'], '?')} dBm'),
-                  Text('SNR ${textOf(o['snr'], '?')} dB'),
+                  // No reading is a dash; 0 is a real reading.
+                  Text('RSSI ${o['rssi'] == null ? '-' : '${o['rssi']} dBm'}'),
+                  Text('SNR ${o['snr'] == null ? '-' : '${o['snr']} dB'}'),
                   Text(
                     trKey(
                       'routes.hops',
