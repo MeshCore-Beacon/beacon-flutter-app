@@ -28,11 +28,13 @@ class MapScreen extends StatefulWidget {
     this.selectedNodeId,
     this.events,
     this.flowClock,
+    this.flowEvents,
   });
 
   /// Optional elapsed clock for deterministic flow lifecycle tests.
   final Stopwatch? flowClock;
   final Stream<Json>? events;
+  final Stream<Json>? flowEvents;
   final ApiClient api;
   final Map<String, dynamic> region;
   final void Function(String kind, String id) onOpen;
@@ -44,6 +46,7 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   static const _flowInterval = Duration(milliseconds: 50);
   StreamSubscription<Json>? _events;
+  StreamSubscription<Json>? _flowEvents;
   Timer? _flowTimer, _telemetryTimer, _ageTimer;
   ServerFeatures _features = const ServerFeatures.off();
   Map<String, TelemetryLabel> _labels = const {};
@@ -110,6 +113,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     _visible = visible;
     if (!visible) _clearFlow();
     _syncTelemetry();
+    _listenFlow();
   }
 
   Future<void> _save() async {
@@ -127,7 +131,11 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   @override
   void didUpdateWidget(covariant MapScreen old) {
     super.didUpdateWidget(old);
-    if (old.events != widget.events) _listen();
+    if (old.events != widget.events) {
+      _listen();
+    } else if (old.flowEvents != widget.flowEvents) {
+      _listenFlow();
+    }
     if (old.api != widget.api ||
         jsonEncode(old.region) != jsonEncode(widget.region)) {
       _selected = widget.selectedNodeId;
@@ -161,17 +169,31 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
           }
         });
       }
-      if (_flowAllowed && event['event'] == 'packetObservation') {
-        final ns = flowNodes(object(d['observation']));
-        if (ns.length < 2) return;
-        while (_flows.length >= 120) {
-          _flows.removeAt(0);
-        }
-        _flowClock.start();
-        _flows.add({'nodes': ns, 'start': _flowClock.elapsedMilliseconds});
-        _flowTimer ??= Timer.periodic(_flowInterval, (_) => _tick());
-      }
+      if (widget.flowEvents == null) _onFlow(event);
     });
+    _listenFlow();
+  }
+
+  void _listenFlow() {
+    _flowEvents?.cancel();
+    _flowEvents = null;
+    if (!_flowAllowed) return;
+    _flowEvents = widget.flowEvents?.listen(_onFlow);
+  }
+
+  void _onFlow(Json event) {
+    if (!mounted || !_flowAllowed || _codes?.isEmpty == true) return;
+    final d = object(event['data']);
+    if (event['event'] == 'packetObservation') {
+      final ns = flowNodes(object(d['observation']));
+      if (ns.length < 2) return;
+      while (_flows.length >= 120) {
+        _flows.removeAt(0);
+      }
+      _flowClock.start();
+      _flows.add({'nodes': ns, 'start': _flowClock.elapsedMilliseconds});
+      _flowTimer ??= Timer.periodic(_flowInterval, (_) => _tick());
+    }
   }
 
   void _tick() {
@@ -212,6 +234,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       _clearFlow();
       _stopTelemetryTimers();
     }
+    _listenFlow();
   }
 
   bool _current(int gen) => mounted && gen == _generation;
@@ -750,6 +773,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                 () {
                   setState(() => _flow = !_flow);
                   if (!_flow) _clearFlow();
+                  _listenFlow();
                 },
               ),
             ],
@@ -874,6 +898,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     _generation++;
     WidgetsBinding.instance.removeObserver(this);
     _events?.cancel();
+    _flowEvents?.cancel();
     _flowTimer?.cancel();
     _telemetryTimer?.cancel();
     _ageTimer?.cancel();

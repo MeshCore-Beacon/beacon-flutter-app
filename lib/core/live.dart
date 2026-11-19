@@ -45,6 +45,46 @@ class LiveConnection extends ChangeNotifier {
   final Map<String, dynamic> region;
   final _events = StreamController<Json>.broadcast();
   Stream<Json> get events => _events.stream;
+  int _resolvedListeners = 0;
+  bool? _configuredResolution;
+
+  /// Only consumers needing live path candidates should listen here. Multiple
+  /// consumers share one connection; the final cancellation releases the opt-in.
+  late final Stream<Json> resolvedEvents = Stream<Json>.multi((controller) {
+    if (_disposed) {
+      controller.close();
+      return;
+    }
+    _resolvedListeners++;
+    _syncResolution();
+    final subscription = events.listen(
+      controller.addSync,
+      onError: controller.addErrorSync,
+      onDone: controller.closeSync,
+    );
+    controller.onCancel = () {
+      _resolvedListeners--;
+      _syncResolution();
+      return subscription.cancel();
+    };
+  }, isBroadcast: true);
+
+  void _configure() {
+    _configuredResolution = _resolvedListeners > 0;
+    _send({
+      'type': 'configure',
+      'resolvePath': _configuredResolution,
+      'includeRepeats': false,
+    });
+  }
+
+  void _syncResolution() {
+    if (_configuredResolution != null &&
+        _configuredResolution != (_resolvedListeners > 0)) {
+      _configure();
+    }
+  }
+
   String status = 'offline';
   WebSocket? _socket;
   HttpClient? _handshakeClient;
@@ -143,11 +183,7 @@ class LiveConnection extends ChangeNotifier {
                 .split(',')
                 .where((e) => e.isNotEmpty)
                 .toList();
-            _send({
-              'type': 'configure',
-              'resolvePath': true,
-              'includeRepeats': false,
-            });
+            _configure();
             _send({
               'type': 'subscribe',
               'id': 'active',
@@ -197,6 +233,7 @@ class LiveConnection extends ChangeNotifier {
   void _disconnected(int generation) {
     if (generation != _generation || !_running || _disposed) return;
     ++_generation;
+    _configuredResolution = null;
     _heartbeat?.cancel();
     _socket?.close();
     _socket = null;
@@ -229,6 +266,7 @@ class LiveConnection extends ChangeNotifier {
     ++_generation;
     _handshakeClient?.close(force: true);
     _handshakeClient = null;
+    _configuredResolution = null;
     _retry?.cancel();
     _heartbeat?.cancel();
     _socket?.close();
