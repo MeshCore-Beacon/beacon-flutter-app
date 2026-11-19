@@ -77,22 +77,24 @@ class AuthApi {
     String? sentToken,
     bool tokenKnown = false,
   }) async {
-    final request = http.Request(method, _uri(path));
     // The stored token is the session generation: a request owns the one it
     // sent, whichever AuthApi of this server made it.
     final token = !authorize
         ? null
         : (tokenKnown ? sentToken : await tokens.read(base));
-    if (token != null) request.headers['Authorization'] = 'Bearer $token';
-    if (body != null) {
-      request.headers['Content-Type'] = 'application/json';
-      request.body = jsonEncode(body);
-    }
     http.Response response;
     try {
-      response = await http.Response.fromStream(
-        await _client.send(request).timeout(const Duration(seconds: 25)),
-      ).timeout(const Duration(seconds: 25));
+      response = await requestLimited(
+        _client,
+        method,
+        _uri(path),
+        1024 * 1024,
+        headers: {
+          if (token != null) 'Authorization': 'Bearer $token',
+          if (body != null) 'Content-Type': 'application/json',
+        },
+        body: body == null ? null : jsonEncode(body),
+      );
     } on TimeoutException {
       throw const ApiException(
         'The server took too long to respond. Try again.',
