@@ -43,6 +43,7 @@ class LiveConnection extends ChangeNotifier {
   Stream<Json> get events => _events.stream;
   String status = 'offline';
   WebSocket? _socket;
+  HttpClient? _handshakeClient;
   Timer? _heartbeat;
   Timer? _retry;
   int _attempts = 0;
@@ -92,10 +93,30 @@ class LiveConnection extends ChangeNotifier {
       final pass = await _ticket();
       if (!_running || _disposed || generation != _generation) return;
       // Keep dart:io's "Dart/" UA here too: the scrape block lets it in.
-      final socket = await WebSocket.connect(
-        uri.toString(),
-        headers: pass == null ? null : {'X-Beacon-Ticket': pass},
-      ).timeout(const Duration(seconds: 20));
+      final client = HttpClient();
+      _handshakeClient = client;
+      final WebSocket socket;
+      try {
+        socket =
+            await WebSocket.connect(
+                  uri.toString(),
+                  headers: pass == null ? null : {'X-Beacon-Ticket': pass},
+                  customClient: client,
+                )
+                .then((socket) {
+                  // A timeout stops awaiting a Future, not the underlying handshake.
+                  // Also close a socket if its upgrade completed at the cancellation boundary.
+                  if (!_running || _disposed || generation != _generation) {
+                    unawaited(socket.close());
+                  }
+                  return socket;
+                })
+                .timeout(const Duration(seconds: 20));
+      } finally {
+        // Successfully upgraded sockets are detached from their HTTP client.
+        client.close(force: true);
+        if (identical(_handshakeClient, client)) _handshakeClient = null;
+      }
       if (!_running || _disposed || generation != _generation) {
         await socket.close();
         return;
@@ -202,6 +223,8 @@ class LiveConnection extends ChangeNotifier {
     _running = false;
     _subscribedAt = null;
     ++_generation;
+    _handshakeClient?.close(force: true);
+    _handshakeClient = null;
     _retry?.cancel();
     _heartbeat?.cancel();
     _socket?.close();
