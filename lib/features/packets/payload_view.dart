@@ -278,8 +278,9 @@ class PacketPayloadView extends StatelessWidget {
               : colors.onSurfaceVariant,
         ),
     ];
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+    final flagsColor = packetFieldColor(context, 'flags');
+    return PacketFieldMark(
+      color: flagsColor,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -288,7 +289,7 @@ class PacketPayloadView extends StatelessWidget {
             style: TextStyle(
               fontFamily: 'JetBrainsMono',
               fontSize: 11,
-              color: colors.onSurfaceVariant,
+              color: flagsColor,
             ),
           ),
           const SizedBox(height: 6),
@@ -525,26 +526,33 @@ class PacketPayloadView extends StatelessWidget {
       ),
       _field('Flags', payload['flags']),
       if (hashes.isNotEmpty)
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(tr('Trace path')),
-              Wrap(
-                spacing: 4,
-                children: [
-                  for (var i = 0; i < hashes.length; i++) ...[
-                    if (i > 0) const Text('→'),
-                    _resolvedHash(
-                      textOf(hashes[i]),
-                      i < route.length ? route[i] : const {},
-                      snr: i < snrs.length ? snrs[i] : null,
-                    ),
+        Builder(
+          builder: (context) => PacketFieldMark(
+            color: packetFieldColor(context, 'tracePath'),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  tr('Trace path'),
+                  style: TextStyle(
+                    color: packetFieldColor(context, 'tracePath'),
+                  ),
+                ),
+                Wrap(
+                  spacing: 4,
+                  children: [
+                    for (var i = 0; i < hashes.length; i++) ...[
+                      if (i > 0) const Text('→'),
+                      _resolvedHash(
+                        textOf(hashes[i]),
+                        i < route.length ? route[i] : const {},
+                        snr: i < snrs.length ? snrs[i] : null,
+                      ),
+                    ],
                   ],
-                ],
-              ),
-            ],
+                ),
+              ],
+            ),
           ),
         ),
     ]);

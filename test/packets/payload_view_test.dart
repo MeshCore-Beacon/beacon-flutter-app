@@ -254,6 +254,16 @@ void main() {
     expect(find.text('Signature'), findsOneWidget);
     expect(find.textContaining('Role Repeater'), findsOneWidget);
     expect(find.textContaining('(4B LE)'), findsOneWidget);
+    // The flags block is marked like the other fields, in the flags colour.
+    final flags = find.text('APP FLAGS');
+    expect(
+      tester.widget<Text>(flags).style?.color,
+      packetFieldColor(tester.element(flags), 'flags'),
+    );
+    expect(
+      find.ancestor(of: flags, matching: find.byType(PacketFieldMark)),
+      findsOneWidget,
+    );
     expect(find.text('Device role'), findsNothing);
     expect(find.text('Has location'), findsNothing);
     expect(find.textContaining('65 6C 61 79'), findsNothing);
