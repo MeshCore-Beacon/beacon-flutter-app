@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'strings.dart';
 import 'theme.dart';
@@ -16,6 +17,44 @@ Future<T?> showBeaconSheet<T>(
   // BeaconSheet draws its own slimmer handle.
   showDragHandle: false,
   builder: builder,
+);
+
+/// Shows a value too long for its row in full, selectable and with a copy
+/// button.
+Future<void> showValueSheet(
+  BuildContext context, {
+  required String title,
+  required String value,
+}) => showBeaconSheet<void>(
+  context,
+  builder: (context) => BeaconSheet(
+    title: title,
+    actions: [
+      IconButton(
+        tooltip: tr('Copy'),
+        icon: const Icon(Icons.copy_outlined, size: 18),
+        onPressed: () async {
+          await Clipboard.setData(ClipboardData(text: value));
+          if (context.mounted) {
+            ScaffoldMessenger.of(context)
+                .showSnackBar(SnackBar(content: Text(tr('Copied'))));
+          }
+        },
+      ),
+    ],
+    child: SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(
+        BeaconSheet.gutter,
+        8,
+        BeaconSheet.gutter,
+        16,
+      ),
+      child: SelectableText(
+        value,
+        style: const TextStyle(fontFamily: 'JetBrainsMono', fontSize: 12),
+      ),
+    ),
+  ),
 );
 
 /// The frame every bottom sheet shares: handle, header with a close button,

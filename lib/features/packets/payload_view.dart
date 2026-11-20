@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../../core/json.dart';
+import '../../core/sheet.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
 import 'packet_model.dart';
@@ -341,19 +342,7 @@ class PacketPayloadView extends StatelessWidget {
   }
 
   void _showFullValue(BuildContext context, String title, String value) {
-    showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: SingleChildScrollView(child: SelectableText(value)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(tr('Close')),
-          ),
-        ],
-      ),
-    );
+    showValueSheet(context, title: title, value: value);
   }
 
   Widget _group(Json payload) {

@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../../core/account.dart';
 import '../../core/api.dart';
 import '../../core/json.dart';
+import '../../core/sheet.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
 import '../analytics/charts.dart';
@@ -589,24 +590,10 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
               child: InkWell(
                 onTap: publicKey.isEmpty
                     ? null
-                    : () => showDialog<void>(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                          title: Text(tr('Public key')),
-                          content: SelectableText(
-                            publicKey,
-                            style: const TextStyle(
-                              fontFamily: 'JetBrainsMono',
-                              fontSize: 12,
-                            ),
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context),
-                              child: Text(tr('Close')),
-                            ),
-                          ],
-                        ),
+                    : () => showValueSheet(
+                        context,
+                        title: tr('Public key'),
+                        value: publicKey,
                       ),
                 child: Text(
                   publicKey.isEmpty ? tr('Unknown') : publicKey,

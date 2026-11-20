@@ -262,12 +262,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text(publicKey.toUpperCase()), findsOneWidget);
     expect(find.byType(SelectableText), findsWidgets);
-    await tester.tap(find.text('Close'));
+    await tester.tap(find.byTooltip('Close'));
     await tester.pumpAndSettle();
     await tester.tap(find.textContaining('…').last);
     await tester.pumpAndSettle();
     expect(find.text(signature.toUpperCase()), findsOneWidget);
-    await tester.tap(find.text('Close'));
+    await tester.tap(find.byTooltip('Close'));
     await tester.pumpAndSettle();
     expect(find.text('0010'), findsOneWidget);
     expect(tester.takeException(), isNull);

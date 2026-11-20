@@ -191,24 +191,10 @@ class _ResolvedNodesSheet extends StatelessWidget {
                           children: [
                             Expanded(
                               child: InkWell(
-                                onTap: () => showDialog<void>(
-                                  context: context,
-                                  builder: (context) => AlertDialog(
-                                    title: Text(tr('Public key')),
-                                    content: SelectableText(
-                                      textOf(node['publicKey']),
-                                      style: const TextStyle(
-                                        fontFamily: 'JetBrainsMono',
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () => Navigator.pop(context),
-                                        child: Text(tr('Close')),
-                                      ),
-                                    ],
-                                  ),
+                                onTap: () => showValueSheet(
+                                  context,
+                                  title: tr('Public key'),
+                                  value: textOf(node['publicKey']),
                                 ),
                                 child: Text(
                                   _keyPreview(textOf(node['publicKey'])),
