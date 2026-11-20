@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../core/json.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
+import 'packet_model.dart';
 import 'path_hop.dart';
 
 class PacketByteRange {
@@ -25,13 +26,12 @@ Map<String, PacketByteRange> computeFieldRanges(Json detail, Json observation) {
   final payload = object(detail['parsedPayload']);
   final transport = object(detail['transportCodes']);
   final rawPayload = textOf(detail['rawPayload']);
+  final pathBytes = observationWirePath(observation).length ~/ 2;
   final totalBytes =
       rawPayload.length ~/ 2 +
       1 +
       (transport.isEmpty ? 0 : 4) +
-      (observation.isEmpty
-          ? 0
-          : 1 + textOf(observation['pathBytes']).length ~/ 2);
+      (observation.isEmpty ? 0 : 1 + pathBytes);
   final ranges = <String, PacketByteRange>{
     'header': const PacketByteRange(0, 1),
   };
@@ -43,7 +43,6 @@ Map<String, PacketByteRange> computeFieldRanges(Json detail, Json observation) {
   if (observation.isNotEmpty) {
     ranges['pathLength'] = PacketByteRange(offset, offset + 1);
     offset++;
-    final pathBytes = textOf(observation['pathBytes']).length ~/ 2;
     if (pathBytes > 0) {
       ranges['pathData'] = PacketByteRange(offset, offset + pathBytes);
     }

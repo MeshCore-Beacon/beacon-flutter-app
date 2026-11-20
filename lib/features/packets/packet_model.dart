@@ -59,6 +59,11 @@ List<Json> mergePacketEvent(List<Json> current, Json data) {
       : mergePacketPages(current, [incoming]);
 }
 
+String observationWirePath(Json observation) {
+  final wire = observation['wirePathBytes'];
+  return wire is String ? wire : textOf(observation['pathBytes']);
+}
+
 String observationFrame(Json detail, Json? observation) {
   String byte(dynamic value) => textOf(value, '00').padLeft(2, '0');
   String code(dynamic value) {
@@ -67,7 +72,7 @@ String observationFrame(Json detail, Json? observation) {
   }
 
   final transport = object(detail['transportCodes']);
-  return '${byte(object(detail['header'])['raw'])}${transport.isEmpty ? '' : code(transport['regionCode']) + code(transport['subRegionCode'])}${observation == null ? '' : byte(object(observation['pathLength'])['raw']) + textOf(observation['pathBytes'])}${textOf(detail['rawPayload'])}';
+  return '${byte(object(detail['header'])['raw'])}${transport.isEmpty ? '' : code(transport['regionCode']) + code(transport['subRegionCode'])}${observation == null ? '' : byte(object(observation['pathLength'])['raw']) + observationWirePath(observation)}${textOf(detail['rawPayload'])}';
 }
 
 class PacketBuffer {
