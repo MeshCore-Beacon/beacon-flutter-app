@@ -278,73 +278,53 @@ class _PacketDetailScreenState extends State<PacketDetailScreen>
                       ),
                     ),
                   ]),
-                if (obs != null) ...[
-                  if (object(obs['resolvedSource']).isNotEmpty ||
-                      object(obs['resolvedDestination']).isNotEmpty)
-                    section('Endpoints', [
-                      for (final key in [
-                        'resolvedSource',
-                        'resolvedDestination',
-                      ])
-                        if (object(obs[key]).isNotEmpty) ...[
-                          Text(
-                            tr(
-                              key == 'resolvedSource'
-                                  ? 'Source'
-                                  : 'Destination',
-                            ),
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: BeaconColors.of(context).muted,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          _resolved(object(obs[key])),
-                          if (key == 'resolvedSource')
-                            const SizedBox(height: 6),
-                        ],
-                    ]),
-                  if (textOf(obs['pathBytes']).isNotEmpty)
-                    section('Path', [
-                      PacketPathHops(observation: obs, onOpen: widget.onOpen),
-                    ]),
-                ],
                 section('Packet structure', [
-                  _structureLabel('Header byte'),
-                  _inlineFields([
-                    '${tr('Ver')} ${header['payloadVersion'] ?? '?'}',
-                    '${tr('Type')} ${payloadName(header['payloadType'])} (${header['payloadType'] ?? '?'})',
-                    '${tr('Route')} ${header['routeTypeName'] ?? '?'} (${header['routeType'] ?? '?'})',
-                  ]),
-                  if (int.tryParse(textOf(header['raw']), radix: 16)
-                      case final int byte)
-                    _bits(byte),
-                  if (object(data['transportCodes']).isNotEmpty) ...[
-                    _structureLabel('Transport codes'),
+                  _structure('header', 'Header byte', [
                     _inlineFields([
-                      '${tr('Region code')} ${object(data['transportCodes'])['regionCode']}',
-                      '${tr('Subregion code')} ${object(data['transportCodes'])['subRegionCode']}',
+                      '${tr('Ver')} ${header['payloadVersion'] ?? '?'}',
+                      '${tr('Type')} ${payloadName(header['payloadType'])} (${header['payloadType'] ?? '?'})',
+                      '${tr('Route')} ${header['routeTypeName'] ?? '?'} (${header['routeType'] ?? '?'})',
                     ]),
-                  ],
-                  if (obs != null) ...[
-                    _structureLabel('Path length'),
-                    _inlineFields([
-                      '${tr('Hash size')} ${object(obs['pathLength'])['hashSize'] ?? '?'}B',
-                      '${tr('Hops')} ${object(obs['pathLength'])['hopCount'] ?? '?'}',
-                    ]),
-                    if (int.tryParse(
-                          textOf(object(obs['pathLength'])['raw']),
-                          radix: 16,
-                        )
+                    if (int.tryParse(textOf(header['raw']), radix: 16)
                         case final int byte)
-                      _bits(byte, pathLength: true),
-                  ],
+                      _bits(byte),
+                  ]),
+                  if (object(data['transportCodes']).isNotEmpty)
+                    _structure('transport', 'Transport codes', [
+                      _inlineFields([
+                        '${tr('Region code')} ${object(data['transportCodes'])['regionCode']}',
+                        '${tr('Subregion code')} ${object(data['transportCodes'])['subRegionCode']}',
+                      ]),
+                    ]),
+                  if (obs != null)
+                    _structure('pathLength', 'Path length', [
+                      _inlineFields([
+                        '${tr('Hash size')} ${object(obs['pathLength'])['hashSize'] ?? '?'}B',
+                        '${tr('Hops')} ${object(obs['pathLength'])['hopCount'] ?? '?'}',
+                      ]),
+                      if (int.tryParse(
+                            textOf(object(obs['pathLength'])['raw']),
+                            radix: 16,
+                          )
+                          case final int byte)
+                        _bits(byte, pathLength: true),
+                    ]),
                   if (data['originPubkey'] != null &&
                       textOf(data['originPubkey']).toUpperCase() !=
                           textOf(object(data['parsedPayload'])['publicKey'])
                               .toUpperCase())
                     _field('Origin public key', data['originPubkey']),
                 ]),
+                if (obs != null && textOf(obs['pathBytes']).isNotEmpty)
+                  section('Path', [
+                    PacketFieldMark(
+                      color: packetFieldColor(context, 'pathData'),
+                      child: PacketPathHops(
+                        observation: obs,
+                        onOpen: widget.onOpen,
+                      ),
+                    ),
+                  ]),
                 section('Payload breakdown', [
                   PacketPayloadView(
                     detail: data,
@@ -394,17 +374,30 @@ class _PacketDetailScreenState extends State<PacketDetailScreen>
     );
   }
 
-  Widget _structureLabel(String label) => Padding(
-    padding: const EdgeInsets.only(top: 8, bottom: 6),
-    child: Text(
-      tr(label).toUpperCase(),
-      style: TextStyle(
-        fontFamily: 'JetBrainsMono',
-        fontSize: 11,
-        color: Theme.of(context).colorScheme.onSurfaceVariant,
+  /// One frame field's block, marked in the colour of its raw bytes.
+  Widget _structure(String field, String label, List<Widget> children) {
+    final color = packetFieldColor(context, field);
+    return PacketFieldMark(
+      color: color,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text(
+              tr(label).toUpperCase(),
+              style: TextStyle(
+                fontFamily: 'JetBrainsMono',
+                fontSize: 11,
+                color: color,
+              ),
+            ),
+          ),
+          ...children,
+        ],
       ),
-    ),
-  );
+    );
+  }
 
   Widget _inlineFields(List<String> values) => Padding(
     padding: const EdgeInsets.only(bottom: 8),
@@ -434,15 +427,6 @@ class _PacketDetailScreenState extends State<PacketDetailScreen>
       ],
     ),
   );
-  Widget _resolved(Json hop) => Align(
-    alignment: Alignment.centerLeft,
-    child: PathHopChip(
-      hash: textOf(hop['hashBytes']),
-      hop: hop,
-      onOpen: widget.onOpen,
-    ),
-  );
-
   Widget _bits(int byte, {bool pathLength = false}) {
     final bits = (byte & 255).toRadixString(2).padLeft(8, '0');
     final groups = pathLength
@@ -517,29 +501,7 @@ class _PacketDetailScreenState extends State<PacketDetailScreen>
   }
 
   Widget _hex(String raw, {Map<String, PacketByteRange> ranges = const {}}) {
-    final scheme = Theme.of(context).colorScheme;
-    Color fieldColor(String? field) => switch (field) {
-      'header' ||
-      'pathData' ||
-      'signature' ||
-      'sourceHash' ||
-      'tracePath' => scheme.secondary,
-      'pathLength' ||
-      'channelHash' ||
-      'advertTimestamp' ||
-      'destinationHash' ||
-      'traceTag' => scheme.primary,
-      'transport' ||
-      'cipherMac' ||
-      'flags' ||
-      'checksum' => BeaconColors.of(context).warning,
-      'publicKey' ||
-      'location' ||
-      'senderPublicKey' ||
-      'authCode' => BeaconColors.of(context).success,
-      'ciphertext' => scheme.error,
-      _ => scheme.onSurface.withValues(alpha: .7),
-    };
+    Color fieldColor(String? field) => packetFieldColor(context, field);
     String? fieldAt(int offset) => ranges.entries
         .where(
           (e) =>

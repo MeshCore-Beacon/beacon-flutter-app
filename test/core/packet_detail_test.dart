@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 void main() {
+  analyzerLayoutTests();
   testWidgets(
     'packet structure uses compact metadata and hides duplicate payload data',
     (tester) async {
@@ -286,5 +287,80 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('more bytes'), findsOneWidget);
     expect(find.text('AB').evaluate().length, lessThanOrEqualTo(512));
+  });
+}
+
+void analyzerLayoutTests() {
+  testWidgets('decoded sections follow the frame and share its byte colours', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final api = ApiClient(
+      Uri.parse('https://example.test'),
+      client: MockClient(
+        (_) async => http.Response(
+          jsonEncode({
+            'header': {
+              'raw': '06',
+              'payloadType': 1,
+              'payloadVersion': 0,
+              'routeTypeName': 'DIRECT',
+              'routeType': 2,
+            },
+            'rawPayload': 'C3C83D1FD0EA',
+            'parsedPayload': {
+              'type': 'RESPONSE',
+              'destinationHash': 'C3',
+              'sourceHash': 'C8',
+              'cipherMac': '3D1F',
+              'ciphertext': 'D0EA',
+            },
+            'observations': [
+              {
+                'id': 1,
+                'pathBytes': 'AA',
+                'pathLength': {'raw': '01', 'hashSize': 1, 'hopCount': 1},
+                'resolvedSource': {'confidence': 'none', 'nodes': <Object>[]},
+              },
+            ],
+          }),
+          200,
+        ),
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PacketDetailScreen(api: api, hash: 'abcd', onOpen: (_, _) {}),
+      ),
+    );
+    await tester.pumpAndSettle();
+    // From and To are in the payload breakdown, so no section repeats them.
+    expect(find.text('ENDPOINTS'), findsNothing);
+    expect(find.text('From '), findsOneWidget);
+    // Path follows the structure, as its bytes follow the header.
+    expect(
+      tester.getTopLeft(find.text('PATH')).dy,
+      greaterThan(tester.getTopLeft(find.text('PACKET STRUCTURE')).dy),
+    );
+    expect(
+      tester.getTopLeft(find.text('PATH')).dy,
+      lessThan(tester.getTopLeft(find.text('PAYLOAD BREAKDOWN')).dy),
+    );
+    // The raw packet comes first, so a repeated hash finds its raw byte.
+    Color? of(String text) =>
+        tester.widget<Text>(find.text(text).first).style?.color;
+    // Raw bytes: header 06, path length 01, path AA, then the payload.
+    expect(of('HEADER BYTE'), of('06'));
+    expect(of('PATH LENGTH'), of('01'));
+    expect(of('MAC'), of('3D'));
+    expect(of('Ciphertext'), of('D0'));
+    expect(of('From '), of('C8'));
+    expect(of('To '), of('C3'));
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    api.close();
   });
 }
