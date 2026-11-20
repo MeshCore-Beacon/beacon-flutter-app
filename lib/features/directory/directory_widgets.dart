@@ -43,6 +43,14 @@ Widget mono(String s, {Color? color}) => Text(
   s,
   style: TextStyle(fontFamily: 'JetBrainsMono', fontSize: 11, color: color),
 );
+
+/// The bordered card every detail page section sits in.
+BoxDecoration sectionDecoration(BeaconColors colors) => BoxDecoration(
+  color: colors.raised.withValues(alpha: .28),
+  border: Border.all(color: colors.borderSubtle),
+  borderRadius: BorderRadius.circular(5),
+);
+
 Widget section(String title, List<Widget> children, {List<String>? info}) =>
     Builder(
       builder: (context) {
@@ -50,11 +58,7 @@ Widget section(String title, List<Widget> children, {List<String>? info}) =>
         return Container(
           margin: const EdgeInsets.symmetric(vertical: 7),
           padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: colors.raised.withValues(alpha: .28),
-            border: Border.all(color: colors.borderSubtle),
-            borderRadius: BorderRadius.circular(5),
-          ),
+          decoration: sectionDecoration(colors),
           child: Material(
             type: MaterialType.transparency,
             child: Column(
@@ -196,11 +200,7 @@ class _FoldSectionState extends State<FoldSection> {
     final colors = BeaconColors.of(context);
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 7),
-      decoration: BoxDecoration(
-        color: colors.raised.withValues(alpha: .28),
-        border: Border.all(color: colors.borderSubtle),
-        borderRadius: BorderRadius.circular(5),
-      ),
+      decoration: sectionDecoration(colors),
       child: Material(
         type: MaterialType.transparency,
         child: Column(

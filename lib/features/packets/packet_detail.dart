@@ -5,6 +5,8 @@ import '../../core/api.dart';
 import '../../core/json.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
+import '../directory/directory_widgets.dart'
+    show section, sectionDecoration, sectionTitle;
 import '../map/map_data.dart';
 import '../map/packet_path_screen.dart';
 import 'investigation.dart';
@@ -111,18 +113,12 @@ class _PacketDetailScreenState extends State<PacketDetailScreen>
       appBar: AppBar(
         title: Text(
           tr('Packet analyzer'),
-          style: const TextStyle(
-            fontFamily: 'JetBrainsMono',
-            fontSize: 13,
-            letterSpacing: .6,
-          ),
+          style: const TextStyle(fontSize: 16),
         ),
         actions: [
-          TextButton(
-            child: Text(
-              tr('Copy link'),
-              style: const TextStyle(fontFamily: 'JetBrainsMono', fontSize: 11),
-            ),
+          IconButton(
+            tooltip: tr('Copy link'),
+            icon: const Icon(Icons.link),
             onPressed: () => copy(
               widget.api.base
                   .replace(
@@ -154,9 +150,9 @@ class _PacketDetailScreenState extends State<PacketDetailScreen>
                     ),
             )
           : ListView(
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              children: _insetSections([
-                _section('Summary', [
+              padding: const EdgeInsets.all(16),
+              children: [
+                section('Summary', [
                   Row(
                     children: [
                       Tooltip(
@@ -211,32 +207,33 @@ class _PacketDetailScreenState extends State<PacketDetailScreen>
                     ),
                   ),
                   if (data['scope'] != null) _field('Scope', data['scope']),
-                ]),
-                OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(4),
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      minimumSize: const Size.fromHeight(36),
+                      textStyle: const TextStyle(
+                        fontFamily: 'JetBrainsMono',
+                        fontSize: 12,
+                      ),
                     ),
-                    minimumSize: const Size.fromHeight(36),
-                    textStyle: const TextStyle(
-                      fontFamily: 'JetBrainsMono',
-                      fontSize: 12,
-                    ),
-                  ),
-                  icon: const Icon(Icons.map_outlined, size: 14),
-                  label: Text(tr('Map all paths')),
-                  onPressed: packetPaths(data).isEmpty
-                      ? null
-                      : () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => PacketPathScreen(
-                              detail: data,
-                              onOpen: widget.onOpen,
+                    icon: const Icon(Icons.map_outlined, size: 14),
+                    label: Text(tr('Map all paths')),
+                    onPressed: packetPaths(data).isEmpty
+                        ? null
+                        : () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => PacketPathScreen(
+                                detail: data,
+                                onOpen: widget.onOpen,
+                              ),
                             ),
                           ),
-                        ),
-                ),
+                  ),
+                ]),
                 if (unavailable)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 12),
@@ -260,9 +257,8 @@ class _PacketDetailScreenState extends State<PacketDetailScreen>
                   ),
                   onOpen: widget.onOpen,
                 ),
-                const SizedBox(height: 12),
                 if (!unavailable)
-                  _section('Raw packet', [
+                  section('Raw packet', [
                     _hex(
                       observationFrame(data, obs),
                       ranges: computeFieldRanges(data, obs ?? const {}),
@@ -285,7 +281,7 @@ class _PacketDetailScreenState extends State<PacketDetailScreen>
                 if (obs != null) ...[
                   if (object(obs['resolvedSource']).isNotEmpty ||
                       object(obs['resolvedDestination']).isNotEmpty)
-                    _section('Endpoints', [
+                    section('Endpoints', [
                       for (final key in [
                         'resolvedSource',
                         'resolvedDestination',
@@ -297,17 +293,23 @@ class _PacketDetailScreenState extends State<PacketDetailScreen>
                                   ? 'Source'
                                   : 'Destination',
                             ),
-                            style: Theme.of(context).textTheme.titleSmall,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: BeaconColors.of(context).muted,
+                            ),
                           ),
+                          const SizedBox(height: 4),
                           _resolved(object(obs[key])),
+                          if (key == 'resolvedSource')
+                            const SizedBox(height: 6),
                         ],
                     ]),
                   if (textOf(obs['pathBytes']).isNotEmpty)
-                    _section('Path', [
+                    section('Path', [
                       PacketPathHops(observation: obs, onOpen: widget.onOpen),
                     ]),
                 ],
-                _section('Packet structure', [
+                section('Packet structure', [
                   _structureLabel('Header byte'),
                   _inlineFields([
                     '${tr('Ver')} ${header['payloadVersion'] ?? '?'}',
@@ -343,7 +345,7 @@ class _PacketDetailScreenState extends State<PacketDetailScreen>
                               .toUpperCase())
                     _field('Origin public key', data['originPubkey']),
                 ]),
-                _section('Payload breakdown', [
+                section('Payload breakdown', [
                   PacketPayloadView(
                     detail: data,
                     observation: obs ?? const {},
@@ -351,66 +353,47 @@ class _PacketDetailScreenState extends State<PacketDetailScreen>
                   ),
                 ]),
                 if (textOf(data['rawPayload']).isNotEmpty)
-                  ExpansionTile(
-                    tilePadding: EdgeInsets.zero,
-                    shape: const Border(),
-                    collapsedShape: const Border(),
-                    title: Text(
-                      tr('Payload data').toUpperCase(),
-                      style: const TextStyle(
-                        fontFamily: 'JetBrainsMono',
-                        fontSize: 12,
+                  Container(
+                    margin: const EdgeInsets.symmetric(vertical: 7),
+                    clipBehavior: Clip.antiAlias,
+                    decoration: sectionDecoration(BeaconColors.of(context)),
+                    child: Material(
+                      type: MaterialType.transparency,
+                      child: ExpansionTile(
+                        tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+                        childrenPadding: const EdgeInsets.fromLTRB(
+                          12,
+                          0,
+                          12,
+                          12,
+                        ),
+                        controlAffinity: ListTileControlAffinity.leading,
+                        shape: const Border(),
+                        collapsedShape: const Border(),
+                        title: sectionTitle(
+                          'Payload data',
+                          BeaconColors.of(context),
+                        ),
+                        subtitle: Text(
+                          trKey(
+                            'packetAnalyzer.bytes',
+                            count: textOf(data['rawPayload']).length ~/ 2,
+                          ),
+                          style: TextStyle(
+                            fontFamily: 'JetBrainsMono',
+                            fontSize: 11,
+                            color: BeaconColors.of(context).muted,
+                          ),
+                        ),
+                        children: [_hex(textOf(data['rawPayload']))],
                       ),
                     ),
-                    subtitle: Text(
-                      trKey(
-                        'packetAnalyzer.bytes',
-                        count: textOf(data['rawPayload']).length ~/ 2,
-                      ),
-                      style: const TextStyle(
-                        fontFamily: 'JetBrainsMono',
-                        fontSize: 11,
-                      ),
-                    ),
-                    children: [_hex(textOf(data['rawPayload']))],
                   ),
-              ]),
+              ],
             ),
     );
   }
 
-  List<Widget> _insetSections(List<Widget> children) => [
-    for (final child in children)
-      if (child is PacketInvestigation)
-        child
-      else
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          child: child,
-        ),
-  ];
-
-  Widget _section(String title, List<Widget> children) => Padding(
-    padding: const EdgeInsets.only(bottom: 18),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: Text(
-            tr(title).toUpperCase(),
-            style: const TextStyle(
-              fontFamily: 'JetBrainsMono',
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              letterSpacing: .7,
-            ),
-          ),
-        ),
-        ...children,
-      ],
-    ),
-  );
   Widget _structureLabel(String label) => Padding(
     padding: const EdgeInsets.only(top: 8, bottom: 6),
     child: Text(

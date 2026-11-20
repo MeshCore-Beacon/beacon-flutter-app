@@ -50,6 +50,14 @@ void main() {
       expect(find.text('Type ADVERT (4)'), findsOneWidget);
       expect(find.text('Hash size 3B'), findsOneWidget);
       expect(find.text('Hops 0'), findsOneWidget);
+      // Sections are the node page's cards: a blue title in a bordered box.
+      final summary = tester.widget<Text>(find.text('SUMMARY'));
+      expect(
+        summary.style?.color,
+        Theme.of(tester.element(find.text('SUMMARY'))).colorScheme.primary,
+      );
+      expect(summary.style?.fontSize, 10);
+      expect(find.byTooltip('Copy link'), findsOneWidget);
       await tester.scrollUntilVisible(
         find.text('PAYLOAD DATA'),
         200,
