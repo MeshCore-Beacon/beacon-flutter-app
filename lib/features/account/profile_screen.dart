@@ -1,20 +1,22 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter/services.dart';
 
 import '../../core/account.dart';
+import '../../core/alerts_state.dart';
 import '../../core/api.dart';
 import '../../core/features.dart';
 import '../../core/json.dart';
 import '../../core/push.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
-import '../../core/units.dart';
 import '../directory/directory_widgets.dart';
 import '../directory/telemetry_request.dart';
 import 'account_errors.dart';
 import 'account_section.dart' show confirmAction;
+import 'alert_rule_list.dart';
 import 'alert_rules.dart';
 import 'password_rule.dart';
 import 'request_text.dart';
@@ -31,8 +33,12 @@ class ProfileScreen extends StatefulWidget {
     this.api,
     this.onOpen,
     this.serverName = '',
+    this.showAlerts = false,
   });
   final AccountState account;
+
+  /// Opens scrolled to the alerts, for a link that is about them.
+  final bool showAlerts;
 
   /// The saved server's name, shown in the push line.
   final String serverName;
@@ -56,6 +62,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// Local until the server's features say otherwise; null while they load.
   ServerFeatures? features;
 
+  // Not a GlobalKey: that would carry the section's state to the next account.
+  BuildContext? _alertsContext;
+
+  /// Keeps the alerts at the top while the lists above them load, until the
+  /// user touches the screen.
+  late bool _follow = widget.showAlerts;
+
+  void _showAlerts() {
+    if (!_follow) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final alerts = _alertsContext;
+      if (_follow && alerts != null && alerts.mounted) {
+        Scrollable.ensureVisible(alerts);
+      }
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -65,7 +88,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       features = const ServerFeatures.off();
     } else {
       api.features().then((f) {
-        if (mounted) setState(() => features = f);
+        if (!mounted) return;
+        setState(() => features = f);
+        _showAlerts();
       });
     }
   }
@@ -84,6 +109,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
     refresh.dispose();
     super.dispose();
   }
+
+  /// A list above the alerts that finishes loading pushes them down; this
+  /// brings them back. Any touch ends it, so it never fights the user.
+  Widget _following(Widget list) => !widget.showAlerts
+      ? list
+      : Listener(
+          onPointerDown: (_) => _follow = false,
+          child: NotificationListener<ScrollMetricsNotification>(
+            onNotification: (_) {
+              _showAlerts();
+              return false;
+            },
+            child: list,
+          ),
+        );
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -104,60 +144,71 @@ class _ProfileScreenState extends State<ProfileScreen> {
             refresh.value++;
             await Future<void>.delayed(const Duration(milliseconds: 500));
           },
-          child: ListView(
-            // New account, new forms: typed passwords never carry over.
-            key: ValueKey('profile-${widget.account.epoch}'),
-            physics: const AlwaysScrollableScrollPhysics(),
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: EdgeInsets.fromLTRB(
-              12,
-              12,
-              12,
-              24 + MediaQuery.viewPaddingOf(context).bottom,
-            ),
-            children: [
-              section(trKey('account.sectionAccount'), [
-                _NameForm(account: widget.account),
-                // The portal owns the email address of its users.
-                if (!portal) ...[
-                  const SizedBox(height: 16),
-                  _EmailForm(account: widget.account),
-                ],
-              ]),
-              if (portal)
-                section(trKey('account.sectionPortal'), [
-                  Text(trKey('account.portalManaged')),
-                  if (features.portalUrl case final url?)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: SelectableText(url),
-                    ),
-                ])
-              else
-                section(trKey('account.sectionPassword'), [
-                  _PasswordForm(account: widget.account, devices: devices),
+          child: _following(
+            ListView(
+              // New account, new forms: typed passwords never carry over.
+              key: ValueKey('profile-${widget.account.epoch}'),
+              physics: const AlwaysScrollableScrollPhysics(),
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              // The list builds lazily; the alerts must exist to be scrolled to.
+              scrollCacheExtent: widget.showAlerts
+                  ? const ScrollCacheExtent.pixels(4000)
+                  : null,
+              padding: EdgeInsets.fromLTRB(
+                12,
+                12,
+                12,
+                24 + MediaQuery.viewPaddingOf(context).bottom,
+              ),
+              children: [
+                section(trKey('account.sectionAccount'), [
+                  _NameForm(account: widget.account),
+                  // The portal owns the email address of its users.
+                  if (!portal) ...[
+                    const SizedBox(height: 16),
+                    _EmailForm(account: widget.account),
+                  ],
                 ]),
-              if (widget.api case final api?)
-                _TelemetryRequests(
-                  account: widget.account,
-                  api: api,
-                  onOpen: widget.onOpen,
-                  refresh: refresh,
-                ),
-              if (features.alerts)
-                _Alerts(
-                  account: widget.account,
-                  unit: features.temperatureUnit,
-                  serverName: widget.serverName,
-                  refresh: refresh,
-                ),
-              section(trKey('account.sectionDevices'), [
-                _Devices(account: widget.account, revision: devices),
-              ]),
-              section(trKey('account.sectionDelete'), [
-                _DeleteForm(account: widget.account),
-              ]),
-            ],
+                if (portal)
+                  section(trKey('account.sectionPortal'), [
+                    Text(trKey('account.portalManaged')),
+                    if (features.portalUrl case final url?)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: SelectableText(url),
+                      ),
+                  ])
+                else
+                  section(trKey('account.sectionPassword'), [
+                    _PasswordForm(account: widget.account, devices: devices),
+                  ]),
+                if (widget.api case final api?)
+                  _TelemetryRequests(
+                    account: widget.account,
+                    api: api,
+                    onOpen: widget.onOpen,
+                    refresh: refresh,
+                  ),
+                if (features.alerts)
+                  Builder(
+                    builder: (context) {
+                      _alertsContext = context;
+                      return _Alerts(
+                        account: widget.account,
+                        unit: features.temperatureUnit,
+                        serverName: widget.serverName,
+                        refresh: refresh,
+                      );
+                    },
+                  ),
+                section(trKey('account.sectionDevices'), [
+                  _Devices(account: widget.account, revision: devices),
+                ]),
+                section(trKey('account.sectionDelete'), [
+                  _DeleteForm(account: widget.account),
+                ]),
+              ],
+            ),
           ),
         );
       },
@@ -623,12 +674,7 @@ class _PasswordFormState extends State<_PasswordForm> with _Action {
   );
 }
 
-String _date(dynamic value) {
-  final d = epoch(value);
-  if (d == null) return '-';
-  String two(int n) => n.toString().padLeft(2, '0');
-  return '${d.year}-${two(d.month)}-${two(d.day)} ${two(d.hour)}:${two(d.minute)}';
-}
+String _date(dynamic value) => shortDateTime(value);
 
 class _Devices extends StatefulWidget {
   const _Devices({required this.account, required this.revision});

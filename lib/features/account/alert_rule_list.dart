@@ -1,0 +1,498 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+
+import '../../core/account.dart';
+import '../../core/json.dart';
+import '../../core/strings.dart';
+import '../../core/theme.dart';
+import '../../core/units.dart';
+import 'alert_rules.dart';
+
+/// A server time as local `yyyy-mm-dd hh:mm`, or a dash without one.
+String shortDateTime(dynamic value) {
+  final d = epoch(value);
+  if (d == null) return '-';
+  String two(int n) => n.toString().padLeft(2, '0');
+  return '${d.year}-${two(d.month)}-${two(d.day)} ${two(d.hour)}:${two(d.minute)}';
+}
+
+/// One radio's alert rules: a row per kind the server lists, with its switch
+/// and threshold. Profile and the Atlas card sheet both show this.
+class AlertRuleList extends StatelessWidget {
+  const AlertRuleList({
+    super.key,
+    required this.target,
+    required this.account,
+    required this.unit,
+    required this.changed,
+  });
+
+  /// A target of `GET /me/alerts`.
+  final Json target;
+  final AccountState account;
+
+  /// The instance's temperature unit, 'c' or 'f'.
+  final String unit;
+
+  /// Reloads the alerts after a rule was saved.
+  final Future<void> Function() changed;
+
+  @override
+  Widget build(BuildContext context) {
+    final available = [
+      for (final k in target['available'] as List? ?? []) '$k',
+    ];
+    final unavailable = object(target['unavailable']);
+    final codes = object(target['unavailableCodes']);
+    final rules = rows(target['rules']);
+    final goneQuiet = rules.any(
+      (r) => r['kind'] == 'gone_quiet' && r['enabled'] == true,
+    );
+    final key = textOf(target['publicKey']);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final spec in alertKinds)
+          if (available.contains(spec.kind) ||
+              unavailable.containsKey(spec.kind))
+            _AlertRow(
+              key: ValueKey('alert-$key-${spec.kind}'),
+              target: target,
+              spec: spec,
+              available: available,
+              rule: rules.where((r) => r['kind'] == spec.kind).firstOrNull,
+              reason: available.contains(spec.kind)
+                  ? null
+                  : alertReasonText(
+                      spec.kind,
+                      textOf(codes[spec.kind]),
+                      textOf(unavailable[spec.kind]),
+                    ),
+              goneQuietOn: goneQuiet,
+              account: account,
+              unit: unit,
+              changed: changed,
+            ),
+      ],
+    );
+  }
+}
+
+class _AlertRow extends StatefulWidget {
+  const _AlertRow({
+    super.key,
+    required this.target,
+    required this.spec,
+    required this.available,
+    required this.rule,
+    required this.reason,
+    required this.goneQuietOn,
+    required this.account,
+    required this.unit,
+    required this.changed,
+  });
+  final Json target;
+  final AlertKindSpec spec;
+  final List<String> available;
+  final Json? rule;
+
+  /// Set for a kind the server marked unavailable for this radio.
+  final String? reason;
+  final bool goneQuietOn;
+  final AccountState account;
+  final String unit;
+  final Future<void> Function() changed;
+  @override
+  State<_AlertRow> createState() => _AlertRowState();
+}
+
+class _AlertRowState extends State<_AlertRow> {
+  final text = TextEditingController();
+  final low = TextEditingController();
+  final high = TextEditingController();
+  late int selected;
+  bool busy = false, bad = false;
+  String? note;
+
+  String get kind => widget.spec.kind;
+  String get publicKey => textOf(widget.target['publicKey']);
+  String get id => 'alert-$publicKey-$kind';
+  bool get enabled => widget.rule?['enabled'] == true;
+  int? _stored(String field) => number(widget.rule?[field])?.toInt();
+
+  List<int> get options => widget.spec.input == AlertInput.hours
+      ? goneQuietHours(
+          textOf(widget.target['kind']),
+          widget.target['polled'] == true,
+        )
+      : widget.spec.options;
+
+  @override
+  void initState() {
+    super.initState();
+    _reset();
+  }
+
+  @override
+  void didUpdateWidget(_AlertRow old) {
+    super.didUpdateWidget(old);
+    final a = old.rule, b = widget.rule;
+    if (a?['threshold'] != b?['threshold'] ||
+        a?['thresholdHigh'] != b?['thresholdHigh'] ||
+        old.unit != widget.unit) {
+      _reset();
+    }
+  }
+
+  void _reset() {
+    final threshold = _stored('threshold');
+    selected = threshold ?? defaultThreshold[kind] ?? 0;
+    text.text = switch (widget.spec.input) {
+      AlertInput.volts => voltsText(threshold),
+      AlertInput.dbm => '${threshold ?? defaultThreshold['noise_high']}',
+      _ => '',
+    };
+    low.text = tenthsText(threshold, widget.unit);
+    high.text = tenthsText(_stored('thresholdHigh'), widget.unit);
+  }
+
+  @override
+  void dispose() {
+    text.dispose();
+    low.dispose();
+    high.dispose();
+    super.dispose();
+  }
+
+  void _complain(String message) => setState(() {
+    note = message;
+    bad = true;
+  });
+
+  /// The thresholds the inputs show, or null after saying what is wrong.
+  ({int? low, int? high})? _read() {
+    switch (widget.spec.input) {
+      case AlertInput.none:
+        return (low: null, high: null);
+      case AlertInput.hours ||
+          AlertInput.drop ||
+          AlertInput.drift ||
+          AlertInput.minutes:
+        return (low: selected, high: null);
+      case AlertInput.volts:
+        final mv = parseVolts(text.text);
+        if (mv == null) _complain(trKey('alerts.errors.volts'));
+        return mv == null ? null : (low: mv, high: null);
+      case AlertInput.dbm:
+        final dbm = parseDbm(text.text);
+        if (dbm == null) _complain(trKey('alerts.errors.dbm'));
+        return dbm == null ? null : (low: dbm, high: null);
+      case AlertInput.temperature:
+        final l = low.text.trim(), h = high.text.trim();
+        if (l.isEmpty && h.isEmpty) {
+          _complain(_tempText('alerts.errors.temperatureNone'));
+          return null;
+        }
+        final a = l.isEmpty ? null : _limitTenths(l, _stored('threshold'));
+        final b = h.isEmpty ? null : _limitTenths(h, _stored('thresholdHigh'));
+        if ((l.isNotEmpty && a == null) || (h.isNotEmpty && b == null)) {
+          // A number that failed in F is a fraction of a degree.
+          final fraction =
+              widget.unit == 'f' &&
+              [(l, a), (h, b)].any(
+                (t) =>
+                    t.$1.isNotEmpty &&
+                    t.$2 == null &&
+                    parseTenths(t.$1) != null,
+              );
+          _complain(
+            _tempText(
+              fraction
+                  ? 'alerts.errors.temperatureWhole'
+                  : 'alerts.errors.temperature',
+            ),
+          );
+          return null;
+        }
+        if ((a != null && !tenthsInRange(a)) ||
+            (b != null && !tenthsInRange(b))) {
+          _complain(_tempText('alerts.errors.temperatureRange'));
+          return null;
+        }
+        // The server refuses a range under 2.0 degrees (20 tenths).
+        if (a != null && b != null && b - a < 20) {
+          _complain(_tempText('alerts.errors.temperatureWidth'));
+          return null;
+        }
+        return (low: a, high: b);
+    }
+  }
+
+  /// A limit field still showing its stored value keeps the exact tenths; the
+  /// whole-degree text of an f limit would otherwise re-parse off by a tenth.
+  int? _limitTenths(String text, int? stored) {
+    if (stored != null && text == tenthsText(stored, widget.unit)) {
+      return stored;
+    }
+    return parseTenths(text, widget.unit);
+  }
+
+  /// A temperature message with the instance unit and its limits filled in.
+  String _tempText(String key) {
+    final limits = tempLimitText(widget.unit);
+    final letter = widget.unit == 'f' ? 'F' : 'C';
+    return trKey(key)
+        .replaceAll('{{unit}}', letter)
+        .replaceAll('{{min}}', limits.min)
+        .replaceAll('{{max}}', limits.max)
+        .replaceAll('{{width}}', limits.width)
+        .replaceAll('{{example}}', widget.unit == 'f' ? '95' : '4.5');
+  }
+
+  Future<void> _send(bool on, int? threshold, int? thresholdHigh) async {
+    setState(() {
+      busy = true;
+      note = null;
+    });
+    Object? failure;
+    try {
+      await widget.account.api.putAlertRule(
+        targetKind: textOf(widget.target['kind'], 'node'),
+        publicKey: publicKey,
+        kind: kind,
+        threshold: threshold,
+        thresholdHigh: thresholdHigh,
+        enabled: on,
+      );
+    } catch (e) {
+      failure = e;
+    }
+    if (mounted) {
+      setState(() {
+        busy = false;
+        bad = failure != null;
+        note = failure == null ? null : alertError(failure, kind);
+      });
+    }
+    if (failure == null) await widget.changed();
+  }
+
+  Future<void> toggle(bool on) async {
+    if (!on) {
+      // Turning off keeps what is stored, whatever is typed in the inputs.
+      return _send(false, _stored('threshold'), _stored('thresholdHigh'));
+    }
+    setState(() => note = null);
+    final values = _read();
+    if (values != null) await _send(true, values.low, values.high);
+  }
+
+  /// A changed value on an enabled rule goes out at once.
+  Future<void> commit() async {
+    if (!enabled || busy || !mounted) return;
+    final values = _read();
+    if (values == null) return;
+    if (values.low == _stored('threshold') &&
+        values.high == _stored('thresholdHigh')) {
+      setState(() => note = null);
+      return;
+    }
+    await _send(true, values.low, values.high);
+  }
+
+  String _optionLabel(int value) => switch (widget.spec.input) {
+    AlertInput.hours => trKey('alerts.hours', count: value),
+    AlertInput.minutes => minutesLabel(value),
+    AlertInput.drop => trKey(
+      'alerts.voltsPerDay',
+    ).replaceAll('{{volts}}', (value / 1000).toStringAsFixed(1)),
+    AlertInput.drift => trKey('alerts.drift.$value'),
+    _ => '$value',
+  };
+
+  String _inputLabel() => trKey(switch (widget.spec.input) {
+    AlertInput.hours => 'alerts.input.hours',
+    AlertInput.volts => 'alerts.input.volts',
+    AlertInput.drop => 'alerts.input.drop',
+    AlertInput.dbm => 'alerts.input.dbm',
+    AlertInput.drift => 'alerts.input.drift',
+    AlertInput.minutes => 'alerts.input.minutes',
+    _ => 'alerts.input.hours',
+  });
+
+  Widget _input() {
+    final inputId = 'alert-input-$publicKey-$kind';
+    switch (widget.spec.input) {
+      case AlertInput.none:
+        return const SizedBox.shrink();
+      case AlertInput.hours ||
+          AlertInput.drop ||
+          AlertInput.drift ||
+          AlertInput.minutes:
+        final choices = options.contains(selected)
+            ? options
+            : ([...options, selected]..sort());
+        return InputDecorator(
+          decoration: InputDecoration(labelText: _inputLabel(), isDense: true),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<int>(
+              key: ValueKey(inputId),
+              isDense: true,
+              isExpanded: true,
+              value: selected,
+              items: [
+                for (final v in choices)
+                  DropdownMenuItem(value: v, child: Text(_optionLabel(v))),
+              ],
+              onChanged: busy
+                  ? null
+                  : (v) {
+                      if (v == null) return;
+                      setState(() => selected = v);
+                      if (enabled) unawaited(commit());
+                    },
+            ),
+          ),
+        );
+      case AlertInput.volts || AlertInput.dbm:
+        return _field(
+          inputId,
+          text,
+          _inputLabel(),
+          decimal: widget.spec.input == AlertInput.volts,
+        );
+      case AlertInput.temperature:
+        return Row(
+          children: [
+            Expanded(
+              child: _field(
+                '$inputId-low',
+                low,
+                _tempLabel('alerts.input.low'),
+                decimal: true,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _field(
+                '$inputId-high',
+                high,
+                _tempLabel('alerts.input.high'),
+                decimal: true,
+              ),
+            ),
+          ],
+        );
+    }
+  }
+
+  String _tempLabel(String key) =>
+      trKey(key).replaceAll('{{symbol}}', tempSymbol(widget.unit));
+
+  Widget _field(
+    String key,
+    TextEditingController controller,
+    String label, {
+    required bool decimal,
+  }) => Focus(
+    onFocusChange: (focused) {
+      if (!focused) unawaited(commit());
+    },
+    child: TextField(
+      key: ValueKey(key),
+      controller: controller,
+      enabled: !busy,
+      keyboardType: TextInputType.numberWithOptions(
+        signed: true,
+        decimal: decimal,
+      ),
+      textInputAction: TextInputAction.done,
+      decoration: InputDecoration(
+        labelText: label,
+        isDense: true,
+        suffixText: widget.spec.input == AlertInput.volts
+            ? 'V'
+            : widget.spec.input == AlertInput.dbm
+            ? 'dBm'
+            : tempSymbol(widget.unit),
+      ),
+      onSubmitted: (_) => unawaited(commit()),
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = TextStyle(
+      fontSize: 12,
+      color: BeaconColors.of(context).muted,
+    );
+    final reason = widget.reason;
+    final label = trKey('alerts.kind.$kind');
+    final needsGoneQuiet = kind == 'back_online' && !widget.goneQuietOn;
+    final locked = busy || (needsGoneQuiet && !enabled);
+    final rule = widget.rule;
+    return Opacity(
+      opacity: reason != null ? .6 : 1,
+      child: Padding(
+        padding: const EdgeInsets.only(top: 8, bottom: 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    label,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+                if (reason == null)
+                  Switch(
+                    key: ValueKey('alert-switch-$publicKey-$kind'),
+                    value: enabled,
+                    onChanged: locked ? null : toggle,
+                  ),
+              ],
+            ),
+            if (reason != null)
+              Text(reason, style: muted)
+            else ...[
+              Text(trKey('alerts.when.$kind'), style: muted),
+              if (needsGoneQuiet && !enabled)
+                Text(
+                  trKey('alerts.needsGoneQuiet')
+                      .replaceAll('{{name}}', trKey('alerts.kind.gone_quiet')),
+                  style: muted,
+                ),
+              const SizedBox(height: 10),
+              _input(),
+              if (enabled && rule != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    alertStateText(
+                      textOf(rule['state']),
+                      shortDateTime(rule['stateChangedAt']),
+                    ),
+                    style: muted,
+                  ),
+                ),
+              if (note case final text?)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    text,
+                    style: TextStyle(
+                      color: bad ? Theme.of(context).colorScheme.error : null,
+                    ),
+                  ),
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}

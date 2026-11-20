@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import 'alerts_state.dart';
 import 'api.dart';
 import 'auth_api.dart';
 import 'json.dart';
@@ -20,12 +21,17 @@ class AccountState extends ChangeNotifier {
 
   /// Keeps this phone's push token registered; removed on [signOut].
   PushRegistration? push;
+
+  /// The user's alert rules, shared by Profile and the Atlas cards.
+  AlertsState get alerts => _alerts ??= AlertsState(this);
+  AlertsState? _alerts;
   bool _disposed = false;
 
   /// A call still in flight when its screen closes must not notify.
   @override
   void dispose() {
     _disposed = true;
+    _alerts?.dispose();
     super.dispose();
   }
 

@@ -94,6 +94,9 @@ class AtlasStore extends ChangeNotifier {
     return null;
   }
 
+  /// The public key the server gave for an observer pin's id, lower case.
+  String? observerKey(String observerId) => _observerKeys[observerId];
+
   /// Completes when no load or write is running or waiting.
   Future<void> get idle async {
     while (_job != null) {

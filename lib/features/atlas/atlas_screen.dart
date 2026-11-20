@@ -2,12 +2,16 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../core/account.dart';
 import '../../core/api.dart';
+import '../../core/features.dart';
 import '../../core/json.dart';
 import '../../core/preferences.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
+import '../account/profile_screen.dart';
 import 'atlas.dart';
+import 'atlas_alerts.dart';
 import 'atlas_card.dart';
 import 'atlas_grid.dart';
 import 'atlas_store.dart';
@@ -67,6 +71,16 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
   /// The server's card cap, from /info.
   int limit = atlasLimitFallback;
 
+  /// Null until /info answers; the bell waits for it.
+  ServerFeatures? features;
+
+  /// The account and pins the alerts were last asked for.
+  String? _alertsFor;
+
+  /// The account whose alerts the bells show; null without accounts.
+  AccountState? get account => store.account;
+  bool get alertsOn => features?.alerts == true && account != null;
+
   int searchRun = 0;
   bool searching = false, searchFailed = false, hasMore = false;
   List<Json>? matches;
@@ -81,11 +95,17 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
         widget.store ??
         AtlasStore(widget.preferences, widget.preferences.active!.url);
     store.addListener(changed);
+    account?.alerts.addListener(_alertsChanged);
     // Pick up what another device changed since the last visit.
     unawaited(store.sync());
     unawaited(
       widget.api.features().then((f) {
-        if (mounted) setState(() => limit = f.atlasLimit);
+        if (!mounted) return;
+        setState(() {
+          limit = f.atlasLimit;
+          features = f;
+        });
+        _loadAlerts();
       }, onError: (_) {}),
     );
     ticker = Timer.periodic(atlasRefresh, (_) {
@@ -101,6 +121,71 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
     // An import replaced the cards, so views of cards that are gone go too.
     open.removeWhere((key, _) => !saved.pins.any((pin) => pin.key == key));
     setState(() {});
+    _loadAlerts();
+  }
+
+  void _alertsChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// One load for every card, again when the account or the pins change. It
+  /// waits for the Atlas to save, as the server lists a target per saved pin.
+  void _loadAlerts() {
+    final account = this.account;
+    if (!alertsOn || account == null || !account.signedIn) {
+      _alertsFor = null;
+      return;
+    }
+    final wanted = [
+      account.epoch,
+      for (final pin in saved.pins) pin.key,
+    ].join('/');
+    if (wanted == _alertsFor) return;
+    _alertsFor = wanted;
+    // A microtask later, so the store has started the sync this change needs.
+    unawaited(
+      Future.microtask(() => store.idle).then((_) {
+        if (mounted) return account.alerts.load();
+      }),
+    );
+  }
+
+  Json? _alertTarget(AtlasPin pin) {
+    final account = this.account;
+    if (account == null || !account.signedIn) return null;
+    return alertTargetFor(
+      pin,
+      account.alerts.targets,
+      observerKey: pin.isNode ? null : store.observerKey(pin.observerId!),
+    );
+  }
+
+  void _openAlerts(AtlasPin pin, String name) {
+    final account = this.account, features = this.features;
+    if (account == null || features == null) return;
+    showAtlasAlerts(
+      context,
+      account: account,
+      name: name,
+      unit: features.temperatureUnit,
+      portal: features.portal,
+      // By key, so the sheet follows the pin through a relink.
+      target: () {
+        final now = saved.pins.where((p) => p.key == pin.key).firstOrNull;
+        return _alertTarget(now ?? pin);
+      },
+      onProfile: () => Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => ProfileScreen(
+            account: account,
+            api: widget.api,
+            onOpen: widget.onOpen,
+            serverName: widget.preferences.active?.name ?? '',
+            showAlerts: true,
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -116,6 +201,7 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
     debounce?.cancel();
     search.dispose();
     store.removeListener(changed);
+    account?.alerts.removeListener(_alertsChanged);
     if (widget.store == null) store.dispose();
     super.dispose();
   }
@@ -455,7 +541,13 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
                         onReorder: reorder,
                         itemBuilder: (context, index, handle) {
                           final pin = saved.pins[index];
+                          final counts = alertCounts(_alertTarget(pin));
                           return AtlasCard(
+                            onAlerts: alertsOn
+                                ? (name) => _openAlerts(pin, name)
+                                : null,
+                            alertsOn: counts.on,
+                            alertsFiring: counts.firing,
                             api: widget.api,
                             pin: pin,
                             range: saved.range,

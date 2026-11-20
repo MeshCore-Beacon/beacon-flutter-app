@@ -1665,6 +1665,20 @@
       "pushVia": "Les alertes de {{server}} passent par le serveur push de MeshCore Beacon. Il voit quel serveur les envoie, mais pas ce qu'elles disent.",
       "noChannel": "Le courriel et les notifications push sont tous deux désactivés : vos alertes ne vous parviendront pas.",
       "failed": "Impossible de modifier ce réglage. Réessayez."
+    },
+    "atlasAlerts": {
+      "bell": "Alertes",
+      "bellOn_one": "Alertes : {{count}} activée",
+      "bellOn_many": "Alertes : {{count}} activées",
+      "bellOn_other": "Alertes : {{count}} activées",
+      "bellFiring_one": "Alertes : {{count}} en alerte",
+      "bellFiring_many": "Alertes : {{count}} en alerte",
+      "bellFiring_other": "Alertes : {{count}} en alerte",
+      "title": "Alertes pour {{name}}",
+      "signInPrompt": "Connectez-vous pour définir des alertes pour cette radio.",
+      "notYet": "Les alertes de cette radio ne sont pas encore disponibles. Réessayez une fois votre Atlas enregistré dans votre compte.",
+      "channels": "Choisissez comment recevoir vos alertes dans votre profil",
+      "noChannel": "Le courriel et les notifications push sont tous deux désactivés : vos alertes ne vous parviendront pas. Activez-en un dans votre profil."
     }
   }
 }

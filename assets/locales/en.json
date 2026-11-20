@@ -1616,6 +1616,18 @@
       "pushVia": "Alerts from {{server}} are delivered via the MeshCore Beacon push server. It sees which server sent them, not what they say.",
       "noChannel": "Email and push are both off, so your alerts won't reach you.",
       "failed": "Could not change this. Try again."
+    },
+    "atlasAlerts": {
+      "bell": "Alerts",
+      "bellOn_one": "Alerts: {{count}} on",
+      "bellOn_other": "Alerts: {{count}} on",
+      "bellFiring_one": "Alerts: {{count}} firing",
+      "bellFiring_other": "Alerts: {{count}} firing",
+      "title": "Alerts for {{name}}",
+      "signInPrompt": "Sign in to set alerts for this radio.",
+      "notYet": "Alerts for this radio are not available yet. Try again once your Atlas has saved to your account.",
+      "channels": "Choose how alerts reach you in your profile",
+      "noChannel": "Email and push are both off, so alerts won't reach you. Turn one on in your profile."
     }
   }
 }

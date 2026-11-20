@@ -124,6 +124,9 @@ class AtlasCard extends StatefulWidget {
     required this.onTelemetryTilesChange,
     required this.onOpen,
     this.handle,
+    this.onAlerts,
+    this.alertsOn = 0,
+    this.alertsFiring = 0,
   });
   final ApiClient api;
   final AtlasPin pin;
@@ -142,6 +145,13 @@ class AtlasCard extends StatefulWidget {
 
   /// Wraps the grip so the page can start a reorder from it.
   final Widget Function(Widget grip)? handle;
+
+  /// Opens this radio's alerts, given the name the card shows. Null on a
+  /// server without alerts, which hides the bell.
+  final void Function(String name)? onAlerts;
+
+  /// This radio's enabled rules, and how many of those are firing.
+  final int alertsOn, alertsFiring;
 
   @override
   State<AtlasCard> createState() => _AtlasCardState();
@@ -403,6 +413,9 @@ class _AtlasCardState extends State<AtlasCard> {
     final name =
         _text(pin.isNode ? (node?['name']) : (observer?['displayName'])) ??
         _text(pin.name);
+    final shown =
+        name ??
+        formatHex(pin.isNode ? textOf(node?['id'], pin.id!) : pin.observerId!);
     final canOpen = !pin.isNode || node != null;
     // One line always: a dot carries the status and the name gives way first.
     final (dotColor, dotLabel) = pin.isNode
@@ -444,12 +457,7 @@ class _AtlasCardState extends State<AtlasCard> {
                         ? widget.onOpen('node', textOf(node!['id']))
                         : widget.onOpen('observer', pin.observerId!),
               child: Text(
-                name ??
-                    formatHex(
-                      pin.isNode
-                          ? textOf(node?['id'], pin.id!)
-                          : pin.observerId!,
-                    ),
+                shown,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -473,9 +481,25 @@ class _AtlasCardState extends State<AtlasCard> {
       icon: GripIcon.new,
       label: at('dragToReorder'),
     );
+    final bellLabel = widget.alertsFiring > 0
+        ? trKey('atlasAlerts.bellFiring', count: widget.alertsFiring)
+        : widget.alertsOn > 0
+        ? trKey('atlasAlerts.bellOn', count: widget.alertsOn)
+        : trKey('atlasAlerts.bell');
     final actions = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (widget.onAlerts case final onAlerts?) ...[
+          AtlasIconButton(
+            key: ValueKey('atlas-bell-${pin.key}'),
+            icon: (color) => BellIcon(color, filled: widget.alertsOn > 0),
+            label: bellLabel,
+            color: widget.alertsFiring > 0 ? c.danger : null,
+            tinted: widget.alertsOn > 0,
+            onPressed: () => onAlerts(shown),
+          ),
+          const SizedBox(width: 4),
+        ],
         if (views.length > 1) ...[
           AtlasIconButton(
             icon: (color) => PinIcon(color, filled: view == home),

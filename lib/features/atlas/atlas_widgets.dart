@@ -250,8 +250,14 @@ class AtlasIconButton extends StatelessWidget {
     this.onPressed,
     this.pressed,
     this.muted = false,
+    this.color,
+    this.tinted = false,
   });
   final CustomPainter Function(Color color) icon;
+
+  /// Replaces the icon colour; [tinted] fills the box as a pressed button's.
+  final Color? color;
+  final bool tinted;
   final String label;
   final String? tooltip;
   final VoidCallback? onPressed;
@@ -260,6 +266,7 @@ class AtlasIconButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = BeaconColors.of(context);
+    final ink = color ?? (muted ? c.muted : c.primary);
     return Tooltip(
       message: tooltip ?? label,
       child: Semantics(
@@ -274,14 +281,13 @@ class AtlasIconButton extends StatelessWidget {
             height: 26,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: pressed == true ? c.primary.withValues(alpha: .1) : null,
+              color: pressed == true || tinted
+                  ? (color ?? c.primary).withValues(alpha: .1)
+                  : null,
               border: Border.all(color: c.border),
               borderRadius: BorderRadius.circular(4),
             ),
-            child: CustomPaint(
-              size: const Size(10, 14),
-              painter: icon(muted ? c.muted : c.primary),
-            ),
+            child: CustomPaint(size: const Size(10, 14), painter: icon(ink)),
           ),
         ),
       ),
@@ -322,6 +328,36 @@ class PinIcon extends CustomPainter {
 
   @override
   bool shouldRepaint(PinIcon old) => old.color != color || old.filled != filled;
+}
+
+class BellIcon extends CustomPainter {
+  const BellIcon(this.color, {required this.filled});
+  final Color color;
+  final bool filled;
+  @override
+  void paint(Canvas canvas, Size size) {
+    final body = Path()
+      ..moveTo(1.2, 10)
+      ..lineTo(2.4, 8.6)
+      ..lineTo(2.4, 5.6)
+      ..cubicTo(2.4, 1.6, 7.6, 1.6, 7.6, 5.6)
+      ..lineTo(7.6, 8.6)
+      ..lineTo(8.8, 10)
+      ..close();
+    final stroke = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2
+      ..strokeJoin = StrokeJoin.round
+      ..strokeCap = StrokeCap.round;
+    if (filled) canvas.drawPath(body, Paint()..color = color);
+    canvas.drawPath(body, stroke);
+    canvas.drawLine(const Offset(4, 12.2), const Offset(6, 12.2), stroke);
+  }
+
+  @override
+  bool shouldRepaint(BellIcon old) =>
+      old.color != color || old.filled != filled;
 }
 
 class CrossIcon extends CustomPainter {

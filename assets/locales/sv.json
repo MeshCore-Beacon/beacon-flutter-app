@@ -1616,6 +1616,18 @@
       "pushVia": "Larm från {{server}} levereras via MeshCore Beacons pushserver. Den ser vilken server som skickade dem, men inte vad de säger.",
       "noChannel": "Både e-post och push är avstängda, så dina larm når dig inte.",
       "failed": "Det gick inte att ändra. Försök igen."
+    },
+    "atlasAlerts": {
+      "bell": "Larm",
+      "bellOn_one": "Larm: {{count}} på",
+      "bellOn_other": "Larm: {{count}} på",
+      "bellFiring_one": "Larm: {{count}} larmar",
+      "bellFiring_other": "Larm: {{count}} larmar",
+      "title": "Larm för {{name}}",
+      "signInPrompt": "Logga in för att ställa in larm för den här radion.",
+      "notYet": "Larm för den här radion är inte tillgängliga ännu. Försök igen när din Atlas har sparats till ditt konto.",
+      "channels": "Välj hur larm når dig i din profil",
+      "noChannel": "E-post och push är båda avstängda, så larmen når dig inte. Slå på en av dem i din profil."
     }
   }
 }
