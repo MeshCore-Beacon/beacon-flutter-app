@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api.dart';
 import '../../core/json.dart';
+import '../../core/sheet.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
 import 'filter_dropdown.dart';
@@ -291,45 +292,42 @@ class _PacketScreenState extends State<PacketScreen> {
       } catch (_) {}
     }
     if (!mounted) return;
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
+    await showBeaconSheet<void>(
+      context,
       builder: (context) => StatefulBuilder(
-        builder: (context, update) => SafeArea(
-          top: false,
+        builder: (context, update) => BeaconSheet(
+          title: tr('Filters'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                update(() {
+                  types = {};
+                  routes = {};
+                  selectedScopes = {};
+                  selectedObservers = {};
+                  search.clear();
+                  mode = 'Hash';
+                });
+                searchDebounce?.cancel();
+                hashPrefix = null;
+                filtersChanged();
+              },
+              child: Text(tr('Clear all')),
+            ),
+          ],
+          maxHeight: .9,
           child: SingleChildScrollView(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              padding: const EdgeInsets.fromLTRB(
+                BeaconSheet.gutter,
+                8,
+                BeaconSheet.gutter,
+                16,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Row(
-                    children: [
-                      Text(
-                        tr('Filters'),
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                      const Spacer(),
-                      TextButton(
-                        onPressed: () {
-                          update(() {
-                            types = {};
-                            routes = {};
-                            selectedScopes = {};
-                            selectedObservers = {};
-                            search.clear();
-                            mode = 'Hash';
-                          });
-                          searchDebounce?.cancel();
-                          hashPrefix = null;
-                          filtersChanged();
-                        },
-                        child: Text(tr('Clear all')),
-                      ),
-                    ],
-                  ),
                   FilterDropdown<int>(
                     label: 'Payload type',
                     options: payloadNames,

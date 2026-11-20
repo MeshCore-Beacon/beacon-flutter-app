@@ -6,6 +6,7 @@ import '../../core/account.dart';
 import '../../core/api.dart';
 import '../../core/instance.dart';
 import '../../core/preferences.dart';
+import '../../core/sheet.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
 import '../../core/version_gate.dart';
@@ -152,48 +153,32 @@ class SettingsPage extends StatelessWidget {
   static const languages = {'en': 'English', 'fr': 'Français', 'sv': 'Svenska'};
 
   Future<void> _pickTheme(BuildContext context) async {
-    final value = await showModalBottomSheet<String>(
-      context: context,
-      useSafeArea: true,
-      isScrollControlled: true,
-      builder: (context) => SafeArea(
-        top: false,
-        child: FractionallySizedBox(
-          heightFactor: .75,
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                child: Text(
-                  tr('Theme'),
-                  style: Theme.of(context).textTheme.titleMedium,
+    final value = await showBeaconSheet<String>(
+      context,
+      builder: (context) => BeaconSheet(
+        title: tr('Theme'),
+        maxHeight: .75,
+        fill: true,
+        child: BeaconSheetRows(
+          children: [
+            for (final theme in BeaconTheme.all)
+              ListTile(
+                selected: preferences.themeId == theme.id,
+                leading: Container(
+                  width: 16,
+                  height: 16,
+                  decoration: BoxDecoration(
+                    color: theme.color('primary', '#3B82F6'),
+                    shape: BoxShape.circle,
+                  ),
                 ),
+                title: Text(theme.name),
+                trailing: preferences.themeId == theme.id
+                    ? const Icon(Icons.check, size: 20)
+                    : null,
+                onTap: () => Navigator.pop(context, theme.id),
               ),
-              Expanded(
-                child: ListView(
-                  children: [
-                    for (final theme in BeaconTheme.all)
-                      ListTile(
-                        selected: preferences.themeId == theme.id,
-                        leading: Container(
-                          width: 16,
-                          height: 16,
-                          decoration: BoxDecoration(
-                            color: theme.color('primary', '#3B82F6'),
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        title: Text(theme.name),
-                        trailing: preferences.themeId == theme.id
-                            ? const Icon(Icons.check, size: 20)
-                            : null,
-                        onTap: () => Navigator.pop(context, theme.id),
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ),
+          ],
         ),
       ),
     );
@@ -201,21 +186,12 @@ class SettingsPage extends StatelessWidget {
   }
 
   Future<void> _pickLanguage(BuildContext context) async {
-    final value = await showModalBottomSheet<String>(
-      context: context,
-      useSafeArea: true,
-      builder: (context) => SafeArea(
-        top: false,
-        child: ListView(
-          shrinkWrap: true,
+    final value = await showBeaconSheet<String>(
+      context,
+      builder: (context) => BeaconSheet(
+        title: tr('Language'),
+        child: BeaconSheetRows(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: Text(
-                tr('Language'),
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-            ),
             for (final entry in languages.entries)
               ListTile(
                 selected: preferences.language == entry.key,
@@ -225,7 +201,6 @@ class SettingsPage extends StatelessWidget {
                     : null,
                 onTap: () => Navigator.pop(context, entry.key),
               ),
-            const SizedBox(height: 12),
           ],
         ),
       ),
@@ -373,14 +348,10 @@ Future<void> showServerEditor(
   Preferences preferences, {
   BeaconInstance? server,
 }) async {
-  await showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    builder: (context) => SafeArea(
-      top: false,
-      child: ServerEditor(preferences: preferences, server: server),
-    ),
+  await showBeaconSheet<void>(
+    context,
+    builder: (context) =>
+        ServerEditor(preferences: preferences, server: server),
   );
 }
 
@@ -454,23 +425,20 @@ class _ServerEditorState extends State<ServerEditor> {
   }
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: EdgeInsets.fromLTRB(
-      20,
-      0,
-      20,
-      MediaQuery.viewInsetsOf(context).bottom + 24,
-    ),
+  Widget build(BuildContext context) => BeaconSheet(
+    title: tr(widget.server == null ? 'Add server' : 'Edit server'),
+    maxHeight: .9,
     child: SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(
+        BeaconSheet.gutter,
+        8,
+        BeaconSheet.gutter,
+        16,
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            tr(widget.server == null ? 'Add server' : 'Edit server'),
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          const SizedBox(height: 20),
           TextField(
             controller: name,
             decoration: InputDecoration(

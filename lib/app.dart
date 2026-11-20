@@ -16,6 +16,7 @@ import 'core/preferences.dart';
 import 'core/push.dart';
 import 'core/region_selection.dart';
 import 'core/runtime_config.dart';
+import 'core/sheet.dart';
 import 'core/strings.dart';
 import 'core/theme.dart';
 import 'core/token_store.dart';
@@ -227,21 +228,12 @@ Future<void> showServerSwitcher(
   AtlasStore? atlas,
   void Function(String, String)? onOpen,
 }) async {
-  final manage = await showModalBottomSheet<bool>(
-    context: context,
-    useSafeArea: true,
-    builder: (context) => SafeArea(
-      top: false,
-      child: ListView(
-        shrinkWrap: true,
+  final manage = await showBeaconSheet<bool>(
+    context,
+    builder: (context) => BeaconSheet(
+      title: tr('Servers'),
+      child: BeaconSheetRows(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Text(
-              tr('Servers'),
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-          ),
           for (final s in preferences.servers)
             ListTile(
               selected: s.url == preferences.active?.url,
@@ -720,14 +712,9 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
     ),
   );
   Future<void> chooseRegion() async {
-    final picked = await showModalBottomSheet<(RegionSelection, Json)>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (_) => SafeArea(
-        top: false,
-        child: RegionSheet(api: api, initial: selection),
-      ),
+    final picked = await showBeaconSheet<(RegionSelection, Json)>(
+      context,
+      builder: (_) => RegionSheet(api: api, initial: selection),
     );
     if (!mounted || picked == null) return;
     await liveEvents?.cancel();
@@ -749,13 +736,11 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
     if (mounted) setState(() => revision++);
   }
 
-  void more() => showModalBottomSheet<void>(
-    context: context,
-    useSafeArea: true,
-    builder: (context) => SafeArea(
-      top: false,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+  void more() => showBeaconSheet<void>(
+    context,
+    builder: (context) => BeaconSheet(
+      title: tr('More'),
+      child: BeaconSheetRows(
         children: [
           for (final name in [
             'Observers',
@@ -787,7 +772,6 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
                 setState(() => tab = name);
               },
             ),
-          const SizedBox(height: 12),
         ],
       ),
     ),
@@ -1244,28 +1228,22 @@ class _RegionSheetState extends State<RegionSheet> {
       fontWeight: FontWeight.w600,
       color: palette.primary,
     );
-    return SizedBox(
-      height: MediaQuery.sizeOf(context).height * 0.75,
+    return BeaconSheet(
+      title: tr('Region'),
+      actions: [
+        TextButton(onPressed: loading ? null : done, child: Text(tr('Done'))),
+      ],
+      maxHeight: .75,
+      fill: true,
       child: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-            child: Row(
-              children: [
-                Text(
-                  tr('Region'),
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const Spacer(),
-                TextButton(
-                  onPressed: loading ? null : done,
-                  child: Text(tr('Done')),
-                ),
-              ],
+            padding: const EdgeInsets.fromLTRB(
+              BeaconSheet.gutter,
+              8,
+              BeaconSheet.gutter,
+              0,
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
             child: TextField(
               decoration: InputDecoration(
                 hintText: tr('Search region or area code…'),

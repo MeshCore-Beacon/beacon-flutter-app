@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/api.dart';
 import '../../core/features.dart';
 import '../../core/json.dart';
+import '../../core/sheet.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
 import 'map_data.dart';
@@ -1612,11 +1613,11 @@ class _NativeMapState extends State<NativeMap> {
             offset: 0,
           );
           if (!mounted || epoch != _epoch) return;
-          await showModalBottomSheet<void>(
-            context: context,
-            builder: (context) => SafeArea(
-              child: ListView(
-                shrinkWrap: true,
+          await showBeaconSheet<void>(
+            context,
+            builder: (context) => BeaconSheet(
+              title: tr('Nodes'),
+              child: BeaconSheetRows(
                 children: leaves.map((f) {
                   final p = object(f['properties']);
                   return ListTile(

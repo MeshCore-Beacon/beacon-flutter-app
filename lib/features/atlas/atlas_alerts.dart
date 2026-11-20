@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../core/account.dart';
 import '../../core/api.dart';
 import '../../core/json.dart';
+import '../../core/sheet.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
 import '../account/alert_rule_list.dart';
@@ -62,12 +63,8 @@ Future<void> showAtlasAlerts(
   required bool portal,
   required Json? Function() target,
   required VoidCallback onProfile,
-}) => showModalBottomSheet<void>(
-  context: context,
-  // Full height when needed, and the sheet moves up with the keyboard.
-  isScrollControlled: true,
-  useSafeArea: true,
-  showDragHandle: true,
+}) => showBeaconSheet<void>(
+  context,
   builder: (_) => AtlasAlertsSheet(
     account: account,
     name: name,
@@ -138,36 +135,29 @@ class _AtlasAlertsSheetState extends State<AtlasAlertsSheet> {
   Widget build(BuildContext context) {
     final flow = SignInScope.maybeOf(context);
     final alerts = widget.account.alerts;
-    return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
-      child: SafeArea(
-        top: false,
-        child: SingleChildScrollView(
-          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          child: ListenableBuilder(
-            listenable: Listenable.merge([widget.account, alerts]),
-            builder: (context, _) => Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  trKey('atlasAlerts.title')
-                      .replaceAll('{{name}}', widget.name),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 16,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                if (widget.account.signedIn)
-                  ..._rules(context)
-                else
-                  ..._signedOut(context, flow),
-              ],
-            ),
+    return BeaconSheet(
+      title: trKey('atlasAlerts.title').replaceAll('{{name}}', widget.name),
+      // Rule lists run long, so this one may take most of the screen.
+      maxHeight: .9,
+      child: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: const EdgeInsets.fromLTRB(
+          BeaconSheet.gutter,
+          8,
+          BeaconSheet.gutter,
+          16,
+        ),
+        child: ListenableBuilder(
+          listenable: Listenable.merge([widget.account, alerts]),
+          builder: (context, _) => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (widget.account.signedIn)
+                ..._rules(context)
+              else
+                ..._signedOut(context, flow),
+            ],
           ),
         ),
       ),

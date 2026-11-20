@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../../core/api.dart';
 import '../../core/json.dart';
+import '../../core/sheet.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
 import '../analytics/charts.dart' show countLabel;
@@ -923,112 +924,93 @@ class _DirectoryScreenState extends State<DirectoryScreen>
     ),
   );
   Future<void> showFilters() async {
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
+    await showBeaconSheet<void>(
+      context,
       builder: (context) => StatefulBuilder(
-        builder: (context, update) => SafeArea(
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(
-              20,
-              20,
-              20,
-              MediaQuery.viewInsetsOf(context).bottom + 20,
+        builder: (context, update) => BeaconSheet(
+          title: tr('Filters'),
+          maxHeight: .9,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(
+              BeaconSheet.gutter,
+              8,
+              BeaconSheet.gutter,
+              16,
             ),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.tune,
-                        color: Theme.of(context).colorScheme.primary,
-                        size: 18,
-                      ),
-                      const SizedBox(width: 8),
-                      const DirectoryText(
-                        'Filters',
-                        style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w700,
-                        ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (widget.kind == 'nodes') ...[
+                  select('typeName', 'Node type', [
+                    'companion',
+                    'repeater',
+                    'room_server',
+                    'sensor',
+                  ], update),
+                  select('supportsMultibytePaths', 'Multibyte paths', [
+                    'true',
+                    'false',
+                  ], update),
+                  select('supportsMultibyteTraces', 'Multibyte traces', [
+                    'true',
+                    'false',
+                  ], update),
+                ],
+                if (widget.kind == 'observers') ...[
+                  select('status', 'Status', ['online', 'offline'], update),
+                  select('type', 'Observer type', types, update),
+                  select('broker', 'Broker', brokers, update),
+                ],
+                if (widget.kind == 'channels') ...[
+                  select('keyKnown', 'Known key', ['true', 'false'], update),
+                  select('hashtag', 'Hashtag channel', [
+                    'true',
+                    'false',
+                  ], update),
+                ],
+                if (widget.kind == 'traces')
+                  select('type', 'Type', ['TRACE', 'PING'], update),
+                if (widget.kind == 'routes') ...[
+                  TextFormField(
+                    key: const ValueKey('routes-iata-filter'),
+                    initialValue: filters['iata'],
+                    decoration: InputDecoration(labelText: tr('IATA')),
+                    // IATA codes are uppercase on the server; match as typed.
+                    textCapitalization: TextCapitalization.characters,
+                    inputFormatters: [
+                      TextInputFormatter.withFunction(
+                        (_, value) =>
+                            value.copyWith(text: value.text.toUpperCase()),
                       ),
                     ],
+                    onChanged: (v) => filters['iata'] = v.toUpperCase(),
                   ),
-                  const SizedBox(height: 16),
-                  if (widget.kind == 'nodes') ...[
-                    select('typeName', 'Node type', [
-                      'companion',
-                      'repeater',
-                      'room_server',
-                      'sensor',
-                    ], update),
-                    select('supportsMultibytePaths', 'Multibyte paths', [
-                      'true',
-                      'false',
-                    ], update),
-                    select('supportsMultibyteTraces', 'Multibyte traces', [
-                      'true',
-                      'false',
-                    ], update),
-                  ],
-                  if (widget.kind == 'observers') ...[
-                    select('status', 'Status', ['online', 'offline'], update),
-                    select('type', 'Observer type', types, update),
-                    select('broker', 'Broker', brokers, update),
-                  ],
-                  if (widget.kind == 'channels') ...[
-                    select('keyKnown', 'Known key', ['true', 'false'], update),
-                    select('hashtag', 'Hashtag channel', [
-                      'true',
-                      'false',
-                    ], update),
-                  ],
-                  if (widget.kind == 'traces')
-                    select('type', 'Type', ['TRACE', 'PING'], update),
-                  if (widget.kind == 'routes') ...[
-                    TextFormField(
-                      key: const ValueKey('routes-iata-filter'),
-                      initialValue: filters['iata'],
-                      decoration: InputDecoration(labelText: tr('IATA')),
-                      // IATA codes are uppercase on the server; match as typed.
-                      textCapitalization: TextCapitalization.characters,
-                      inputFormatters: [
-                        TextInputFormatter.withFunction(
-                          (_, value) =>
-                              value.copyWith(text: value.text.toUpperCase()),
-                        ),
-                      ],
-                      onChanged: (v) => filters['iata'] = v.toUpperCase(),
-                    ),
-                    select(
-                      'hopCount',
-                      'Hops',
-                      List.generate(16, (i) => '${i + 1}'),
-                      update,
-                    ),
-                  ],
-                  if (['nodes', 'observers', 'traces'].contains(widget.kind))
-                    select('scope', trKey('nodeFilters.scope'), scopes, update),
-                  Row(
-                    children: [
-                      TextButton(
-                        onPressed: () {
-                          update(filters.clear);
-                        },
-                        child: const DirectoryText('Clear all'),
-                      ),
-                      const Spacer(),
-                      FilledButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const DirectoryText('Apply'),
-                      ),
-                    ],
+                  select(
+                    'hopCount',
+                    'Hops',
+                    List.generate(16, (i) => '${i + 1}'),
+                    update,
                   ),
                 ],
-              ),
+                if (['nodes', 'observers', 'traces'].contains(widget.kind))
+                  select('scope', trKey('nodeFilters.scope'), scopes, update),
+                Row(
+                  children: [
+                    TextButton(
+                      onPressed: () {
+                        update(filters.clear);
+                      },
+                      child: const DirectoryText('Clear all'),
+                    ),
+                    const Spacer(),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const DirectoryText('Apply'),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
         ),
