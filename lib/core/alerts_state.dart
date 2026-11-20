@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import 'account.dart';
@@ -17,6 +19,9 @@ class AlertsState extends ChangeNotifier {
   bool loading = false;
 
   int _epoch;
+
+  /// Bumped by every save; a read that started before one is out of date.
+  int _saves = 0;
   bool _again = false, _disposed = false;
   Future<void>? _job;
 
@@ -44,27 +49,42 @@ class AlertsState extends ChangeNotifier {
     return load();
   }
 
-  /// The server's answer to a channel change.
+  /// Completes when no load is running or queued.
+  Future<void> get settled async {
+    while (_job != null) {
+      await _job;
+    }
+  }
+
+  /// The server's answer to a channel change. It outranks a read already on
+  /// its way, and a fresh read follows.
   void setChannels(Json next) {
     data = {...?data, 'channels': next};
     _notify();
+    unawaited(saved());
+  }
+
+  /// Reloads after a rule or channel was saved, dropping any older read.
+  Future<void> saved() {
+    _saves++;
+    return load();
   }
 
   Future<void> _run() async {
     loading = true;
     do {
       _again = false;
-      final epoch = account.epoch;
+      final epoch = account.epoch, saves = _saves;
       try {
         final next = await account.api.alerts();
         if (_disposed) return;
-        if (account.epoch == epoch) {
+        if (account.epoch == epoch && _saves == saves) {
           data = next;
           error = null;
         }
       } catch (e) {
         if (_disposed) return;
-        if (account.epoch == epoch) error = e;
+        if (account.epoch == epoch && _saves == saves) error = e;
       }
     } while (_again && account.signedIn);
     loading = false;

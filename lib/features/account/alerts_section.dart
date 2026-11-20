@@ -79,7 +79,7 @@ class _AlertsState extends State<_Alerts> {
             target: target,
             account: widget.account,
             unit: widget.unit,
-            changed: load,
+            changed: alerts.saved,
           ),
         Padding(
           padding: const EdgeInsets.only(top: 8),

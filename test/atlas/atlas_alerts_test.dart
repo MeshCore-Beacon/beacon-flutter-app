@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:beacon/core/api.dart';
+import 'package:beacon/core/json.dart';
 import 'package:beacon/core/preferences.dart';
 import 'package:beacon/core/theme.dart';
 import 'package:beacon/features/account/profile_screen.dart';
@@ -78,10 +80,16 @@ class Rig {
 /// What `/me/alerts` answers; a test swaps it before or between loads.
 late Map<String, dynamic> alerts;
 late List<Map<String, dynamic>> rulePuts;
+bool exchangeFails = false;
 
 /// Three pins on the account: two nodes and an observer.
-Future<Rig> rig({bool signedIn = true, String? name}) async {
-  final nodes = [
+/// Holds the first `/me/atlas` answer of a rig made with `hold`.
+Completer<void>? atlasGate;
+
+Future<Rig> rig({bool signedIn = true, String? name, bool hold = false}) async {
+  atlasGate = hold ? Completer<void>() : null;
+  var revision = 1;
+  var nodes = [
     serverNode(quiet, name ?? 'Quiet'),
     serverNode(busy, 'Busy'),
     {
@@ -112,9 +120,31 @@ Future<Rig> rig({bool signedIn = true, String? name}) async {
   final h = Harness((r) {
     final path = r.url.path.replaceFirst('/api/v1', '');
     if (path == '/me/atlas') {
-      return json(200, {'revision': 1, 'range': '24h', 'pins': nodes});
+      if (r.method == 'PUT') {
+        // The account keeps the pins the phone sent, in its order.
+        final sent = [
+          for (final pin in (jsonDecode(r.body) as Map)['pins'] as List)
+            pin['publicKey'] ?? pin['observerId'],
+        ];
+        nodes = [
+          for (final id in sent)
+            nodes.firstWhere(
+              (n) => n['publicKey'] == id || n['observerId'] == id,
+            ),
+        ];
+        revision++;
+      }
+      return json(200, {'revision': revision, 'range': '24h', 'pins': nodes});
     }
-    if (path == '/me/alerts' && r.method == 'GET') return json(200, alerts);
+    if (path == '/me/alerts' && r.method == 'GET') {
+      // A copy, so an answer held by a test keeps what it read.
+      return json(200, jsonDecode(jsonEncode(alerts)));
+    }
+    if (path == '/auth/app/token') {
+      return exchangeFails
+          ? failure(503, 'service_down', 'The server is having a bad day.')
+          : json(200, {'token': 'tok', 'user': user()});
+    }
     if (path == '/me/alerts/rules') {
       final body = jsonDecode(r.body) as Map<String, dynamic>;
       rulePuts.add(body);
@@ -137,6 +167,11 @@ Future<Rig> rig({bool signedIn = true, String? name}) async {
     }
     return json(404, {});
   }, signedIn: signedIn);
+  if (hold) {
+    h.hold = (r) => r.url.path.endsWith('/me/atlas') && !atlasGate!.isCompleted
+        ? atlasGate!.future.then((_) => h.handler(r))
+        : null;
+  }
   return Rig(h, prefs, AtlasStore(prefs, server, account: h.account));
 }
 
@@ -159,6 +194,7 @@ Future<void> pump(
   bool alertsOn = true,
   Size size = const Size(390, 844),
   SignInFlow? flow,
+  bool settle = true,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -178,7 +214,7 @@ Future<void> pump(
   await tester.pumpWidget(
     flow == null ? app : SignInScope(flow: flow, child: app),
   );
-  await tester.pumpAndSettle();
+  if (settle) await tester.pumpAndSettle();
 }
 
 /// Unmounts the page so its poll timers end with the test.
@@ -196,6 +232,7 @@ Finder k(String id) => find.byKey(ValueKey(id));
 void main() {
   setUp(() async {
     await loadAssets();
+    exchangeFails = false;
     alerts = {
       'channels': emailOn,
       'targets': [
@@ -361,6 +398,7 @@ void main() {
     final launched = <Uri>[];
     final flow = SignInFlow(
       apiFor: (_) => r.h.account.api,
+      accountFor: (_) => r.h.account,
       launch: (uri) async {
         launched.add(uri);
         return true;
@@ -380,9 +418,55 @@ void main() {
     expect(k('atlas-alerts-profile'), findsNothing);
     expect(r.h.calls('GET', '/me/alerts'), isEmpty);
 
-    await tester.tap(k('atlas-alerts-sign-in'));
-    await tester.pumpAndSettle();
+    await tester.tap(k('account-sign-in'));
+    await tester.pump();
     expect(launched.single.queryParameters['view'], 'signin');
+    // The browser is open: the sheet waits, and can give up.
+    expect(k('account-waiting'), findsOneWidget);
+    await tester.tap(k('account-cancel'));
+    await tester.pump();
+    expect(k('account-waiting'), findsNothing);
+    expect(k('account-sign-in'), findsOneWidget);
+    await close(tester);
+  });
+
+  testWidgets('a sign-in that fails after the browser says why', (
+    tester,
+  ) async {
+    final r = await rig(signedIn: false);
+    final flow = SignInFlow(
+      apiFor: (_) => r.h.account.api,
+      accountFor: (_) => r.h.account,
+      launch: (_) async => true,
+      now: DateTime.now,
+    );
+    Uri callback() =>
+        Uri.parse('meshcorebeacon://auth?code=c&state=${flow.pending!.state}');
+    await pump(tester, r, flow: flow);
+    await tester.tap(bell(quiet));
+    await tester.pumpAndSettle();
+
+    exchangeFails = true;
+    await tester.tap(k('account-sign-in'));
+    await tester.pump();
+    await tester.runAsync(() => flow.handleCallback(callback()));
+    await tester.pump();
+    expect(find.text('The server is having a bad day.'), findsOneWidget);
+    expect(find.byType(Switch), findsNothing);
+
+    // The retry works, and the same sheet turns into the radio's rules.
+    exchangeFails = false;
+    await tester.tap(k('account-sign-in'));
+    await tester.pump();
+    await tester.runAsync(() async {
+      await flow.handleCallback(callback());
+      await r.store.idle;
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    });
+    await tester.pumpAndSettle();
+    expect(r.h.account.signedIn, isTrue);
+    expect(find.text('The server is having a bad day.'), findsNothing);
+    expect(k('alert-switch-$quiet-gone_quiet'), findsOneWidget);
     await close(tester);
   });
 
@@ -521,6 +605,323 @@ void main() {
     expect(k('alert-switch-$busy-gone_quiet'), findsOneWidget);
     expect(button(tester, busy).label, 'Alerts: 2 on');
     await close(tester);
+  });
+
+  group('a channel change', () {
+    Map<String, dynamic> emailOff() => {
+      'email': {'available': true, 'enabled': false, 'reason': ''},
+      'push': {'available': false, 'enabled': true, 'hasDevice': false},
+    };
+
+    test('wins over a read that started before it', () async {
+      final r = await rig();
+      final state = r.h.account.alerts;
+      await state.load();
+      expect(object(state.channels['email'])['enabled'], isTrue);
+
+      // A refresh is on its way when the user turns email off.
+      final held = Completer<http.Response>();
+      r.h.hold = (request) =>
+          request.url.path.endsWith('/me/alerts') ? held.future : null;
+      final refresh = state.load();
+      r.h.hold = null;
+      final stale = json(200, jsonDecode(jsonEncode(alerts)));
+      alerts['channels'] = emailOff();
+      state.setChannels(emailOff());
+      expect(object(state.channels['email'])['enabled'], isFalse);
+
+      held.complete(stale);
+      await refresh;
+      await state.settled;
+      expect(object(state.channels['email'])['enabled'], isFalse);
+      // The read after the save is the one that counts.
+      expect(r.h.calls('GET', '/me/alerts'), hasLength(3));
+    });
+
+    test('a rule save also outranks an older read', () async {
+      final r = await rig();
+      final state = r.h.account.alerts;
+      await state.load();
+      final held = Completer<http.Response>();
+      r.h.hold = (request) =>
+          request.url.path.endsWith('/me/alerts') ? held.future : null;
+      final refresh = state.load();
+      r.h.hold = null;
+      final stale = json(200, jsonDecode(jsonEncode(alerts)));
+      ((alerts['targets'] as List)[1] as Map)['rules'] = <dynamic>[];
+      final seen = <int>[];
+      state.addListener(() => seen.add(alertCounts(state.targets[1]).on));
+      final saved = state.saved();
+      held.complete(stale);
+      await refresh;
+      await saved;
+      await state.settled;
+      // The old answer is never shown again as if it were new.
+      expect(seen, isNotEmpty);
+      expect(seen.last, 0);
+      expect(seen.skipWhile((n) => n == 2), everyElement(0));
+    });
+  });
+
+  group('the bells keep up with the server', () {
+    void fire(bool on) {
+      final rules = ((alerts['targets'] as List)[1] as Map)['rules'] as List;
+      (rules.first as Map)['state'] = on ? 'firing' : 'ok';
+    }
+
+    testWidgets('on the minute tick, to firing and back', (tester) async {
+      final r = await rig();
+      await pump(tester, r);
+      expect(button(tester, busy).label, 'Alerts: 2 on');
+
+      fire(true);
+      await tester.pump(const Duration(minutes: 1));
+      await tester.pumpAndSettle();
+      expect(button(tester, busy).label, 'Alerts: 1 firing');
+      expect(button(tester, busy).color, isNotNull);
+
+      fire(false);
+      await tester.pump(const Duration(minutes: 1));
+      await tester.pumpAndSettle();
+      expect(button(tester, busy).label, 'Alerts: 2 on');
+      expect(button(tester, busy).color, isNull);
+      await close(tester);
+    });
+
+    testWidgets('on resume, and not while backgrounded', (tester) async {
+      final r = await rig();
+      await pump(tester, r);
+      final before = r.h.calls('GET', '/me/alerts').length;
+
+      for (final state in const [
+        AppLifecycleState.inactive,
+        AppLifecycleState.hidden,
+        AppLifecycleState.paused,
+      ]) {
+        tester.binding.handleAppLifecycleStateChanged(state);
+      }
+      fire(true);
+      await tester.pump(const Duration(minutes: 1));
+      await tester.pumpAndSettle();
+      expect(r.h.calls('GET', '/me/alerts'), hasLength(before));
+      expect(button(tester, busy).label, 'Alerts: 2 on');
+
+      for (final state in const [
+        AppLifecycleState.hidden,
+        AppLifecycleState.inactive,
+        AppLifecycleState.resumed,
+      ]) {
+        tester.binding.handleAppLifecycleStateChanged(state);
+      }
+      await tester.pumpAndSettle();
+      expect(button(tester, busy).label, 'Alerts: 1 firing');
+      await close(tester);
+    });
+
+    testWidgets('a covered Atlas waits until it shows again', (tester) async {
+      final r = await rig();
+      await pump(tester, r);
+      final before = r.h.calls('GET', '/me/alerts').length;
+      final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+      unawaited(
+        navigator.push(
+          MaterialPageRoute<void>(builder: (_) => const Scaffold()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      fire(true);
+      await tester.pump(const Duration(minutes: 1));
+      await tester.pumpAndSettle();
+      expect(r.h.calls('GET', '/me/alerts'), hasLength(before));
+
+      navigator.pop();
+      await tester.pumpAndSettle();
+      expect(button(tester, busy).label, 'Alerts: 1 firing');
+      await close(tester);
+    });
+
+    testWidgets('a reload leaves a threshold being typed alone', (
+      tester,
+    ) async {
+      (alerts['targets'] as List)[1] = target(
+        busy,
+        name: 'Busy',
+        rules: [rule('battery_low', threshold: 3500)],
+      )..['available'] = ['gone_quiet', 'back_online', 'battery_low'];
+      ((alerts['targets'] as List)[1] as Map)['unavailable'] =
+          <String, String>{};
+      final r = await rig();
+      await pump(tester, r);
+      await tester.tap(bell(busy));
+      await tester.pumpAndSettle();
+      final field = k('alert-input-$busy-battery_low');
+      await tester.enterText(field, '3.7');
+      await r.h.account.alerts.load();
+      await tester.pump();
+      expect(tester.widget<TextField>(field).controller!.text, '3.7');
+      await close(tester);
+    });
+
+    testWidgets('a failed refresh shows above the rules it could not renew', (
+      tester,
+    ) async {
+      final r = await rig();
+      await pump(tester, r);
+      r.h.hold = (request) => request.url.path.endsWith('/me/alerts')
+          ? Future.value(failure(500, 'internal', 'boom'))
+          : null;
+      await tester.tap(bell(busy));
+      await tester.pumpAndSettle();
+      expect(k('alert-switch-$busy-gone_quiet'), findsOneWidget);
+      expect(k('atlas-alerts-retry'), findsOneWidget);
+      expect(
+        tester.getTopLeft(k('atlas-alerts-retry')).dy,
+        lessThan(tester.getTopLeft(k('alert-switch-$busy-gone_quiet')).dy),
+      );
+
+      r.h.hold = null;
+      await tester.tap(k('atlas-alerts-retry'));
+      await tester.pumpAndSettle();
+      expect(k('atlas-alerts-retry'), findsNothing);
+      expect(k('alert-switch-$busy-gone_quiet'), findsOneWidget);
+      await close(tester);
+    });
+  });
+
+  testWidgets('a slow Atlas sync still means one alerts load', (tester) async {
+    final r = await rig(hold: true);
+    await pump(tester, r, settle: false);
+    // /info has answered; the account's pins have not.
+    await tester.pump();
+    await tester.pump();
+    expect(r.h.calls('GET', '/me/alerts'), isEmpty);
+    atlasGate!.complete();
+    await tester.pumpAndSettle();
+    expect(button(tester, busy).label, 'Alerts: 2 on');
+    expect(r.h.calls('GET', '/me/alerts'), hasLength(1));
+    await close(tester);
+  });
+
+  group('header buttons take a finger', () {
+    testWidgets('the painted box and the header keep their size', (
+      tester,
+    ) async {
+      final r = await rig();
+      await pump(tester, r, size: const Size(360, 800));
+      final card = find.ancestor(
+        of: bell(busy),
+        matching: find.byType(AtlasPanel),
+      );
+      final boxes = [
+        for (final e
+            in find
+                .descendant(of: card, matching: find.byType(AtlasIconButton))
+                .evaluate())
+          tester.getRect(find.byWidget(e.widget)),
+      ];
+      expect(boxes, hasLength(4));
+      for (final (i, box) in boxes.indexed) {
+        expect(box.size, const Size(28, 26));
+        if (i > 0) expect(box.left - boxes[i - 1].right, 4);
+        expect(box.top, boxes.first.top);
+      }
+      final panel = tester.getRect(card);
+      expect(boxes.first.top - panel.top, 15);
+      expect(panel.right - boxes.last.right, 15);
+      await close(tester);
+    });
+
+    testWidgets('a tap just outside the painted bell still opens it', (
+      tester,
+    ) async {
+      final r = await rig();
+      await pump(tester, r, size: const Size(360, 800));
+      final box = tester.getRect(bell(busy));
+      for (final point in [
+        box.bottomCenter + const Offset(0, 8),
+        box.topCenter - const Offset(0, 10),
+        box.centerLeft - const Offset(3, 0),
+      ]) {
+        await tester.tapAt(point);
+        await tester.pumpAndSettle();
+        expect(find.text('Alerts for Busy'), findsOneWidget, reason: '$point');
+        await tester.tapAt(const Offset(180, 20));
+        await tester.pumpAndSettle();
+        expect(find.text('Alerts for Busy'), findsNothing);
+      }
+      // Further down is the card's body, not the bell.
+      await tester.tapAt(box.bottomCenter + const Offset(0, 12));
+      await tester.pumpAndSettle();
+      expect(find.text('Alerts for Busy'), findsNothing);
+      await close(tester);
+    });
+
+    testWidgets('a tap in the gap goes to one button only', (tester) async {
+      final r = await rig();
+      await pump(tester, r, size: const Size(360, 800));
+      final card = find.ancestor(
+        of: bell(busy),
+        matching: find.byType(AtlasPanel),
+      );
+      final remove = find.descendant(
+        of: card,
+        matching: find.byWidgetPredicate(
+          (w) => w is AtlasIconButton && w.label == 'Remove',
+        ),
+      );
+      final pinView = find.descendant(
+        of: card,
+        matching: find.byWidgetPredicate(
+          (w) => w is AtlasIconButton && w.label == 'Open on this tab',
+        ),
+      );
+      // Bell side of the gap between the bell and the pin.
+      await tester.tapAt(
+        tester.getRect(bell(busy)).centerRight + const Offset(1, 0),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Alerts for Busy'), findsOneWidget);
+      expect(r.store.saved.pins, hasLength(3));
+      await tester.tapAt(const Offset(180, 20));
+      await tester.pumpAndSettle();
+
+      // Remove side of the gap between the pin and remove: only remove fires.
+      expect(tester.getRect(remove).left - tester.getRect(pinView).right, 4);
+      await tester.tapAt(
+        tester.getRect(remove).centerLeft - const Offset(1, 0),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Alerts for Busy'), findsNothing);
+      expect(r.store.saved.pins.map((p) => p.key), [quiet, roofId]);
+      await close(tester);
+    });
+
+    testWidgets('the grip still drags a card from outside its box', (
+      tester,
+    ) async {
+      final r = await rig();
+      await pump(tester, r, size: const Size(360, 800));
+      final card = find.ancestor(
+        of: bell(quiet),
+        matching: find.byType(AtlasPanel),
+      );
+      final grip = find.descendant(
+        of: card,
+        matching: find.byWidgetPredicate(
+          (w) => w is AtlasIconButton && w.label == 'Drag to reorder',
+        ),
+      );
+      final start = tester.getRect(grip).bottomCenter + const Offset(0, 6);
+      final last = tester.getCenter(find.byTooltip('Drag to reorder').last);
+      final drag = await tester.startGesture(start);
+      await tester.pump();
+      await drag.moveTo(last + const Offset(0, 20));
+      await tester.pump();
+      await drag.up();
+      await tester.pumpAndSettle();
+      expect(r.store.saved.pins.first.key, isNot(quiet));
+      await close(tester);
+    });
   });
 
   testWidgets('the profile link lands on the alerts', (tester) async {

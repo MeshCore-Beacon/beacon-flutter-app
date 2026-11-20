@@ -77,6 +77,12 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
   /// The account and pins the alerts were last asked for.
   String? _alertsFor;
 
+  /// Not under another route, as of the last build.
+  bool _current = true;
+
+  /// A refresh came due while hidden; it runs when the screen shows again.
+  bool _alertsDue = false;
+
   /// The account whose alerts the bells show; null without accounts.
   AccountState? get account => store.account;
   bool get alertsOn => features?.alerts == true && account != null;
@@ -109,9 +115,9 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
       }, onError: (_) {}),
     );
     ticker = Timer.periodic(atlasRefresh, (_) {
-      if (mounted) {
-        setState(() => now = widget.clock().millisecondsSinceEpoch);
-      }
+      if (!mounted) return;
+      setState(() => now = widget.clock().millisecondsSinceEpoch);
+      _refreshAlerts();
     });
     WidgetsBinding.instance.addObserver(this);
   }
@@ -145,9 +151,23 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
     // A microtask later, so the store has started the sync this change needs.
     unawaited(
       Future.microtask(() => store.idle).then((_) {
-        if (mounted) return account.alerts.load();
+        // A newer change has its own wait; two would load the same thing twice.
+        if (mounted && _alertsFor == wanted) return account.alerts.load();
       }),
     );
+  }
+
+  /// Reads the rule states again, on the minute tick and on resume. Like the
+  /// cards it waits while the app is backgrounded or the screen is covered.
+  void _refreshAlerts() {
+    final account = this.account;
+    if (!alertsOn || account == null || !account.signedIn) return;
+    if (!resumed || !_current) {
+      _alertsDue = true;
+      return;
+    }
+    _alertsDue = false;
+    unawaited(account.alerts.load());
   }
 
   Json? _alertTarget(AtlasPin pin) {
@@ -191,7 +211,10 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final next = state == AppLifecycleState.resumed;
-    if (next != resumed && mounted) setState(() => resumed = next);
+    if (next == resumed || !mounted) return;
+    setState(() => resumed = next);
+    // A rule may have fired or cleared while the app was away.
+    if (next) _refreshAlerts();
   }
 
   @override
@@ -423,7 +446,13 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
     final c = BeaconColors.of(context);
     final full = saved.pins.length >= limit;
     // A detail screen pushed over the tab pauses the polling, as leaving the tab does.
-    final active = resumed && (ModalRoute.of(context)?.isCurrent ?? true);
+    _current = ModalRoute.of(context)?.isCurrent ?? true;
+    final active = resumed && _current;
+    if (active && _alertsDue) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _alertsDue) _refreshAlerts();
+      });
+    }
     final hint = field == 'observer'
         ? (typed.isNotEmpty && typed.length < _searchMin
               ? 'searchTooShort'

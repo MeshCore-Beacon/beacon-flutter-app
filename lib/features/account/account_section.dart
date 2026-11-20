@@ -8,6 +8,7 @@ import '../../core/strings.dart';
 import '../../core/theme.dart';
 import 'profile_screen.dart';
 import 'sign_in.dart';
+import 'sign_in_prompt.dart';
 
 /// The account block in Settings for one server. Draws nothing until the
 /// server's features say accounts are on.
@@ -29,26 +30,11 @@ class AccountSection extends StatefulWidget {
 
 class _AccountSectionState extends State<AccountSection> {
   late Future<ServerFeatures> features = widget.api.features();
-  String? error;
-  bool starting = false;
 
   @override
   void didUpdateWidget(AccountSection old) {
     super.didUpdateWidget(old);
     if (old.api != widget.api) features = widget.api.features();
-  }
-
-  Future<void> signIn(SignInFlow flow) async {
-    setState(() {
-      starting = true;
-      error = null;
-    });
-    try {
-      await flow.start(widget.account.api.base);
-    } on ApiException catch (e) {
-      error = e.message;
-    }
-    if (mounted) setState(() => starting = false);
   }
 
   @override
@@ -84,7 +70,7 @@ class _AccountSectionState extends State<AccountSection> {
             if (widget.account.signedIn)
               ..._signedIn(context)
             else
-              ..._signedOut(context, flow, data),
+              ..._signedOut(data),
           ],
         ),
       );
@@ -102,97 +88,16 @@ class _AccountSectionState extends State<AccountSection> {
         : 'accountUi.introBase',
   );
 
-  List<Widget> _signedOut(
-    BuildContext context,
-    SignInFlow? flow,
-    ServerFeatures features,
-  ) {
-    final colors = BeaconColors.of(context);
-    final failed = flow?.lastResult?.outcome == SignInOutcome.failed
-        ? flow?.lastResult?.message
-        : null;
-    final problem = error ?? failed;
-    final waiting = flow?.pending != null;
-    final label = trKey(
-      features.portal ? 'account.signInPortal' : 'account.signIn',
-    );
-    return [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (waiting && flow != null) ...[
-              Row(
-                key: const ValueKey('account-waiting'),
-                children: [
-                  const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      trKey('accountUi.waiting'),
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(
-                trKey('accountUi.waitingNote'),
-                style: TextStyle(fontSize: 13, color: colors.muted),
-              ),
-              const SizedBox(height: 12),
-              OutlinedButton(
-                key: const ValueKey('account-cancel'),
-                onPressed: flow.cancel,
-                child: Text(trKey('accountUi.cancel')),
-              ),
-            ] else ...[
-              Text(
-                intro(features),
-                style: TextStyle(fontSize: 13, color: colors.muted),
-              ),
-              if (flow != null) ...[
-                const SizedBox(height: 12),
-                FilledButton(
-                  key: const ValueKey('account-sign-in'),
-                  onPressed: starting ? null : () => signIn(flow),
-                  child: starting
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(label),
-                ),
-              ],
-            ],
-            if (problem != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(Icons.error_outline, size: 18, color: colors.danger),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        problem,
-                        style: TextStyle(color: colors.danger, fontSize: 13),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-          ],
-        ),
+  List<Widget> _signedOut(ServerFeatures features) => [
+    Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      child: SignInPrompt(
+        account: widget.account,
+        intro: intro(features),
+        portal: features.portal,
       ),
-    ];
-  }
+    ),
+  ];
 
   Future<void> _confirmSignOut() async {
     final yes = await confirmAction(

@@ -486,38 +486,49 @@ class _AtlasCardState extends State<AtlasCard> {
         : widget.alertsOn > 0
         ? trKey('atlasAlerts.bellOn', count: widget.alertsOn)
         : trKey('atlasAlerts.bell');
+    final buttons = <Widget>[
+      if (widget.onAlerts case final onAlerts?)
+        AtlasIconButton(
+          key: ValueKey('atlas-bell-${pin.key}'),
+          icon: (color) => BellIcon(color, filled: widget.alertsOn > 0),
+          label: bellLabel,
+          color: widget.alertsFiring > 0 ? c.danger : null,
+          tinted: widget.alertsOn > 0,
+          onPressed: () => onAlerts(shown),
+        ),
+      if (views.length > 1)
+        AtlasIconButton(
+          icon: (color) => PinIcon(color, filled: view == home),
+          label: at('pinView'),
+          tooltip: at(view == home ? 'viewPinned' : 'pinViewHelp'),
+          pressed: view == home,
+          onPressed: view == home ? () {} : () => widget.onPinView(view),
+        ),
+      AtlasIconButton(
+        icon: CrossIcon.new,
+        label: at('remove'),
+        muted: true,
+        onPressed: widget.onRemove,
+      ),
+      widget.handle?.call(grip) ?? grip,
+    ];
+    // The boxes stay 28 by 26 with 4 between. Each takes touches 48 high and
+    // out to the middle of the gap; the ends reach into the space beside them.
     final actions = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (widget.onAlerts case final onAlerts?) ...[
-          AtlasIconButton(
-            key: ValueKey('atlas-bell-${pin.key}'),
-            icon: (color) => BellIcon(color, filled: widget.alertsOn > 0),
-            label: bellLabel,
-            color: widget.alertsFiring > 0 ? c.danger : null,
-            tinted: widget.alertsOn > 0,
-            onPressed: () => onAlerts(shown),
+        for (final (i, button) in buttons.indexed) ...[
+          if (i > 0) const SizedBox(width: 4),
+          AtlasHitSlop(
+            slop: EdgeInsets.fromLTRB(
+              i == 0 ? 4 : 2,
+              12,
+              i == buttons.length - 1 ? 10 : 2,
+              10,
+            ),
+            child: button,
           ),
-          const SizedBox(width: 4),
         ],
-        if (views.length > 1) ...[
-          AtlasIconButton(
-            icon: (color) => PinIcon(color, filled: view == home),
-            label: at('pinView'),
-            tooltip: at(view == home ? 'viewPinned' : 'pinViewHelp'),
-            pressed: view == home,
-            onPressed: view == home ? () {} : () => widget.onPinView(view),
-          ),
-          const SizedBox(width: 4),
-        ],
-        AtlasIconButton(
-          icon: CrossIcon.new,
-          label: at('remove'),
-          muted: true,
-          onPressed: widget.onRemove,
-        ),
-        const SizedBox(width: 4),
-        widget.handle?.call(grip) ?? grip,
       ],
     );
 

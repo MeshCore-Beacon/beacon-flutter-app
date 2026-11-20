@@ -3,14 +3,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/account.dart';
-import '../../core/api.dart';
 import '../../core/json.dart';
 import '../../core/sheet.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
 import '../account/alert_rule_list.dart';
 import '../account/alert_rules.dart';
-import '../account/sign_in.dart';
+import '../account/sign_in_prompt.dart';
 import 'atlas.dart';
 
 /// The `/me/alerts` target for [pin], or null when the server lists none yet.
@@ -108,9 +107,6 @@ class AtlasAlertsSheet extends StatefulWidget {
 }
 
 class _AtlasAlertsSheetState extends State<AtlasAlertsSheet> {
-  bool starting = false;
-  String? signInError;
-
   @override
   void initState() {
     super.initState();
@@ -118,22 +114,8 @@ class _AtlasAlertsSheetState extends State<AtlasAlertsSheet> {
     unawaited(widget.account.alerts.load());
   }
 
-  Future<void> signIn(SignInFlow flow) async {
-    setState(() {
-      starting = true;
-      signInError = null;
-    });
-    try {
-      await flow.start(widget.account.api.base);
-    } on ApiException catch (e) {
-      signInError = e.message;
-    }
-    if (mounted) setState(() => starting = false);
-  }
-
   @override
   Widget build(BuildContext context) {
-    final flow = SignInScope.maybeOf(context);
     final alerts = widget.account.alerts;
     return BeaconSheet(
       title: trKey('atlasAlerts.title').replaceAll('{{name}}', widget.name),
@@ -156,37 +138,18 @@ class _AtlasAlertsSheetState extends State<AtlasAlertsSheet> {
               if (widget.account.signedIn)
                 ..._rules(context)
               else
-                ..._signedOut(context, flow),
+                SignInPrompt(
+                  account: widget.account,
+                  intro: trKey('atlasAlerts.signInPrompt'),
+                  portal: widget.portal,
+                  muted: false,
+                ),
             ],
           ),
         ),
       ),
     );
   }
-
-  List<Widget> _signedOut(BuildContext context, SignInFlow? flow) => [
-    Text(trKey('atlasAlerts.signInPrompt')),
-    const SizedBox(height: 12),
-    Align(
-      alignment: Alignment.centerLeft,
-      child: FilledButton(
-        key: const ValueKey('atlas-alerts-sign-in'),
-        style: FilledButton.styleFrom(minimumSize: const Size(48, 48)),
-        onPressed: flow == null || starting ? null : () => signIn(flow),
-        child: Text(
-          trKey(widget.portal ? 'account.signInPortal' : 'account.signIn'),
-        ),
-      ),
-    ),
-    if (signInError case final text?)
-      Padding(
-        padding: const EdgeInsets.only(top: 8),
-        child: Text(
-          text,
-          style: TextStyle(color: BeaconColors.of(context).danger),
-        ),
-      ),
-  ];
 
   List<Widget> _rules(BuildContext context) {
     final colors = BeaconColors.of(context);
@@ -207,15 +170,21 @@ class _AtlasAlertsSheetState extends State<AtlasAlertsSheet> {
     );
     final reaches = alertsReachUser(alerts.channels);
     return [
-      if (target != null)
+      if (target != null) ...[
+        // A refresh that failed: what follows may be out of date.
+        if (error != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: retry(alertError(error), color: colors.danger),
+          ),
         AlertRuleList(
           key: ValueKey('atlas-alert-rules-${textOf(target['publicKey'])}'),
           target: target,
           account: widget.account,
           unit: widget.unit,
-          changed: alerts.load,
-        )
-      else if (alerts.data == null && error != null)
+          changed: alerts.saved,
+        ),
+      ] else if (alerts.data == null && error != null)
         retry(alertError(error), color: colors.danger)
       else if (alerts.data == null || alerts.loading)
         const Padding(

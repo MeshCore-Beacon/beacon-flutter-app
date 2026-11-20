@@ -139,42 +139,120 @@ class AtlasPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = BeaconColors.of(context);
     return Container(
-      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: c.surface,
         border: Border.all(color: c.border),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Material(
-        type: MaterialType.transparency,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      // Outside the padding, so a header button's touch area can reach into it.
+      child: AtlasHitArea(
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Material(
+            type: MaterialType.transparency,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Expanded(
-                  child: DefaultTextStyle.merge(
-                    style: TextStyle(
-                      fontFamily: _mono,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: .55,
-                      color: c.normal,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: DefaultTextStyle.merge(
+                        style: TextStyle(
+                          fontFamily: _mono,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: .55,
+                          color: c.normal,
+                        ),
+                        child: title,
+                      ),
                     ),
-                    child: title,
-                  ),
+                    if (right != null) ...[const SizedBox(width: 8), right!],
+                  ],
                 ),
-                if (right != null) ...[const SizedBox(width: 8), right!],
+                const SizedBox(height: 10),
+                child,
               ],
             ),
-            const SizedBox(height: 10),
-            child,
-          ],
+          ),
         ),
       ),
     );
+  }
+}
+
+/// Lets an [AtlasHitSlop] inside it take touches that land outside its own
+/// box. Nothing moves or grows: only where a touch counts changes.
+class AtlasHitArea extends SingleChildRenderObjectWidget {
+  const AtlasHitArea({super.key, super.child});
+  @override
+  RenderObject createRenderObject(BuildContext context) => _RenderHitArea();
+}
+
+class _RenderHitArea extends RenderProxyBox {
+  final targets = <_RenderHitSlop>{};
+
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    if (!size.contains(position)) return false;
+    for (final target in targets) {
+      if (!target.attached || !target.hasSize) continue;
+      final box = MatrixUtils.transformRect(
+        target.getTransformTo(this),
+        Offset.zero & target.size,
+      );
+      if (!target.slop.inflateRect(box).contains(position)) continue;
+      // Sent to the middle of the child, as a Material button's padding does.
+      final center = target.size.center(Offset.zero);
+      final hit = result.addWithRawTransform(
+        transform: MatrixUtils.forceToPoint(center),
+        position: center,
+        hitTest: (result, position) => target.hitTest(result, position: center),
+      );
+      if (hit) {
+        result.add(BoxHitTestEntry(this, position));
+        return true;
+      }
+    }
+    return super.hitTest(result, position: position);
+  }
+}
+
+/// Widens the touch area of [child] by [slop] without changing its layout.
+/// It needs an [AtlasHitArea] above it that covers the wider area.
+class AtlasHitSlop extends SingleChildRenderObjectWidget {
+  const AtlasHitSlop({super.key, required this.slop, super.child});
+  final EdgeInsets slop;
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderHitSlop()..slop = slop;
+  @override
+  void updateRenderObject(BuildContext context, RenderObject renderObject) =>
+      (renderObject as _RenderHitSlop).slop = slop;
+}
+
+class _RenderHitSlop extends RenderProxyBox {
+  EdgeInsets slop = EdgeInsets.zero;
+  _RenderHitArea? _area;
+
+  @override
+  void attach(PipelineOwner owner) {
+    super.attach(owner);
+    RenderObject? above = parent;
+    while (above != null && above is! _RenderHitArea) {
+      above = above.parent;
+    }
+    _area = above as _RenderHitArea?;
+    _area?.targets.add(this);
+  }
+
+  @override
+  void detach() {
+    _area?.targets.remove(this);
+    _area = null;
+    super.detach();
   }
 }
 

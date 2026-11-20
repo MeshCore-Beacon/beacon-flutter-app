@@ -401,9 +401,13 @@ void main() {
     expect(h.calls('PUT', '/me/alerts/channels'), hasLength(1));
     expect(live(tester, 'channel-email'), isFalse);
     expect(live(tester, 'channel-push'), isFalse);
-    save.complete(
-      json(200, channels(emailOn: false, pushAvailable: true, pushOn: false)),
+    // The read that follows a save sees what was saved.
+    data['channels'] = channels(
+      emailOn: false,
+      pushAvailable: true,
+      pushOn: false,
     );
+    save.complete(json(200, data['channels']));
     await tester.pumpAndSettle();
     expect(on(tester, 'channel-email'), isFalse);
     expect(live(tester, 'channel-push'), isTrue);
