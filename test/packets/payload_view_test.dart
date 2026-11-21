@@ -261,16 +261,8 @@ void main() {
     expect(find.text('Signature'), findsOneWidget);
     expect(find.textContaining('Role Repeater'), findsOneWidget);
     expect(find.textContaining('(4B LE)'), findsOneWidget);
-    // From is resolved by the public key, so the two rows share one mark.
-    final from = find.ancestor(
-      of: find.text('From '),
-      matching: find.byType(PacketFieldMark),
-    );
-    expect(from, findsOneWidget);
-    expect(
-      find.descendant(of: from, matching: find.text('Public key')),
-      findsOneWidget,
-    );
+    // The advert names its sender itself, so no From row repeats it.
+    expect(find.text('From '), findsNothing);
     // The flags block is marked like the other fields, in the flags colour.
     final flags = find.text('APP FLAGS');
     expect(

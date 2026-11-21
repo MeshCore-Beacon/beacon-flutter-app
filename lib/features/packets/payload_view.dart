@@ -236,25 +236,8 @@ class PacketPayloadView extends StatelessWidget {
     final signature = payload['signature'];
     final name = app['name'];
     final timestamp = payload['timestamp'];
-    final source = object(observation['resolvedSource']);
     return _fields([
-      // The advertiser is resolved by its key, so both share one mark.
-      if (source.isNotEmpty && key is String)
-        PacketFieldMark(
-          color: packetFieldColor(context, 'publicKey'),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _endpoint(tr('From'), '', source, 'publicKey', marked: false),
-              const SizedBox(height: 6),
-              _longHexField(context, tr('Public key'), key, marked: false),
-            ],
-          ),
-        )
-      else ...[
-        if (source.isNotEmpty) _endpoint(tr('From'), '', source, 'publicKey'),
-        if (key is String) _longHexField(context, tr('Public key'), key),
-      ],
+      if (key is String) _longHexField(context, tr('Public key'), key),
       if (timestamp != null) _advertTimestamp(context, timestamp),
       if (signature is String)
         _longHexField(context, tr('Signature'), signature),
@@ -388,12 +371,7 @@ class PacketPayloadView extends StatelessWidget {
   String _coordinate(dynamic value) =>
       number(value)?.toStringAsFixed(6) ?? textOf(value);
 
-  Widget _longHexField(
-    BuildContext context,
-    String label,
-    String value, {
-    bool marked = true,
-  }) {
+  Widget _longHexField(BuildContext context, String label, String value) {
     final compact = value.toUpperCase();
     final short = compact.length > 20
         ? '${compact.substring(0, 12)}…${compact.substring(compact.length - 8)}'
@@ -403,7 +381,6 @@ class PacketPayloadView extends StatelessWidget {
       '$short (${value.length ~/ 2}B)',
       context: context,
       onTap: () => _showFullValue(context, label, compact),
-      marked: marked,
     );
   }
 
@@ -588,22 +565,14 @@ class PacketPayloadView extends StatelessWidget {
     ]);
   }
 
-  /// [marked] is false when a shared mark already wraps the row.
-  Widget _endpoint(
-    String label,
-    dynamic hash,
-    Json resolved,
-    String field, {
-    bool marked = true,
-  }) {
+  Widget _endpoint(String label, dynamic hash, Json resolved, String field) {
     if (hash == null) return const SizedBox.shrink();
     return Builder(
       builder: (context) {
         final color = packetFieldColor(context, field);
-        return _mark(
-          marked,
-          color,
-          Wrap(
+        return PacketFieldMark(
+          color: color,
+          child: Wrap(
             spacing: 4,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
@@ -664,7 +633,6 @@ class PacketPayloadView extends StatelessWidget {
     BuildContext? context,
     VoidCallback? onTap,
     Widget? trailing,
-    bool marked = true,
   }) => Builder(
     builder: (fieldContext) {
       final palette = BeaconColors.of(fieldContext);
@@ -687,10 +655,9 @@ class PacketPayloadView extends StatelessWidget {
       final accent = field == null
           ? palette.muted
           : packetFieldColor(fieldContext, field);
-      return _mark(
-        marked,
-        field == null ? accent.withValues(alpha: .5) : accent,
-        Wrap(
+      return PacketFieldMark(
+        color: field == null ? accent.withValues(alpha: .5) : accent,
+        child: Wrap(
           spacing: 5,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
@@ -730,9 +697,6 @@ class PacketPayloadView extends StatelessWidget {
       );
     },
   );
-
-  Widget _mark(bool marked, Color color, Widget child) =>
-      marked ? PacketFieldMark(color: color, child: child) : child;
 
   String _label(String key) => key
       .replaceAllMapped(RegExp(r'([A-Z])'), (m) => ' ${m[1]}')
