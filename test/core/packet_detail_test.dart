@@ -291,6 +291,62 @@ void main() {
 }
 
 void analyzerLayoutTests() {
+  testWidgets('an advert offers its sender as a button, not a decoded row', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    String? opened;
+    final api = ApiClient(
+      Uri.parse('https://example.test'),
+      client: MockClient(
+        (_) async => http.Response(
+          jsonEncode({
+            'header': {'raw': '12', 'payloadType': 4, 'routeType': 2},
+            'rawPayload': 'AABB',
+            'parsedPayload': {'type': 'ADVERT', 'publicKey': 'AABB'},
+            'observations': [
+              {
+                'id': 1,
+                'pathBytes': '',
+                'pathLength': {'raw': '00', 'hashSize': 1, 'hopCount': 0},
+                'resolvedSource': {
+                  'confidence': 'high',
+                  'nodes': [
+                    {'id': 'node-1', 'name': 'Pleb', 'publicKey': 'AABB'},
+                  ],
+                },
+              },
+            ],
+          }),
+          200,
+        ),
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PacketDetailScreen(
+          api: api,
+          hash: 'abcd',
+          onOpen: (kind, id) => opened = '$kind/$id',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('From '), findsNothing);
+    await tester.tap(find.text('View node'));
+    expect(opened, 'node/node-1');
+    // It sits in Summary, above the decoded sections.
+    expect(
+      tester.getTopLeft(find.text('View node')).dy,
+      lessThan(tester.getTopLeft(find.text('RAW PACKET')).dy),
+    );
+    await tester.pumpWidget(const SizedBox());
+    api.close();
+  });
+
   testWidgets('decoded sections follow the frame and share its byte colours', (
     tester,
   ) async {

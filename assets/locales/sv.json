@@ -1628,6 +1628,9 @@
       "notYet": "Larm för den här radion är inte tillgängliga ännu. Försök igen när din Atlas har sparats till ditt konto.",
       "channels": "Välj hur larm når dig i din profil",
       "noChannel": "E-post och push är båda avstängda, så larmen når dig inte. Slå på en av dem i din profil."
+    },
+    "analyzerActions": {
+      "viewNode": "Visa nod"
     }
   }
 }

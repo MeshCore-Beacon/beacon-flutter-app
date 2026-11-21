@@ -1679,6 +1679,9 @@
       "notYet": "Les alertes de cette radio ne sont pas encore disponibles. Réessayez une fois votre Atlas enregistré dans votre compte.",
       "channels": "Choisissez comment recevoir vos alertes dans votre profil",
       "noChannel": "Le courriel et les notifications push sont tous deux désactivés : vos alertes ne vous parviendront pas. Activez-en un dans votre profil."
+    },
+    "analyzerActions": {
+      "viewNode": "Voir le nœud"
     }
   }
 }

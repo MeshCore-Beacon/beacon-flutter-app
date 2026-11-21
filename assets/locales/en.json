@@ -1628,6 +1628,9 @@
       "notYet": "Alerts for this radio are not available yet. Try again once your Atlas has saved to your account.",
       "channels": "Choose how alerts reach you in your profile",
       "noChannel": "Email and push are both off, so alerts won't reach you. Turn one on in your profile."
+    },
+    "analyzerActions": {
+      "viewNode": "View node"
     }
   }
 }

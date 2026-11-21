@@ -233,6 +233,26 @@ class _PacketDetailScreenState extends State<PacketDetailScreen>
                             ),
                           ),
                   ),
+                  // An advert's sender, kept apart from the decoded bytes.
+                  if (_advertiser(header, obs) case final String node) ...[
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      key: const ValueKey('analyzer-view-node'),
+                      style: OutlinedButton.styleFrom(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        minimumSize: const Size.fromHeight(36),
+                        textStyle: const TextStyle(
+                          fontFamily: 'JetBrainsMono',
+                          fontSize: 12,
+                        ),
+                      ),
+                      icon: const Icon(Icons.router_outlined, size: 14),
+                      label: Text(trKey('analyzerActions.viewNode')),
+                      onPressed: () => widget.onOpen('node', node),
+                    ),
+                  ],
                 ]),
                 if (unavailable)
                   Padding(
@@ -372,6 +392,15 @@ class _PacketDetailScreenState extends State<PacketDetailScreen>
               ],
             ),
     );
+  }
+
+  /// The node an advert came from, when the server resolved exactly one.
+  String? _advertiser(Json header, Json? obs) {
+    if (number(header['payloadType']) != 4 || obs == null) return null;
+    final nodes = rows(object(obs['resolvedSource'])['nodes']);
+    if (nodes.length != 1) return null;
+    final id = textOf(nodes.first['id']);
+    return id.isEmpty ? null : id;
   }
 
   /// One frame field's block, marked in the colour of its raw bytes.
