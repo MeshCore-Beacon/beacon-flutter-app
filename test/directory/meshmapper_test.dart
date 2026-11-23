@@ -146,6 +146,10 @@ void main() {
   });
 
   testWidgets('shows Details open, above the activity', (tester) async {
+    // Room for the whole Details section; the test font draws labels wide.
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     await pumpNode(tester, {
       ...node(),
       'lat': 45.4215,

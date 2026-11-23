@@ -764,28 +764,19 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
     final colors = BeaconColors.of(context);
     final publicKey = textOf(d['publicKey']);
     final meshMapper = object(d['meshmapper']);
-    Widget capability(String title, dynamic value) => Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              tr(title),
-              style: TextStyle(fontSize: 11, color: colors.muted),
-            ),
-          ),
-          nodeBadge(
-            tr(
-              value == true
-                  ? 'Yes'
-                  : value == false
-                  ? 'No'
-                  : 'Unknown',
-            ),
-            value == true ? colors.success : colors.muted,
-          ),
-        ],
+    Widget capability(String title, dynamic value) => factRow(
+      title,
+      nodeBadge(
+        tr(
+          value == true
+              ? 'Yes'
+              : value == false
+              ? 'No'
+              : 'Unknown',
+        ),
+        value == true ? colors.success : colors.muted,
       ),
+      align: CrossAxisAlignment.center,
     );
     final observerId = linkedObserverId;
     final identity = section('Identity', [
@@ -884,23 +875,13 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
         if (d['minFirmwareVersion'] != null)
           fact('Minimum firmware', d['minFirmwareVersion']),
         if (d['clockDriftSeconds'] != null)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 5),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                Text(
-                  tr('Clock drift'),
-                  style: TextStyle(fontSize: 11, color: colors.muted),
-                ),
-                nodeBadge(
-                  '${d['clockDriftSeconds']} s${d['clockOutOfSync'] == true ? ' · ${tr('Out of sync')}' : ''}',
-                  d['clockOutOfSync'] == true ? colors.warning : colors.success,
-                ),
-              ],
+          factRow(
+            'Clock drift',
+            nodeBadge(
+              '${d['clockDriftSeconds']} s${d['clockOutOfSync'] == true ? ' · ${tr('Out of sync')}' : ''}',
+              d['clockOutOfSync'] == true ? colors.warning : colors.success,
             ),
+            align: CrossAxisAlignment.center,
           ),
         if (rows(d['iatas']).isNotEmpty) ...[
           const SizedBox(height: 6),

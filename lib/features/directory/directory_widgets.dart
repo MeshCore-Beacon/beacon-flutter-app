@@ -79,10 +79,29 @@ Widget section(String title, List<Widget> children, {List<String>? info}) =>
       },
     );
 Widget fact(String title, dynamic value) => Builder(
+  builder: (context) => factRow(
+    title,
+    SelectableText(
+      value == null ? tr('Unknown') : '$value',
+      style: TextStyle(
+        fontFamily: 'JetBrainsMono',
+        fontSize: 11,
+        color: BeaconColors.of(context).bright,
+      ),
+    ),
+  ),
+);
+
+/// A fact whose value is a widget, such as a badge, in the same label column.
+Widget factRow(
+  String title,
+  Widget value, {
+  CrossAxisAlignment align = CrossAxisAlignment.start,
+}) => Builder(
   builder: (context) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 5),
     child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: align,
       children: [
         SizedBox(
           width: 122,
@@ -95,14 +114,7 @@ Widget fact(String title, dynamic value) => Builder(
           ),
         ),
         Expanded(
-          child: SelectableText(
-            value == null ? tr('Unknown') : '$value',
-            style: TextStyle(
-              fontFamily: 'JetBrainsMono',
-              fontSize: 11,
-              color: BeaconColors.of(context).bright,
-            ),
-          ),
+          child: Row(children: [Flexible(child: value)]),
         ),
       ],
     ),
