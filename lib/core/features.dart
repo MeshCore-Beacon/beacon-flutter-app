@@ -10,6 +10,7 @@ class ServerFeatures {
     required this.alerts,
     this.registration = false,
     this.atlasTelemetry = false,
+    this.atlas7d = false,
     this.mapTelemetry = false,
     this.appDeviceLabel = false,
     this.temperatureUnit = 'c',
@@ -27,6 +28,7 @@ class ServerFeatures {
       alerts = false,
       registration = false,
       atlasTelemetry = false,
+      atlas7d = false,
       mapTelemetry = false,
       appDeviceLabel = false,
       temperatureUnit = 'c',
@@ -49,6 +51,7 @@ class ServerFeatures {
       alerts: f['alerts'] == true,
       registration: f['registration'] == true,
       atlasTelemetry: f['atlasTelemetry'] == true,
+      atlas7d: f['atlas7d'] == true,
       mapTelemetry: f['mapTelemetry'] == true,
       appDeviceLabel: f['appDeviceLabel'] == true,
       temperatureUnit: d['temperatureUnit'] == 'f' ? 'f' : 'c',
@@ -72,6 +75,9 @@ class ServerFeatures {
   /// The account Atlas stores Telemetry tiles and a pinned Telemetry view, and
   /// the readings route takes range=72h.
   final bool atlasTelemetry;
+
+  /// The Atlas takes a 7 day range, and the account Atlas stores it.
+  final bool atlas7d;
 
   /// Map labels may carry the latest telemetry; the toggle hides without it.
   final bool mapTelemetry;

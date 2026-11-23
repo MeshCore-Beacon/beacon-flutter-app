@@ -94,6 +94,9 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
 
   SavedAtlas get saved => store.saved;
 
+  /// The range shown and fetched; the saved one is never rewritten for it.
+  AtlasRange get range => effectiveRange(saved.range, features?.atlas7d);
+
   @override
   void initState() {
     super.initState();
@@ -504,12 +507,15 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
               const SizedBox(width: 8),
               AtlasSegmented<AtlasRange>(
                 label: at('range'),
-                value: saved.range,
+                value: range,
                 onChanged: (range) =>
                     store.update((value) => value.copyWith(range: range)),
                 options: {
-                  for (final range in AtlasRange.values)
-                    range: at('ranges.${range.id}'),
+                  for (final option in AtlasRange.values)
+                    if (option != AtlasRange.week ||
+                        features?.atlas7d == true ||
+                        range == AtlasRange.week)
+                      option: atlasRangeLabel(option),
                 },
               ),
             ],
@@ -579,7 +585,7 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
                             alertsFiring: counts.firing,
                             api: widget.api,
                             pin: pin,
-                            range: saved.range,
+                            range: range,
                             active: active,
                             now: now,
                             view: viewOf(pin),

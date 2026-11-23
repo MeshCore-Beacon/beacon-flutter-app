@@ -43,7 +43,7 @@ class FakeServer {
   bool bareConflict = false;
   bool offline = false;
   int? staleAfter;
-  bool atlasTelemetry = false;
+  bool atlasTelemetry = false, atlas7d = false;
 
   Map<String, dynamic> get doc => {
     'revision': revision,
@@ -64,7 +64,7 @@ class FakeServer {
     if (gate != null && r.method == 'PUT') await gate.future;
     if (r.url.path.endsWith('/info')) {
       return _ok({
-        'features': {'atlasTelemetry': atlasTelemetry},
+        'features': {'atlasTelemetry': atlasTelemetry, 'atlas7d': atlas7d},
       });
     }
     if (r.method == 'GET') {
@@ -88,6 +88,16 @@ class FakeServer {
           'current': doc,
         }),
         409,
+        headers: {'content-type': 'application/json'},
+      );
+    }
+    // An older server knows two ranges.
+    if (!atlas7d && body['range'] == '7d') {
+      return http.Response(
+        jsonEncode({
+          'error': {'code': 'validation', 'message': 'bad range'},
+        }),
+        422,
         headers: {'content-type': 'application/json'},
       );
     }
@@ -233,6 +243,53 @@ void main() {
       final sent = (jsonDecode(fake.puts.last.body)['pins'] as List).single;
       expect(sent['view'], 'telemetry');
       expect(sent['telemetryTiles'], ['noise', 'battery', 'uptime', 'airtime']);
+    });
+  });
+
+  group('7 day range', () {
+    String cachedRange(Preferences prefs) =>
+        (jsonDecode(prefs.atlasFor(server)!) as Map)['range'] as String;
+
+    test('an older server is sent 3d and the local copy keeps 7d', () async {
+      final r = await rig(marked: true);
+      final store = r.store;
+      await store.idle;
+      store.update((v) => v.copyWith(range: AtlasRange.week));
+      await store.idle;
+      expect(jsonDecode(r.fake.puts.last.body)['range'], '3d');
+      expect(r.fake.range, '3d');
+      expect(store.notice, isNull);
+      expect(store.saved.range, AtlasRange.week);
+      expect(cachedRange(r.prefs), '7d');
+      // The next read answers 3d and still does not replace it.
+      await store.sync();
+      expect(store.saved.range, AtlasRange.week);
+      expect(cachedRange(r.prefs), '7d');
+    });
+
+    test('an older server\'s other range still wins', () async {
+      final r = await rig(
+        marked: true,
+        local: [node(key)],
+        range: AtlasRange.week,
+      );
+      await r.store.idle;
+      expect(r.store.saved.range, AtlasRange.day);
+    });
+
+    test('a server with the flag gets 7d and gives it back', () async {
+      final fake = FakeServer()..atlas7d = true;
+      final r = await rig(marked: true, fake: fake);
+      final store = r.store;
+      await store.idle;
+      store.update((v) => v.copyWith(range: AtlasRange.week));
+      await store.idle;
+      expect(jsonDecode(fake.puts.last.body)['range'], '7d');
+      fake
+        ..range = '3d'
+        ..revision += 1;
+      await store.sync();
+      expect(store.saved.range, AtlasRange.threeDays);
     });
   });
 

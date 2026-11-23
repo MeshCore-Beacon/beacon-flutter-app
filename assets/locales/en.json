@@ -1638,6 +1638,9 @@
       "observer": "Observer",
       "errorObserverNode": "Observers report their own telemetry.",
       "reasonObserver": "Observer, reports its own telemetry"
+    },
+    "atlasRange": {
+      "7d": "7d"
     }
   }
 }

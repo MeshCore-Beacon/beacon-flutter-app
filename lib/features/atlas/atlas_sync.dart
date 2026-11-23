@@ -84,15 +84,17 @@ ServerAtlas? parseServerAtlas(Json doc) {
 
 /// The PUT body for [saved]. A stand-in observer goes out by key; any other
 /// observer by id, as a local pin only has that. An older server rejects the
-/// Telemetry fields, so without [telemetry] they stay out.
+/// Telemetry fields, so without [telemetry] they stay out. Without [week] a
+/// 7 day range goes out as three days.
 Json atlasPutBody(
   SavedAtlas saved,
   Map<String, String> keys,
   int revision, {
   bool telemetry = true,
+  bool week = true,
 }) => {
   'baseRevision': revision,
-  'range': saved.range.id,
+  'range': effectiveRange(saved.range, week).id,
   'pins': [
     for (final pin in saved.pins)
       if (pin.isNode)
@@ -197,3 +199,10 @@ SavedAtlas carryTelemetry(SavedAtlas server, SavedAtlas local) {
     ],
   );
 }
+
+/// Against a server without the 7 day range a local week went out as three
+/// days, so the server's three days does not replace it.
+SavedAtlas carryWeek(SavedAtlas server, SavedAtlas local) =>
+    local.range == AtlasRange.week && server.range == AtlasRange.threeDays
+    ? server.copyWith(range: AtlasRange.week)
+    : server;

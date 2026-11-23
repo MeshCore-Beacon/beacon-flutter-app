@@ -399,6 +399,9 @@ class AuthApi {
   Future<bool> atlasTelemetry() async =>
       (await _serverFeatures())?.atlasTelemetry ?? false;
 
+  /// Whether the account Atlas stores the 7 day range. Any failure reads as no.
+  Future<bool> atlas7d() async => (await _serverFeatures())?.atlas7d ?? false;
+
   /// The account Atlas as the server holds it.
   Future<Json> atlas() => send('GET', '/me/atlas');
 

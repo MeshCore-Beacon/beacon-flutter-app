@@ -183,6 +183,22 @@ void main() {
       final sample = summarizeTelemetry(week, AtlasRange.threeDays, tick);
       expect(sample.values['battery'], [3.9]);
     });
+    test('7d is a week of hourly readings, flag or not', () {
+      for (final flag in [true, false]) {
+        expect(telemetryRequest(AtlasRange.week, flag), (
+          range: '168h',
+          interval: '1h',
+        ));
+      }
+      final week = {
+        'points': [
+          {'t': hour(170), 'batteryMv': 3000},
+          {'t': hour(160), 'batteryMv': 3900},
+        ],
+      };
+      final sample = summarizeTelemetry(week, AtlasRange.week, tick);
+      expect(sample.values['battery'], [3.9]);
+    });
   });
 
   group('when the tab appears', () {

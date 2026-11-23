@@ -153,6 +153,24 @@ void main() {
       });
     });
 
+    test('a week goes out as 3d to a server without it', () {
+      const saved = SavedAtlas(range: AtlasRange.week);
+      expect(atlasPutBody(saved, const {}, 1)['range'], '7d');
+      expect(atlasPutBody(saved, const {}, 1, week: false)['range'], '3d');
+      expect(saved.range, AtlasRange.week);
+      const short = SavedAtlas(range: AtlasRange.day);
+      expect(atlasPutBody(short, const {}, 1, week: false)['range'], '24h');
+    });
+
+    test('the server\'s 3d does not replace a local week', () {
+      const week = SavedAtlas(range: AtlasRange.week);
+      const three = SavedAtlas(range: AtlasRange.threeDays);
+      const day = SavedAtlas();
+      expect(carryWeek(three, week).range, AtlasRange.week);
+      expect(carryWeek(day, week).range, AtlasRange.day);
+      expect(carryWeek(three, day).range, AtlasRange.threeDays);
+    });
+
     test('a stand-in observer goes out by its public key', () {
       final server = parseServerAtlas(doc([serverObserver(obsKey)]))!;
       final body = atlasPutBody(server.atlas, server.observerKeys, 1);

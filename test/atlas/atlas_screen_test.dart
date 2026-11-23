@@ -35,8 +35,8 @@ Map<String, dynamic> nodePin([Map<String, dynamic> extra = const {}]) => {
   'name': 'Hill',
   ...extra,
 };
-String stored(List<Map<String, dynamic>> pins) =>
-    jsonEncode({'version': 2, 'range': '24h', 'pins': pins});
+String stored(List<Map<String, dynamic>> pins, [String range = '24h']) =>
+    jsonEncode({'version': 2, 'range': range, 'pins': pins});
 
 /// A small Beacon server: two nodes, one of them also an observer.
 class Server {
@@ -72,7 +72,7 @@ class Server {
   /// Holds the observer lookup, like a slow network.
   Completer<void>? holdObserver;
   bool activity404 = false;
-  bool polling = true, atlasTelemetry = false;
+  bool polling = true, atlasTelemetry = false, atlas7d = false;
   int? atlasLimit;
   String temperatureUnit = 'c';
 
@@ -110,7 +110,11 @@ class Server {
     }
     if (path == '/info') {
       return {
-        'features': {'polling': polling, 'atlasTelemetry': atlasTelemetry},
+        'features': {
+          'polling': polling,
+          'atlasTelemetry': atlasTelemetry,
+          'atlas7d': atlas7d,
+        },
         'display': {'temperatureUnit': temperatureUnit},
         if (atlasLimit != null) 'limits': {'atlas': atlasLimit},
       };
@@ -215,6 +219,7 @@ final opened = <(String, String)>[];
 Future<Preferences> pump(
   WidgetTester tester, {
   List<Map<String, dynamic>>? pins,
+  String range = '24h',
   Size size = const Size(390, 844),
 }) async {
   tester.view.physicalSize = size;
@@ -226,7 +231,7 @@ Future<Preferences> pump(
       {'name': 'Test', 'url': server},
     ]),
     'beacon.active': server,
-    'beacon.atlas.$server': ?(pins == null ? null : stored(pins)),
+    'beacon.atlas.$server': ?(pins == null ? null : stored(pins, range)),
   });
   final prefs = await Preferences.load();
   opened.clear();
@@ -604,6 +609,63 @@ void main() {
       await tester.tap(find.bySemanticsLabel('Open on this tab'));
       await tester.pumpAndSettle();
       expect(savedPins(prefs).single['view'], 'telemetry');
+      await close(tester);
+    });
+  });
+
+  group('7 day range', () {
+    Iterable<Uri> asked(String path) =>
+        fake.requests.where((url) => url.path == '/api/v1$path');
+
+    testWidgets('is offered only by a server that has it', (tester) async {
+      await pump(tester, pins: [nodePin()]);
+      expect(find.text('3d'), findsOneWidget);
+      expect(find.text('7d'), findsNothing);
+      await close(tester);
+      fake = Server()..atlas7d = true;
+      await pump(tester, pins: [nodePin()]);
+      expect(find.text('7d'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('asks every feed for 168 hourly buckets', (tester) async {
+      fake.atlas7d = true;
+      fake.hill = {...fake.hill, 'observerId': observerId};
+      final prefs = await pump(tester, pins: [nodePin()]);
+      await tester.tap(find.text('7d'));
+      await tester.pumpAndSettle();
+      expect(jsonDecode(prefs.atlasFor(server)!)['range'], '7d');
+      expect(asked('/nodes/$nodeId/activity').last.queryParameters, {
+        'range': '168h',
+      });
+      expect(find.text('7d'), findsNWidgets(2));
+      await tester.tap(find.text('Observer'));
+      await tester.pumpAndSettle();
+      for (final feed in ['activity', 'telemetry']) {
+        expect(asked('/observers/$observerId/$feed').last.queryParameters, {
+          'range': '168h',
+          'interval': '1h',
+        });
+      }
+      await tester.tap(find.text('Telemetry'));
+      await tester.pumpAndSettle();
+      expect(asked('/nodes/$nodeId/telemetry').last.queryParameters, {
+        'range': '168h',
+        'interval': '1h',
+      });
+      await close(tester);
+    });
+
+    testWidgets('a saved 7d shows and fetches as 3d on an older server', (
+      tester,
+    ) async {
+      final prefs = await pump(tester, pins: [nodePin()], range: '7d');
+      expect(find.text('7d'), findsNothing);
+      expect(asked('/nodes/$nodeId/activity').last.queryParameters, {
+        'range': '72h',
+      });
+      // The stored range is left alone.
+      expect(jsonDecode(prefs.atlasFor(server)!)['range'], '7d');
       await close(tester);
     });
   });

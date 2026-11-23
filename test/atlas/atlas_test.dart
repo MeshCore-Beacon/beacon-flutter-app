@@ -93,6 +93,34 @@ void main() {
       },
     );
 
+    test('the range round trips; an unknown one is a day', () {
+      for (final range in AtlasRange.values) {
+        final raw = SavedAtlas(range: range).encode();
+        expect(jsonDecode(raw)['range'], range.id);
+        expect(parseAtlas(raw).range, range);
+      }
+      expect(AtlasRange.week.id, '7d');
+      expect(AtlasRange.week.duration, '168h');
+      for (final bad in ['30d', '7D', 7, null]) {
+        final raw = jsonEncode({'version': 2, 'range': bad, 'pins': []});
+        expect(parseAtlas(raw).range, AtlasRange.day);
+      }
+    });
+
+    test('a saved week shows as three days only once the server says no', () {
+      expect(effectiveRange(AtlasRange.week, true), AtlasRange.week);
+      expect(effectiveRange(AtlasRange.week, false), AtlasRange.threeDays);
+      // Still loading: nothing is downgraded.
+      expect(effectiveRange(AtlasRange.week, null), AtlasRange.week);
+      for (final flag in [true, false, null]) {
+        expect(effectiveRange(AtlasRange.day, flag), AtlasRange.day);
+        expect(
+          effectiveRange(AtlasRange.threeDays, flag),
+          AtlasRange.threeDays,
+        );
+      }
+    });
+
     test('still rejects persisted Atlas text over the bounded file budget', () {
       final raw = jsonEncode({
         'version': 2,
@@ -447,6 +475,18 @@ void main() {
         summarizeActivity(activityOf(), AtlasRange.threeDays, tick).counts,
         List.filled(72, 0),
       );
+    });
+
+    test('a week is 168 hourly slots, newest last', () {
+      final slots = HourSlots(AtlasRange.week, tick);
+      expect(slots.hours, 168);
+      expect(slots.bin(tick), 167);
+      expect(slots.inWindow(tick - 167 * hourMs), isTrue);
+      expect(slots.inWindow(tick - 168 * hourMs), isFalse);
+      final sample = summarizeActivity(activityOf(), AtlasRange.week, tick);
+      expect(sample.counts, List.filled(168, 0));
+      expect(sample.snrHourly, hasLength(168));
+      expect(sample.present, hasLength(168));
     });
   });
 

@@ -8,6 +8,7 @@ import 'package:flutter/rendering.dart';
 import '../../core/json.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
+import 'atlas.dart';
 import 'observer_sample.dart';
 
 const _mono = 'JetBrainsMono';
@@ -20,6 +21,11 @@ String at(String key, {int? count, Map<String, Object?> args = const {}}) {
   }
   return text;
 }
+
+/// The 7 day label lives in its own namespace: it came after atlas.ranges.
+String atlasRangeLabel(AtlasRange range) => range == AtlasRange.week
+    ? trKey('atlasRange.7d')
+    : at('ranges.${range.id}');
 
 String formatHex(String value) => shortKey(value).toUpperCase();
 

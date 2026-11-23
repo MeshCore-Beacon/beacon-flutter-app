@@ -13,6 +13,7 @@ import 'atlas.dart';
     atlasTelemetry
         ? (range: '72h', interval: '1h')
         : (range: '168h', interval: '6h'),
+  AtlasRange.week => (range: '168h', interval: '1h'),
 };
 
 /// A node card gets the tab when Beacon has readings for it or is polling it.

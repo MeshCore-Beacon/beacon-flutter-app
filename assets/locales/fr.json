@@ -1689,6 +1689,9 @@
       "observer": "Observateur",
       "errorObserverNode": "Les observateurs transmettent leur propre télémétrie.",
       "reasonObserver": "Observateur, transmet sa propre télémétrie"
+    },
+    "atlasRange": {
+      "7d": "7 j"
     }
   }
 }

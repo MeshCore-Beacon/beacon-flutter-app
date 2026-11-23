@@ -35,6 +35,23 @@ void main() {
       expect(f.registration, false);
     });
 
+    test('atlas7d is off unless the server says true', () {
+      expect(ServerFeatures.fromInfo(null).atlas7d, false);
+      expect(const ServerFeatures.off().atlas7d, false);
+      expect(
+        ServerFeatures.fromInfo({
+          'features': {'atlas7d': 'yes'},
+        }).atlas7d,
+        false,
+      );
+      expect(
+        ServerFeatures.fromInfo({
+          'features': {'atlas7d': true},
+        }).atlas7d,
+        true,
+      );
+    });
+
     test('registration is read when present', () {
       expect(
         ServerFeatures.fromInfo({

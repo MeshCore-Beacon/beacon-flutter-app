@@ -600,7 +600,7 @@ class _AtlasCardState extends State<AtlasCard> {
       final unsupported = isNotFound(activity?.error);
       final window = sample.partial
           ? at('observerPartialCoverage')
-          : at('ranges.${widget.range.id}');
+          : atlasRangeLabel(widget.range);
       AtlasStatTile tile(
         String label,
         String value,
@@ -824,7 +824,7 @@ class _AtlasCardState extends State<AtlasCard> {
       };
       final window = obs.partial
           ? at('observerPartialCoverage')
-          : at('ranges.${widget.range.id}');
+          : atlasRangeLabel(widget.range);
       Widget observerTile(String tile, int slot) {
         // Today's stand-in for a radio with no battery, unless the card already has an uptime tile.
         final shown =

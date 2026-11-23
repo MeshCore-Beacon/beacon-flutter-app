@@ -12,7 +12,8 @@ const atlasLimitMax = 100;
 
 enum AtlasRange {
   day('24h', 24, '24h'),
-  threeDays('3d', 72, '72h');
+  threeDays('3d', 72, '72h'),
+  week('7d', 168, '168h');
 
   const AtlasRange(this.id, this.hours, this.duration);
   final String id;
@@ -21,6 +22,11 @@ enum AtlasRange {
   /// Go duration string the activity and telemetry endpoints expect.
   final String duration;
 }
+
+/// The range to show and fetch. A saved week reads as three days on a server
+/// without it; [atlas7d] is null until /info answers, and nothing changes then.
+AtlasRange effectiveRange(AtlasRange saved, bool? atlas7d) =>
+    saved == AtlasRange.week && atlas7d == false ? AtlasRange.threeDays : saved;
 
 enum AtlasView { analytics, heard, observer, telemetry }
 
@@ -264,7 +270,11 @@ SavedAtlas parseAtlas(String? raw) {
       if (pins.length == atlasLimitMax) break;
     }
     return SavedAtlas(
-      range: value['range'] == '3d' ? AtlasRange.threeDays : AtlasRange.day,
+      range: switch (value['range']) {
+        '3d' => AtlasRange.threeDays,
+        '7d' => AtlasRange.week,
+        _ => AtlasRange.day,
+      },
       pins: pins,
     );
   } catch (_) {

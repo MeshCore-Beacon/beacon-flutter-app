@@ -1638,6 +1638,9 @@
       "observer": "Observatör",
       "errorObserverNode": "Observatörer rapporterar sin egen telemetri.",
       "reasonObserver": "Observatör, rapporterar sin egen telemetri"
+    },
+    "atlasRange": {
+      "7d": "7 d"
     }
   }
 }
