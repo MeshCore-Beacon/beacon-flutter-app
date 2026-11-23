@@ -289,6 +289,23 @@ class _StatsQueryState extends State<StatsQuery> with WidgetsBindingObserver {
   );
 }
 
+/// The reading before and after each gap, as two-point runs for a bridging line.
+List<FlSpot> gapBridges(List<FlSpot> spots) {
+  final out = <FlSpot>[];
+  FlSpot? last;
+  var gap = false;
+  for (final spot in spots) {
+    if (spot.isNull()) {
+      gap = last != null;
+      continue;
+    }
+    if (gap) out.addAll([last!, spot, FlSpot.nullSpot]);
+    last = spot;
+    gap = false;
+  }
+  return out;
+}
+
 class TimeChart extends StatefulWidget {
   const TimeChart({
     super.key,
@@ -298,6 +315,8 @@ class TimeChart extends StatefulWidget {
     this.stacked = false,
     this.showSingleSeriesToggle = true,
     this.showDots = false,
+    this.bridgeGaps = false,
+    this.fill = true,
     this.height = 200,
     this.colors,
     this.format,
@@ -313,6 +332,12 @@ class TimeChart extends StatefulWidget {
 
   /// Mark every point, so a point between gaps is not invisible.
   final bool showDots;
+
+  /// Join the readings either side of a gap with a faint dashed line.
+  final bool bridgeGaps;
+
+  /// Shade under a lone series.
+  final bool fill;
   final double height;
 
   /// Series colours in order, instead of the analytics palette.
@@ -428,6 +453,10 @@ class _TimeChartState extends State<TimeChart> {
               ),
         ],
     ];
+    final bridges = [
+      if (widget.bridgeGaps && !widget.stacked)
+        for (var i = 0; i < active.length; i++) (i, gapBridges(plotted[i])),
+    ].where((b) => b.$2.isNotEmpty).toList();
     return Column(
       children: [
         if (entries.length > 1 || widget.showSingleSeriesToggle)
@@ -473,14 +502,33 @@ class _TimeChartState extends State<TimeChart> {
                     isCurved: false,
                     dotData: FlDotData(
                       show: widget.showDots || all.length <= 2,
+                      getDotPainter: (spot, _, bar, _) => FlDotCirclePainter(
+                        radius: widget.showDots ? 2 : 4,
+                        color: bar.color!,
+                        strokeWidth: 0,
+                      ),
                     ),
                     belowBarData: BarAreaData(
-                      show: active.length == 1 || (widget.stacked && i == 0),
+                      show:
+                          (widget.fill && active.length == 1) ||
+                          (widget.stacked && i == 0),
                       color: _color(
                         context,
                         entries.indexOf(active[i]),
                       ).withValues(alpha: widget.stacked ? .4 : .13),
                     ),
+                  ),
+                // After the series, so a touched bar's index still names one.
+                for (final (i, spots) in bridges)
+                  LineChartBarData(
+                    spots: spots,
+                    color: _color(
+                      context,
+                      entries.indexOf(active[i]),
+                    ).withValues(alpha: .6),
+                    barWidth: 1,
+                    dashArray: const [3, 3],
+                    dotData: const FlDotData(show: false),
                   ),
               ],
               betweenBarsData: widget.stacked
@@ -569,6 +617,8 @@ class _TimeChartState extends State<TimeChart> {
                   fitInsideHorizontally: widget.zoom,
                   fitInsideVertically: widget.zoom,
                   getTooltipItems: (spots) => spots.map((s) {
+                    // A bridge repeats its series' readings.
+                    if (s.barIndex >= active.length) return null;
                     final d = epoch(s.x, isUtc: true);
                     return LineTooltipItem(
                       '${widget.timeAxis && d != null ? '${d.toIso8601String().substring(5, 16)} UTC\n' : ''}${tr(active[s.barIndex].key)}: ${widget.format?.call(s.y) ?? '${countLabel(widget.stacked ? active[s.barIndex].value.firstWhere((p) => p.x == s.x).y : s.y)}${widget.unit}'}',

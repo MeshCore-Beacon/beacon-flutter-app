@@ -461,6 +461,39 @@ class CrossIcon extends CustomPainter {
   bool shouldRepaint(CrossIcon old) => old.color != color;
 }
 
+/// Two arrows pulling apart: the sparkline opens larger.
+class ExpandIcon extends CustomPainter {
+  const ExpandIcon(this.color);
+  final Color color;
+  @override
+  void paint(Canvas canvas, Size size) {
+    final s = size.width, a = s * .4;
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    canvas.drawPath(
+      Path()
+        ..moveTo(s - a, 0)
+        ..lineTo(s, 0)
+        ..lineTo(s, a)
+        ..moveTo(s, 0)
+        ..lineTo(s * .58, s * .42)
+        ..moveTo(a, s)
+        ..lineTo(0, s)
+        ..lineTo(0, s - a)
+        ..moveTo(0, s)
+        ..lineTo(s * .42, s * .58),
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(ExpandIcon old) => old.color != color;
+}
+
 class GripIcon extends CustomPainter {
   const GripIcon(this.color);
   final Color color;
@@ -952,7 +985,21 @@ class AtlasStatTile extends StatelessWidget {
                 key: const ValueKey('atlas-tile-graph'),
                 onTap: graph,
                 borderRadius: BorderRadius.circular(3),
-                child: plain,
+                // The gap above the sparkline takes the tap too.
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(child: plain),
+                      const SizedBox(width: 6),
+                      CustomPaint(
+                        size: const Size.square(9),
+                        painter: ExpandIcon(c.muted),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           );
@@ -990,7 +1037,7 @@ class AtlasStatTile extends StatelessWidget {
           const SizedBox(height: 2),
           _value(c),
           const Spacer(),
-          const SizedBox(height: 6),
+          if (graph == null) const SizedBox(height: 6),
           chart,
         ],
       ),

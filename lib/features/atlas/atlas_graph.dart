@@ -87,6 +87,8 @@ Future<void> showAtlasGraph(
             maxX: now.toDouble(),
             showSingleSeriesToggle: false,
             showDots: true,
+            bridgeGaps: true,
+            fill: false,
             zoom: true,
           ),
         ),
