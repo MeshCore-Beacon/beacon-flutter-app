@@ -7,11 +7,13 @@ import 'package:beacon/core/auth_api.dart';
 import 'package:beacon/core/preferences.dart';
 import 'package:beacon/core/theme.dart';
 import 'package:beacon/core/token_store.dart';
+import 'package:beacon/features/analytics/charts.dart';
 import 'package:beacon/features/atlas/atlas.dart';
 import 'package:beacon/features/atlas/atlas_grid.dart';
 import 'package:beacon/features/atlas/atlas_screen.dart';
 import 'package:beacon/features/atlas/atlas_store.dart';
 import 'package:beacon/features/atlas/atlas_widgets.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -668,6 +670,172 @@ void main() {
       expect(jsonDecode(prefs.atlasFor(server)!)['range'], '7d');
       await close(tester);
     });
+  });
+
+  group('tile graph', () {
+    Finder sparkOf(String label) => find.descendant(
+      of: find.ancestor(
+        of: find.text(label),
+        matching: find.byType(AtlasStatTile),
+      ),
+      matching: find.byKey(const ValueKey('atlas-tile-graph')),
+    );
+    LineChart chart(WidgetTester tester) =>
+        tester.widget<LineChart>(find.byType(LineChart));
+
+    testWidgets('a sparkline opens its metric large, in the tile\'s colour', (
+      tester,
+    ) async {
+      await pump(tester, pins: [nodePin()]);
+      expect(find.bySemanticsLabel('Open graph: Observations'), findsOneWidget);
+      // The presence strip has no graph.
+      expect(sparkOf('ACTIVE HOURS'), findsNothing);
+      await tester.tap(sparkOf('OBSERVATIONS'));
+      await tester.pumpAndSettle();
+      expect(find.text('Hill · Observations'), findsOneWidget);
+      expect(find.textContaining('24h · '), findsOneWidget);
+      final bar = chart(tester).data.lineBarsData.single;
+      expect(bar.spots, hasLength(24));
+      expect(bar.spots.last.y, 3);
+      expect(bar.dotData.show, isTrue);
+      expect(
+        bar.color,
+        analyticsChartColors(tester.element(find.byType(LineChart))).first,
+      );
+      expect(chart(tester).data.maxX - chart(tester).data.minX, 24 * hourMs);
+      // The newest slot starts on the hour, shown in UTC with the tile's format.
+      final tip = chart(tester).data.lineTouchData.touchTooltipData
+          .getTooltipItems([LineBarSpot(bar, 0, bar.spots.last)])
+          .single!
+          .text;
+      expect(tip, '09-29T12:00 UTC\nObservations: 3');
+      await tester.tap(find.byTooltip('Close'));
+      await tester.pumpAndSettle();
+      expect(find.byType(LineChart), findsNothing);
+
+      await tester.tap(sparkOf('MEAN SNR'));
+      await tester.pumpAndSettle();
+      expect(find.text('Hill · Mean SNR'), findsOneWidget);
+      final snr = chart(tester).data.lineBarsData.single;
+      // One hour was heard; the rest are gaps, not zeros.
+      expect(snr.spots.where((s) => s.isNotNull()), hasLength(1));
+      expect(
+        chart(tester).data.lineTouchData.touchTooltipData
+            .getTooltipItems([LineBarSpot(snr, 0, snr.spots.last)])
+            .single!
+            .text,
+        endsWith('Mean SNR: 4.0 dB'),
+      );
+      await close(tester);
+    });
+
+    testWidgets('a tile with nothing to draw offers no graph', (tester) async {
+      await pump(
+        tester,
+        pins: [
+          nodePin({'id': otherId, 'publicKey': otherKey, 'name': 'Ridge'}),
+        ],
+      );
+      expect(sparkOf('MEAN SNR'), findsNothing);
+      expect(sparkOf('MEAN RSSI'), findsNothing);
+      await close(tester);
+    });
+
+    testWidgets('the sheet zooms sideways and still drags shut', (
+      tester,
+    ) async {
+      await pump(tester, pins: [nodePin()]);
+      await tester.tap(sparkOf('OBSERVATIONS'));
+      await tester.pumpAndSettle();
+      final config = chart(tester).transformationConfig;
+      expect(config.scaleAxis, FlScaleAxis.horizontal);
+      final centre = tester.getCenter(find.byType(LineChart));
+      final a = await tester.startGesture(centre - const Offset(20, 0));
+      final b = await tester.startGesture(centre + const Offset(20, 0));
+      await a.moveBy(const Offset(-60, 0));
+      await b.moveBy(const Offset(60, 0));
+      await tester.pump();
+      await a.up();
+      await b.up();
+      await tester.pumpAndSettle();
+      expect(
+        config.transformationController!.value.getMaxScaleOnAxis(),
+        greaterThan(1),
+      );
+      expect(find.text('Hill · Observations'), findsOneWidget);
+      await tester.drag(find.byType(LineChart), const Offset(0, 500));
+      await tester.pumpAndSettle();
+      expect(find.text('Hill · Observations'), findsNothing);
+      await close(tester);
+    });
+
+    testWidgets('fits a phone on its side', (tester) async {
+      await pump(tester, pins: [nodePin()], size: const Size(640, 360));
+      await tester.ensureVisible(sparkOf('OBSERVATIONS'));
+      await tester.tap(sparkOf('OBSERVATIONS'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(tester.getSize(find.byType(LineChart)).height, greaterThan(100));
+      await close(tester);
+    });
+
+    testWidgets(
+      'Observer and Telemetry tiles open theirs, the label its menu',
+      (tester) async {
+        fake.hill = {...fake.hill, 'observerId': observerId};
+        await pump(
+          tester,
+          pins: [
+            nodePin({'observerId': observerId, 'view': 'observer'}),
+          ],
+        );
+        // The type mix has no sparkline.
+        expect(sparkOf('PACKET TYPES'), findsNothing);
+        await tester.tap(sparkOf('NOISE FLOOR'));
+        await tester.pumpAndSettle();
+        expect(find.text('Hill · Noise floor'), findsOneWidget);
+        final noise = chart(tester).data.lineBarsData.single;
+        expect(
+          chart(tester).data.lineTouchData.touchTooltipData
+              .getTooltipItems([LineBarSpot(noise, 0, noise.spots.last)])
+              .single!
+              .text,
+          endsWith('Noise floor: -112 dBm'),
+        );
+        await tester.tap(find.byTooltip('Close'));
+        await tester.pumpAndSettle();
+        // The label still opens the tile picker.
+        await tester.tap(find.text('NOISE FLOOR'));
+        await tester.pumpAndSettle();
+        expect(find.text('Queue length'), findsOneWidget);
+        expect(find.byType(LineChart), findsNothing);
+        await tester.tapAt(const Offset(5, 5));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Telemetry'));
+        await tester.pumpAndSettle();
+        await tester.tap(sparkOf('BATTERY'));
+        await tester.pumpAndSettle();
+        expect(find.text('Hill · Battery'), findsOneWidget);
+        final battery = chart(tester).data.lineBarsData.single;
+        expect(
+          [for (final s in battery.spots) s.isNull() ? null : (s.x, s.y)],
+          [(tick - 7200000.0, 4.1), (tick - 3600000.0, 4.226)],
+        );
+        expect(
+          chart(tester).data.lineTouchData.touchTooltipData
+              .getTooltipItems([LineBarSpot(battery, 0, battery.spots.last)])
+              .single!
+              .text,
+          endsWith('Battery: 4.23V'),
+        );
+        await tester.tap(find.byTooltip('Close'));
+        await tester.pumpAndSettle();
+        // No readings of noise: nothing to open.
+        expect(sparkOf('NOISE FLOOR'), findsNothing);
+        await close(tester);
+      },
+    );
   });
 
   testWidgets('says so when the server has no node activity', (tester) async {

@@ -849,6 +849,8 @@ class AtlasStatTile extends StatelessWidget {
     this.wrapSublabel = false,
     this.valueTooltip,
     this.visual,
+    this.onGraph,
+    this.graphLabel,
   });
   final Widget label;
   final String value;
@@ -866,6 +868,13 @@ class AtlasStatTile extends StatelessWidget {
 
   /// Replaces the sparkline.
   final Widget? visual;
+
+  /// Opens the sparkline's graph. Only the sparkline takes the tap, and only
+  /// when it has a point to show.
+  final VoidCallback? onGraph;
+
+  /// What the sparkline's tap is announced as.
+  final String? graphLabel;
 
   static Widget text(String label) => Builder(
     builder: (context) => Text(label.toUpperCase(), style: labelStyle(context)),
@@ -907,7 +916,13 @@ class AtlasStatTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = BeaconColors.of(context);
-    final chart =
+    final graph =
+        visual == null &&
+            presence == null &&
+            (spark?.any((v) => v != null) ?? false)
+        ? onGraph
+        : null;
+    final plain =
         visual ??
         SizedBox(
           height: sparkHeight,
@@ -926,6 +941,21 @@ class AtlasStatTile extends StatelessWidget {
                 )
               : null,
         );
+    final chart = graph == null
+        ? plain
+        : Semantics(
+            button: true,
+            label: graphLabel,
+            child: Material(
+              type: MaterialType.transparency,
+              child: InkWell(
+                key: const ValueKey('atlas-tile-graph'),
+                onTap: graph,
+                borderRadius: BorderRadius.circular(3),
+                child: plain,
+              ),
+            ),
+          );
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(

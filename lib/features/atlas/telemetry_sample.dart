@@ -36,6 +36,7 @@ bool useDots(List<double?> values) =>
 class TelemetrySample {
   const TelemetrySample({
     required this.values,
+    required this.times,
     required this.airtimeTx,
     required this.airtimeRx,
     required this.sent,
@@ -49,6 +50,9 @@ class TelemetrySample {
   /// is volts, airtime a percent of time, packets and errors per hour, signal
   /// the SNR.
   final Map<String, List<double>> values;
+
+  /// Per tile id: when each of [values] was read, epoch ms.
+  final Map<String, List<int>> times;
 
   /// At the reading airtime's latest value came from.
   final double? airtimeTx, airtimeRx;
@@ -80,6 +84,7 @@ TelemetrySample summarizeTelemetry(Json? telemetry, AtlasRange range, int now) {
       if (finite(p['t']) case final t? when t >= from && t <= now + hourMs) p,
   ]..sort((a, b) => finite(a['t'])!.compareTo(finite(b['t'])!));
   final values = {for (final id in telemetryTileIds) id: <double>[]};
+  final times = {for (final id in telemetryTileIds) id: <int>[]};
   double? rate(Json p, String key, double scale) {
     final value = finite(p[key]), span = finite(p['counterSpanSecs']);
     return value == null || span == null || span <= 0
@@ -93,7 +98,9 @@ TelemetrySample summarizeTelemetry(Json? telemetry, AtlasRange range, int now) {
   double? txShare, rxShare, sent, rssi;
   for (final p in points) {
     void put(String id, double? value) {
-      if (value != null) values[id]!.add(value);
+      if (value == null) return;
+      values[id]!.add(value);
+      times[id]!.add(finite(p['t'])!.toInt());
     }
 
     final mv = finite(p['batteryMv']);
@@ -119,6 +126,7 @@ TelemetrySample summarizeTelemetry(Json? telemetry, AtlasRange range, int now) {
   final uptime = values['uptime']!;
   return TelemetrySample(
     values: values,
+    times: times,
     airtimeTx: txShare,
     airtimeRx: rxShare,
     sent: sent,

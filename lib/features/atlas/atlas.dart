@@ -383,6 +383,10 @@ class HourSlots {
   bool inWindow(num? t) =>
       t != null && t.isFinite && t < now + hourMs && _age(t) < hours;
 
+  /// The hour slot [i] starts on, epoch ms.
+  int start(int i) =>
+      ((now - (hours - 1 - i) * hourMs) / hourMs).floor() * hourMs;
+
   /// Zero for an hour the server read, null for one it has not: no reply yet,
   /// or between the rollups and the raw tail.
   List<double?> counts(Json? read) {
@@ -390,7 +394,7 @@ class HourSlots {
     final rolledUntil = finite(read?['rolledUntil']);
     return List<double?>.generate(hours, (i) {
       if (read == null) return null;
-      final hour = ((now - (hours - 1 - i) * hourMs) / hourMs).floor() * hourMs;
+      final hour = start(i);
       return rawFrom != null &&
               hour < rawFrom &&
               (rolledUntil == null || hour >= rolledUntil)

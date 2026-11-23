@@ -10,6 +10,7 @@ import '../../core/units.dart';
 import '../analytics/charts.dart';
 import '../directory/node_telemetry.dart';
 import 'atlas.dart';
+import 'atlas_graph.dart';
 import 'atlas_widgets.dart';
 import 'observer_sample.dart';
 import 'telemetry_sample.dart';
@@ -163,6 +164,7 @@ class _AtlasCardState extends State<AtlasCard> {
   final _body = GlobalKey();
   double? _held;
   String _tempUnit = 'c';
+  bool _atlasTelemetry = false;
 
   AtlasPin get pin => widget.pin;
   Json? get node => _queries['node']?.data as Json?;
@@ -179,7 +181,11 @@ class _AtlasCardState extends State<AtlasCard> {
   void initState() {
     super.initState();
     widget.api.features().then((f) {
-      if (mounted) setState(() => _tempUnit = f.temperatureUnit);
+      if (!mounted) return;
+      setState(() {
+        _tempUnit = f.temperatureUnit;
+        _atlasTelemetry = f.atlasTelemetry;
+      });
     });
     _sync();
   }
@@ -417,6 +423,22 @@ class _AtlasCardState extends State<AtlasCard> {
         name ??
         formatHex(pin.isNode ? textOf(node?['id'], pin.id!) : pin.observerId!);
     final canOpen = !pin.isNode || node != null;
+    final slots = HourSlots(widget.range, widget.now);
+    // A tile with nothing to draw offers no graph.
+    VoidCallback? openGraph(String metric, Color color, AtlasGraph graph) =>
+        graph.isEmpty
+        ? null
+        : () => showAtlasGraph(
+            context,
+            name: shown,
+            metric: metric,
+            range: widget.range,
+            now: widget.now,
+            graph: graph,
+            color: color,
+          );
+    String graphLabel(String metric) =>
+        trKey('atlasGraph.open').replaceAll('{{metric}}', metric);
     // One line always: a dot carries the status and the name gives way first.
     final (dotColor, dotLabel) = pin.isNode
         ? switch (node?['stale']) {
@@ -606,6 +628,7 @@ class _AtlasCardState extends State<AtlasCard> {
         String value,
         int accent, {
         List<double?>? spark,
+        String Function(double)? format,
         List<bool>? presence,
         String? sublabel,
         bool markPeak = false,
@@ -617,6 +640,14 @@ class _AtlasCardState extends State<AtlasCard> {
         markPeak: markPeak,
         presence: presence,
         sublabel: sublabel,
+        onGraph: spark == null || format == null
+            ? null
+            : openGraph(
+                tr(label),
+                series[accent],
+                AtlasGraph(slotPoints(spark, slots), format),
+              ),
+        graphLabel: graphLabel(tr(label)),
       );
       body.add(
         Column(
@@ -630,6 +661,7 @@ class _AtlasCardState extends State<AtlasCard> {
                 sample.total == null ? _dash : formatCount(sample.total),
                 0,
                 spark: sample.counts,
+                format: formatCount,
                 markPeak: true,
                 sublabel: window,
               ),
@@ -638,12 +670,14 @@ class _AtlasCardState extends State<AtlasCard> {
                 average(sample.snr, 'dB'),
                 2,
                 spark: sample.snrHourly,
+                format: (v) => average(v, 'dB'),
               ),
               tile(
                 'Mean RSSI',
                 average(sample.rssi, 'dBm'),
                 1,
                 spark: sample.rssiHourly,
+                format: (v) => average(v, 'dBm'),
               ),
               tile(
                 'Active hours',
@@ -836,6 +870,7 @@ class _AtlasCardState extends State<AtlasCard> {
         AtlasStatTile stat(
           String value, {
           List<double?>? spark,
+          String Function(double)? format,
           bool markPeak = false,
           bool interpolateGaps = false,
           String? sublabel,
@@ -859,6 +894,14 @@ class _AtlasCardState extends State<AtlasCard> {
           interpolateGaps: interpolateGaps,
           sublabel: sublabel,
           visual: visual,
+          onGraph: spark == null || format == null
+              ? null
+              : openGraph(
+                  trKey(_tileLabel[shown]!),
+                  series[_slotAccent[slot]],
+                  AtlasGraph(slotPoints(spark, slots), format),
+                ),
+          graphLabel: graphLabel(trKey(_tileLabel[shown]!)),
         );
         String count(double? value) =>
             value == null ? _dash : formatCount(value);
@@ -866,6 +909,7 @@ class _AtlasCardState extends State<AtlasCard> {
           'airtime' => stat(
             obs.airtime == null ? _dash : percent(obs.airtime!),
             spark: obs.airtimeHourly,
+            format: percent,
             markPeak: true,
             interpolateGaps: true,
             sublabel: switch (obs.airtimeSource) {
@@ -878,11 +922,13 @@ class _AtlasCardState extends State<AtlasCard> {
           'battery' => stat(
             obs.battery == null ? _dash : formatBattery(obs.battery!),
             spark: obs.batteryHourly,
+            format: formatBattery,
             interpolateGaps: true,
           ),
           'uptime' => stat(
             obs.uptime == null ? _dash : formatUptime(obs.uptime!),
             spark: obs.uptimeHourly,
+            format: formatUptime,
           ),
           'types' => stat(
             count(obs.heard),
@@ -892,22 +938,38 @@ class _AtlasCardState extends State<AtlasCard> {
           'packets' => stat(
             count(obs.heard),
             spark: obs.counts,
+            format: formatCount,
             markPeak: true,
             sublabel: window,
           ),
-          'snr' => stat(average(obs.snr, 'dB'), spark: obs.snrHourly),
-          'rssi' => stat(average(obs.rssi, 'dBm'), spark: obs.rssiHourly),
+          'snr' => stat(
+            average(obs.snr, 'dB'),
+            spark: obs.snrHourly,
+            format: (v) => average(v, 'dB'),
+          ),
+          'rssi' => stat(
+            average(obs.rssi, 'dBm'),
+            spark: obs.rssiHourly,
+            format: (v) => average(v, 'dBm'),
+          ),
           'noise' => stat(
             obs.noise == null ? _dash : '${obs.noise!.round()} dBm',
             spark: obs.noiseHourly,
+            format: (v) => '${v.round()} dBm',
             interpolateGaps: true,
           ),
           'queue' => stat(
             count(obs.queue?.roundToDouble()),
             spark: obs.queueHourly,
+            format: (v) => formatCount(v.roundToDouble()),
             interpolateGaps: true,
           ),
-          _ => stat(count(obs.errors), spark: obs.errorsHourly, markPeak: true),
+          _ => stat(
+            count(obs.errors),
+            spark: obs.errorsHourly,
+            format: formatCount,
+            markPeak: true,
+          ),
         };
       }
 
@@ -992,50 +1054,59 @@ class _AtlasCardState extends State<AtlasCard> {
       };
       String rate(double v) =>
           '${v < 10 ? v.toStringAsFixed(1) : formatCount(v.roundToDouble())}/h';
+      // Readings sit a bucket apart: six hours on the trimmed week, else one.
+      final bucket =
+          telemetryRequest(widget.range, _atlasTelemetry).interval == '6h'
+          ? 6 * hourMs
+          : hourMs;
       Widget telemetryTile(String tile, int slot) {
         final values = sample.values[tile]!;
         final latest = values.lastOrNull;
-        String? value, sub, tip;
+        String? sub, tip;
         var peak = false, counter = false;
+        // The tile and its graph write a value the same way.
+        final String Function(double) format;
         switch (tile) {
           case 'battery':
-            if (latest != null) value = formatBattery(latest);
+            format = formatBattery;
           case 'noise':
-            if (latest != null) value = '${latest.round()} dBm';
+            format = (v) => '${v.round()} dBm';
           case 'uptime':
+            format = shortUptime;
             if (latest != null) {
-              value = shortUptime(latest);
               tip = formatUptime(latest);
               if (sample.rebooted) sub = trKey('atlasTelemetry.restarted');
             }
           case 'airtime':
             peak = counter = true;
+            format = percent;
             if (latest != null) {
-              value = percent(latest);
               sub =
                   'TX ${percent(sample.airtimeTx!)} · RX ${percent(sample.airtimeRx!)}';
             }
           case 'temperature':
-            if (latest != null) value = formatTemp(latest, _tempUnit);
+            format = (v) => formatTemp(v, _tempUnit);
           case 'packets':
             peak = counter = true;
+            format = rate;
             if (latest != null) {
-              value = rate(latest);
               if (sample.sent != null) {
                 sub = trKey('atlasTelemetry.sentPerHour')
                     .replaceAll('{{value}}', rate(sample.sent!));
               }
             }
           case 'signal':
-            if (latest != null) {
-              value = average(latest, 'dB');
-              if (sample.rssi != null) sub = '${sample.rssi!.round()} dBm';
+            format = (v) => average(v, 'dB');
+            if (latest != null && sample.rssi != null) {
+              sub = '${sample.rssi!.round()} dBm';
             }
           default:
             peak = counter = true;
-            if (latest != null) value = rate(latest);
+            format = rate;
         }
+        final value = latest == null ? null : format(latest);
         final dots = values.length < dotsBelow;
+        final metric = trKey('atlasTelemetry.$tile');
         return AtlasStatTile(
           key: ValueKey('telemetry-$tile'),
           label: TilePicker(
@@ -1055,6 +1126,15 @@ class _AtlasCardState extends State<AtlasCard> {
           markPeak: peak && !dots,
           dots: dots,
           wrapSublabel: true,
+          onGraph: openGraph(
+            metric,
+            series[_slotAccent[slot]],
+            AtlasGraph(
+              readingPoints(sample.times[tile]!, values, bucket),
+              format,
+            ),
+          ),
+          graphLabel: graphLabel(metric),
           sublabel: value != null
               ? sub
               : trKey(

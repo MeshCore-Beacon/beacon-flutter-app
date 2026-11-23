@@ -1692,6 +1692,10 @@
     },
     "atlasRange": {
       "7d": "7 j"
+    },
+    "atlasGraph": {
+      "open": "Ouvrir le graphique : {{metric}}",
+      "hint": "Pincez pour zoomer, maintenez et glissez pour les valeurs"
     }
   }
 }

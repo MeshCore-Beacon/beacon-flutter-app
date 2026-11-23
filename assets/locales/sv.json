@@ -1641,6 +1641,10 @@
     },
     "atlasRange": {
       "7d": "7 d"
+    },
+    "atlasGraph": {
+      "open": "Öppna diagram: {{metric}}",
+      "hint": "Nyp för att zooma, håll och dra för värden"
     }
   }
 }

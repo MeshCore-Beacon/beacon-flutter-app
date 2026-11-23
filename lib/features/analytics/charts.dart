@@ -298,6 +298,12 @@ class TimeChart extends StatefulWidget {
     this.stacked = false,
     this.showSingleSeriesToggle = true,
     this.showDots = false,
+    this.height = 200,
+    this.colors,
+    this.format,
+    this.minX,
+    this.maxX,
+    this.zoom = false,
   });
   final Map<String, List<ChartPoint>> series;
   final String unit;
@@ -307,14 +313,52 @@ class TimeChart extends StatefulWidget {
 
   /// Mark every point, so a point between gaps is not invisible.
   final bool showDots;
+  final double height;
+
+  /// Series colours in order, instead of the analytics palette.
+  final List<Color>? colors;
+
+  /// Writes a value on the axis and in the tooltip, unit included.
+  final String Function(double value)? format;
+
+  /// The time window to show, when it is wider than the points.
+  final double? minX, maxX;
+
+  /// Pinch and pan along the time axis. A plain drag then pans, so the tooltip
+  /// follows a tap or a short hold and drag.
+  final bool zoom;
   @override
   State<TimeChart> createState() => _TimeChartState();
 }
 
 class _TimeChartState extends State<TimeChart> {
   final hidden = <String>{};
+  static const _maxZoom = 8.0;
+  late final _transform = TransformationController()..addListener(_zoomed);
+  double _scale = 1;
+
+  // The ticks follow the visible span, so a zoomed chart keeps its labels.
+  void _zoomed() {
+    final scale = _transform.value.getMaxScaleOnAxis();
+    if (scale != _scale && mounted) setState(() => _scale = scale);
+  }
+
+  @override
+  void dispose() {
+    _transform.dispose();
+    super.dispose();
+  }
+
+  Color _color(BuildContext context, int index) {
+    final colors = widget.colors;
+    return colors == null
+        ? _seriesColor(context, index)
+        : colors[index % colors.length];
+  }
+
   @override
   Widget build(BuildContext context) {
+    final label = widget.format ?? countLabel;
     final entries = widget.series.entries.toList();
     final all = entries
         .expand((e) => e.value)
@@ -327,11 +371,16 @@ class _TimeChartState extends State<TimeChart> {
       );
     }
     final active = entries.where((e) => !hidden.contains(e.key)).toList();
-    final xValues = all.map((point) => point.x).toList();
+    final xValues = [
+      ...all.map((point) => point.x),
+      ?widget.minX,
+      ?widget.maxX,
+    ];
     final xSpan = xValues.isEmpty
         ? 0.0
-        : xValues.reduce((a, b) => a > b ? a : b) -
-              xValues.reduce((a, b) => a < b ? a : b);
+        : (xValues.reduce((a, b) => a > b ? a : b) -
+                  xValues.reduce((a, b) => a < b ? a : b)) /
+              _scale;
     const tickSteps = [
       1000.0,
       5000.0,
@@ -390,10 +439,7 @@ class _TimeChartState extends State<TimeChart> {
                   visualDensity: VisualDensity.compact,
                   label: Text(
                     tr(entries[i].key),
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: _seriesColor(context, i),
-                    ),
+                    style: TextStyle(fontSize: 10, color: _color(context, i)),
                   ),
                   selected: !hidden.contains(entries[i].key),
                   onSelected: (v) => setState(
@@ -406,14 +452,23 @@ class _TimeChartState extends State<TimeChart> {
           ),
         const SizedBox(height: 12),
         SizedBox(
-          height: 200,
+          height: widget.height,
           child: LineChart(
+            transformationConfig: widget.zoom
+                ? FlTransformationConfig(
+                    scaleAxis: FlScaleAxis.horizontal,
+                    maxScale: _maxZoom,
+                    transformationController: _transform,
+                  )
+                : const FlTransformationConfig(),
             LineChartData(
+              minX: widget.minX,
+              maxX: widget.maxX,
               lineBarsData: [
                 for (var i = 0; i < active.length; i++)
                   LineChartBarData(
                     spots: plotted[i],
-                    color: _seriesColor(context, entries.indexOf(active[i])),
+                    color: _color(context, entries.indexOf(active[i])),
                     barWidth: 1.7,
                     isCurved: false,
                     dotData: FlDotData(
@@ -421,7 +476,7 @@ class _TimeChartState extends State<TimeChart> {
                     ),
                     belowBarData: BarAreaData(
                       show: active.length == 1 || (widget.stacked && i == 0),
-                      color: _seriesColor(
+                      color: _color(
                         context,
                         entries.indexOf(active[i]),
                       ).withValues(alpha: widget.stacked ? .4 : .13),
@@ -434,7 +489,7 @@ class _TimeChartState extends State<TimeChart> {
                         BetweenBarsData(
                           fromIndex: i - 1,
                           toIndex: i,
-                          color: _seriesColor(
+                          color: _color(
                             context,
                             entries.indexOf(active[i]),
                           ).withValues(alpha: .4),
@@ -459,11 +514,13 @@ class _TimeChartState extends State<TimeChart> {
                 leftTitles: AxisTitles(
                   sideTitles: SideTitles(
                     showTitles: true,
-                    reservedSize: 42,
+                    reservedSize: widget.format == null ? 42 : 56,
                     minIncluded: false,
                     maxIncluded: false,
                     getTitlesWidget: (v, m) => Text(
-                      countLabel(v),
+                      label(v),
+                      maxLines: 1,
+                      softWrap: false,
                       style: TextStyle(
                         fontSize: 9,
                         color: BeaconColors.of(context).dim,
@@ -505,11 +562,16 @@ class _TimeChartState extends State<TimeChart> {
                 ),
               ),
               lineTouchData: LineTouchData(
+                longPressDuration: widget.zoom
+                    ? const Duration(milliseconds: 150)
+                    : null,
                 touchTooltipData: LineTouchTooltipData(
+                  fitInsideHorizontally: widget.zoom,
+                  fitInsideVertically: widget.zoom,
                   getTooltipItems: (spots) => spots.map((s) {
                     final d = epoch(s.x, isUtc: true);
                     return LineTooltipItem(
-                      '${widget.timeAxis && d != null ? '${d.toIso8601String().substring(5, 16)} UTC\n' : ''}${tr(active[s.barIndex].key)}: ${countLabel(widget.stacked ? active[s.barIndex].value.firstWhere((p) => p.x == s.x).y : s.y)}${widget.unit}',
+                      '${widget.timeAxis && d != null ? '${d.toIso8601String().substring(5, 16)} UTC\n' : ''}${tr(active[s.barIndex].key)}: ${widget.format?.call(s.y) ?? '${countLabel(widget.stacked ? active[s.barIndex].value.firstWhere((p) => p.x == s.x).y : s.y)}${widget.unit}'}',
                       TextStyle(
                         fontSize: 11,
                         color: BeaconColors.of(context).bright,
