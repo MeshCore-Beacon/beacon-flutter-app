@@ -111,17 +111,7 @@ void main() {
     await tester.tap(find.text(trKey('observerMerge.node')));
     await tester.pumpAndSettle();
     expect(find.text('Compare observers'), findsNothing);
-    expect(
-      find.text(trKey('observerMerge.readingsFromObserver')),
-      findsOneWidget,
-    );
-  });
-
-  testWidgets('the readings line opens the observer view', (tester) async {
-    await pump(tester);
-    await tester.tap(find.text(trKey('observerMerge.showObserver')));
-    await tester.pumpAndSettle();
-    expect(find.text('Compare observers'), findsOneWidget);
+    expect(find.text('TELEMETRY'), findsNothing);
   });
 
   testWidgets(

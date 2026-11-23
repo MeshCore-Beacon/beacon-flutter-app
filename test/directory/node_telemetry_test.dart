@@ -240,9 +240,7 @@ void main() {
       expect(seen.where((u) => u.path.contains('telemetry')), isEmpty);
     });
 
-    testWidgets('an observer node points at its own readings instead', (
-      tester,
-    ) async {
+    testWidgets('no section for a node that is an observer', (tester) async {
       final seen = await pump(
         tester,
         observerId: 'obs-1',
@@ -252,10 +250,7 @@ void main() {
       expect(seen.where((u) => u.path.contains('telemetry')), isEmpty);
       expect(seen.where((u) => u.path.contains('polling')), isEmpty);
       expect(find.text('Request telemetry'), findsNothing);
-      expect(
-        find.text(trKey('observerMerge.readingsFromObserver')),
-        findsOneWidget,
-      );
+      expect(find.text('TELEMETRY'), findsNothing);
     });
 
     testWidgets('no section when polling is off', (tester) async {

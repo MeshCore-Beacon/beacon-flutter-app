@@ -1636,8 +1636,6 @@
       "view": "Radiovy",
       "node": "Nod",
       "observer": "Observatör",
-      "readingsFromObserver": "Mätvärdena kommer från observatören.",
-      "showObserver": "Visa observatör",
       "errorObserverNode": "Observatörer rapporterar sin egen telemetri.",
       "reasonObserver": "Observatör, rapporterar sin egen telemetri"
     }

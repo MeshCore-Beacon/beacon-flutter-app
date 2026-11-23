@@ -924,25 +924,8 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
       ]),
       if (MeshMapperSection.hasContent(meshMapper))
         MeshMapperSection(data: meshMapper),
-      // Observers report their own battery and noise, so they can't be requested.
-      if (isPolledNodeType(textOf(d['nodeTypeName'])) && observerId != null)
-        section(trKey('nodeTelemetry.title'), [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  trKey('observerMerge.readingsFromObserver'),
-                  style: TextStyle(fontSize: 12, color: colors.muted),
-                ),
-              ),
-              TextButton(
-                onPressed: () => setView('observer'),
-                child: Text(trKey('observerMerge.showObserver')),
-              ),
-            ],
-          ),
-        ])
-      else if (isPolledNodeType(textOf(d['nodeTypeName'])))
+      // Observers report their own readings, shown in the Observer view.
+      if (isPolledNodeType(textOf(d['nodeTypeName'])) && observerId == null)
         NodeTelemetrySection(
           key: ValueKey('telemetry:$entityId'),
           api: widget.api,
