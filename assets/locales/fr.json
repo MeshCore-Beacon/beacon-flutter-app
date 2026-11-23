@@ -1682,6 +1682,15 @@
     },
     "analyzerActions": {
       "viewNode": "Voir le nœud"
+    },
+    "observerMerge": {
+      "view": "Vue de la radio",
+      "node": "Nœud",
+      "observer": "Observateur",
+      "readingsFromObserver": "Les mesures viennent de l’observateur.",
+      "showObserver": "Voir l’observateur",
+      "errorObserverNode": "Les observateurs transmettent leur propre télémétrie.",
+      "reasonObserver": "Observateur, transmet sa propre télémétrie"
     }
   }
 }

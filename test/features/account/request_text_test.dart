@@ -144,6 +144,7 @@ void main() {
       of('requests_disabled', 404),
       'Telemetry requests are turned off on this server.',
     );
+    expect(of('observer_node', 422), 'Observers report their own telemetry.');
   });
 
   // statusReasonCode as beacon-server sends it (reason-codes.md), with its
@@ -176,6 +177,7 @@ void main() {
       null,
     ),
     ('offline', 'Not heard by any observer for 7 days.', 7),
+    ('observer', 'Observer, reports its own telemetry', null),
   ];
 
   Map<String, dynamic> request(String code, String sentence, [int? days]) => {

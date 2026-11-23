@@ -134,6 +134,7 @@ void main() {
       Map<String, dynamic>? pollingBody,
       void Function(String, String)? onOpen,
       String temperatureUnit = 'c',
+      String? observerId,
     }) async {
       tester.view.physicalSize = const Size(800, 6000);
       tester.view.devicePixelRatio = 1;
@@ -181,7 +182,12 @@ void main() {
               ? {'items': [], 'hasMore': false}
               : path.endsWith('/neighbors')
               ? []
-              : {'id': 'node-1', 'publicKey': 'pk', 'nodeTypeName': type};
+              : {
+                  'id': 'node-1',
+                  'publicKey': 'pk',
+                  'nodeTypeName': type,
+                  'observerId': ?observerId,
+                };
           return http.Response(jsonEncode(body), 200);
         }),
       );
@@ -232,6 +238,24 @@ void main() {
       final seen = await pump(tester, type: 'companion', telemetry: data());
       expect(find.text('TELEMETRY'), findsNothing);
       expect(seen.where((u) => u.path.contains('telemetry')), isEmpty);
+    });
+
+    testWidgets('an observer node points at its own readings instead', (
+      tester,
+    ) async {
+      final seen = await pump(
+        tester,
+        observerId: 'obs-1',
+        telemetry: data(),
+        pollingBody: poller,
+      );
+      expect(seen.where((u) => u.path.contains('telemetry')), isEmpty);
+      expect(seen.where((u) => u.path.contains('polling')), isEmpty);
+      expect(find.text('Request telemetry'), findsNothing);
+      expect(
+        find.text(trKey('observerMerge.readingsFromObserver')),
+        findsOneWidget,
+      );
     });
 
     testWidgets('no section when polling is off', (tester) async {

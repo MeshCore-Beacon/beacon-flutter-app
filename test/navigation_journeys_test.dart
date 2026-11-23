@@ -20,7 +20,7 @@ void main() {
     await loadStrings();
   });
 
-  testWidgets('Nodes to observer detail and back preserves the list', (
+  testWidgets('Nodes to observer view and back preserves the list', (
     tester,
   ) async {
     String? copied;
@@ -51,17 +51,16 @@ void main() {
     await tester.pumpAndSettle();
     expect(copied, 'node-public-key');
 
-    await tester.tap(find.text('Observer details'));
+    // The observer is a view of the node screen, not a second page.
+    await tester.tap(find.text('Observer'));
     await tester.pumpAndSettle();
-    expect(find.text('Observer One'), findsOneWidget);
+    expect(find.text('ONLINE'), findsOneWidget);
+    expect(find.text('node-public-key'), findsOneWidget);
 
     await tester.pageBack();
     await tester.pumpAndSettle();
-    expect(find.text('node-public-key'), findsOneWidget);
-    await tester.pageBack();
-    await tester.pumpAndSettle();
     expect(find.text('Node One'), findsOneWidget);
-    expect(find.text('Observer details'), findsNothing);
+    expect(find.text('Observer'), findsNothing);
     await tester.pumpWidget(const SizedBox());
   });
 

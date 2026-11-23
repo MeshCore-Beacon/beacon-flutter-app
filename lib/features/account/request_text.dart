@@ -37,6 +37,7 @@ String requestReasonText(Json request) {
   final code = textOf(request['statusReasonCode']);
   final key = _reasonKeys[code];
   if (key != null) return trKey('serverText.requestReason.$key');
+  if (code == 'observer') return trKey('observerMerge.reasonObserver');
   final days = request['statusReasonDays'];
   if (code == 'offline' && days is int && days >= 0) {
     return trKey('serverText.requestReason.offline', count: days);
@@ -57,6 +58,8 @@ String requestError(Object error) {
         return trKey('telemetryRequests.errors.${error.code}');
       case 'not_found':
         return trKey('serverText.errors.requestNotFound');
+      case 'observer_node':
+        return trKey('observerMerge.errorObserverNode');
     }
   }
   return accountError(error);

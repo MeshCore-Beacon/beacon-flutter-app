@@ -1631,6 +1631,15 @@
     },
     "analyzerActions": {
       "viewNode": "View node"
+    },
+    "observerMerge": {
+      "view": "Radio view",
+      "node": "Node",
+      "observer": "Observer",
+      "readingsFromObserver": "Readings come from the observer.",
+      "showObserver": "Show observer",
+      "errorObserverNode": "Observers report their own telemetry.",
+      "reasonObserver": "Observer, reports its own telemetry"
     }
   }
 }
