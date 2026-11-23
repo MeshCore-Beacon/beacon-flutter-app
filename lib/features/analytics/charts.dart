@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
@@ -453,11 +454,27 @@ class _TimeChartState extends State<TimeChart> {
               ),
         ],
     ];
+    // Headroom, so a dot on the highest or lowest reading is not cut in half.
+    double? minY, maxY;
+    if (widget.showDots && !widget.stacked) {
+      final ys = [
+        for (final e in active)
+          for (final p in e.value) ?p.y,
+      ];
+      if (ys.isNotEmpty) {
+        final low = ys.reduce(math.min), high = ys.reduce(math.max);
+        final pad =
+            (high - low == 0 ? math.max(low.abs(), 1) : high - low) * .08;
+        minY = low >= 0 ? math.max(0, low - pad) : low - pad;
+        maxY = high + pad;
+      }
+    }
     final bridges = [
       if (widget.bridgeGaps && !widget.stacked)
         for (var i = 0; i < active.length; i++) (i, gapBridges(plotted[i])),
     ].where((b) => b.$2.isNotEmpty).toList();
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         if (entries.length > 1 || widget.showSingleSeriesToggle)
           Wrap(
@@ -493,6 +510,8 @@ class _TimeChartState extends State<TimeChart> {
             LineChartData(
               minX: widget.minX,
               maxX: widget.maxX,
+              minY: minY,
+              maxY: maxY,
               lineBarsData: [
                 for (var i = 0; i < active.length; i++)
                   LineChartBarData(
@@ -613,6 +632,30 @@ class _TimeChartState extends State<TimeChart> {
                 longPressDuration: widget.zoom
                     ? const Duration(milliseconds: 150)
                     : null,
+                // A thin solid cursor: dashes are kept for gaps.
+                getTouchedSpotIndicator: !widget.showDots
+                    ? defaultTouchedIndicators
+                    : (bar, indexes) => [
+                        for (final _ in indexes)
+                          bar.dashArray != null
+                              ? null
+                              : TouchedSpotIndicatorData(
+                                  FlLine(
+                                    color: BeaconColors.of(context).muted,
+                                    strokeWidth: 1,
+                                  ),
+                                  FlDotData(
+                                    getDotPainter: (_, _, _, _) =>
+                                        FlDotCirclePainter(
+                                          radius: 4,
+                                          color: bar.color!,
+                                          strokeWidth: 2,
+                                          strokeColor: BeaconColors.of(context)
+                                              .surface,
+                                        ),
+                                  ),
+                                ),
+                      ],
                 touchTooltipData: LineTouchTooltipData(
                   fitInsideHorizontally: widget.zoom,
                   fitInsideVertically: widget.zoom,
