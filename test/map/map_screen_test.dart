@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:beacon/core/api.dart';
+import 'package:beacon/core/strings.dart';
 import 'package:beacon/core/theme.dart';
 import 'package:beacon/features/map/map_screen.dart';
 import 'package:flutter/material.dart';
@@ -137,6 +138,32 @@ Object? evalIcon(Object? e, Map<String, Object?> props) {
 }
 
 void pollerTests() {
+  testWidgets('the Pollers only options come from the locale strings', (
+    tester,
+  ) async {
+    addTearDown(() => language = 'en');
+    for (final (lang, on, off) in [
+      ('fr', 'Activé', 'Désactivé'),
+      ('sv', 'På', 'Av'),
+    ]) {
+      language = lang;
+      final api = await pumpMap(tester, {});
+      final group = find
+          .ancestor(
+            of: find.text(trKey('map.pollersOnly')),
+            matching: find.byType(Column),
+          )
+          .first;
+      for (final label in [on, off]) {
+        expect(
+          find.descendant(of: group, matching: find.text(label)),
+          findsOneWidget,
+          reason: '$lang $label',
+        );
+      }
+      await unmount(tester, api);
+    }
+  });
   test('the node icon expression prefers the poller pip over the eye', () {
     String icon(bool poller, bool observer) =>
         '${evalIcon(nodeIconExpression, {'nodeTypeName': 'repeater', 'isPoller': poller, 'isObserver': observer})}';

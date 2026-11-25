@@ -682,7 +682,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                             ),
                             _choices(
                               trKey('map.pollersOnly'),
-                              {'on': 'On', 'off': 'Off'},
+                              {'on': trKey('map.on'), 'off': trKey('map.off')},
                               _pollersOnly ? 'on' : 'off',
                               (v) => _pollersOnly = v == 'on',
                             ),
