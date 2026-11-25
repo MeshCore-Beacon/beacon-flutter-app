@@ -634,7 +634,7 @@
       "fieldName": "Name",
       "fieldPubkey": "Public Key",
       "all": "All",
-      "poller": "Pollers only"
+      "poller": "Poller"
     },
     "packetAnalyzer": {
       "title": "Packet Analyzer",

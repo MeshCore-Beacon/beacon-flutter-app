@@ -650,7 +650,7 @@
       "fieldName": "Nom",
       "fieldPubkey": "Clé publique",
       "all": "Tous",
-      "poller": "Interrogateurs seulement"
+      "poller": "Interrogateur"
     },
     "packetAnalyzer": {
       "title": "Analyseur de paquets",

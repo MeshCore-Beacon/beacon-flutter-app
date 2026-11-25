@@ -184,9 +184,9 @@ class _DirectoryScreenState extends State<DirectoryScreen>
           (search.text.trim().isNotEmpty &&
               data.containsKey('name') &&
               data['name'] != current['name']) ||
-          (filters['poller'] == 'true' &&
+          (const {'true', 'false'}.contains(filters['poller']) &&
               data.containsKey('isPoller') &&
-              data['isPoller'] != true) ||
+              (data['isPoller'] == true) != (filters['poller'] == 'true')) ||
           (textOf(filters['scope']).isNotEmpty &&
               data.containsKey('defaultScope') &&
               data['defaultScope'] != filters['scope']) ||
@@ -844,8 +844,8 @@ class _DirectoryScreenState extends State<DirectoryScreen>
     final result = items.where((r) {
       // An older server ignores the poller param, so hold the line here.
       if (widget.kind == 'nodes' &&
-          filters['poller'] == 'true' &&
-          r['isPoller'] != true) {
+          const {'true', 'false'}.contains(filters['poller']) &&
+          (r['isPoller'] == true) != (filters['poller'] == 'true')) {
         return false;
       }
       final scope = filters['scope'];
@@ -958,14 +958,15 @@ class _DirectoryScreenState extends State<DirectoryScreen>
                     'room_server',
                     'sensor',
                   ], update),
-                  select('poller', trKey('nodeFilters.poller'), [
-                    'true',
-                  ], update),
                   select('supportsMultibytePaths', 'Multibyte paths', [
                     'true',
                     'false',
                   ], update),
                   select('supportsMultibyteTraces', 'Multibyte traces', [
+                    'true',
+                    'false',
+                  ], update),
+                  select('poller', trKey('nodeFilters.poller'), [
                     'true',
                     'false',
                   ], update),

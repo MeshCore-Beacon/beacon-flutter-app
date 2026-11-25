@@ -634,7 +634,7 @@
       "fieldName": "Namn",
       "fieldPubkey": "Publik nyckel",
       "all": "Alla",
-      "poller": "Endast pollare"
+      "poller": "Pollare"
     },
     "packetAnalyzer": {
       "title": "Paketanalyserare",

@@ -1129,4 +1129,74 @@ void main() {
       await events.close();
     },
   );
+  testWidgets(
+    'poller filter offers Any, Yes and No and a No list follows live flips',
+    (tester) async {
+      final events = StreamController<Map<String, dynamic>>.broadcast();
+      final requests = <Uri>[];
+      final api = ApiClient(
+        Uri.parse('https://test.invalid'),
+        client: MockClient((r) async {
+          requests.add(r.url);
+          if (r.url.path.endsWith('/scopes')) return http.Response('[]', 200);
+          // Ignores the poller param, like a server without it.
+          return http.Response(
+            jsonEncode({
+              'items': [
+                {'id': 'p', 'name': 'Polled', 'isPoller': true},
+                {'id': 'n', 'name': 'Plain'},
+              ],
+              'hasMore': false,
+            }),
+            200,
+          );
+        }),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: DirectoryScreen(
+              kind: 'nodes',
+              api: api,
+              region: const {},
+              events: events.stream,
+              onOpen: (_, _) {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Filters'));
+      await tester.pumpAndSettle();
+      final poller = find.byKey(const ValueKey('poller:null'));
+      await tester.ensureVisible(poller);
+      expect(
+        find.descendant(of: poller, matching: find.text('Poller')),
+        findsOneWidget,
+      );
+      await tester.tap(poller);
+      await tester.pumpAndSettle();
+      expect(find.text('Any'), findsWidgets);
+      expect(find.text('Yes'), findsWidgets);
+      expect(find.text('No'), findsWidgets);
+      await tester.tap(find.text('No').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Apply'));
+      await tester.pumpAndSettle();
+      expect(requests.last.queryParameters['poller'], 'false');
+      expect(find.text('Plain'), findsOneWidget);
+      expect(find.text('Polled'), findsNothing);
+
+      events.add({
+        'type': 'event',
+        'event': 'nodeUpdate',
+        'data': {'nodeId': 'n', 'isPoller': true},
+      });
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Plain'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+      await events.close();
+    },
+  );
 }
