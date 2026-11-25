@@ -842,6 +842,12 @@ class _DirectoryScreenState extends State<DirectoryScreen>
   List<Json> get visible {
     if (widget.kind == 'observers') return items;
     final result = items.where((r) {
+      // An older server ignores the poller param, so hold the line here.
+      if (widget.kind == 'nodes' &&
+          filters['poller'] == 'true' &&
+          r['isPoller'] != true) {
+        return false;
+      }
       final scope = filters['scope'];
       if (scope?.isNotEmpty == true && widget.kind != 'traces') {
         if (widget.kind == 'observers' &&

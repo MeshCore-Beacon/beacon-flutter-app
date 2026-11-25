@@ -26,6 +26,24 @@ void main() {
       expect(link.queryParameters['node_type'], 'repeater');
     },
   );
+  test('map links carry pollers=1 only while Pollers only is on', () {
+    Uri link(bool pollers) => mapShareUri(
+      Uri.parse('https://example.org'),
+      {},
+      lat: 1,
+      lng: 2,
+      zoom: 3,
+      style: 'dark',
+      nodeType: '',
+      pollersOnly: pollers,
+      cluster: true,
+      neighbors: 'selected',
+      borders: false,
+      flow: false,
+    );
+    expect(link(true).queryParameters['pollers'], '1');
+    expect(link(false).queryParameters.containsKey('pollers'), false);
+  });
   test(
     'rejects reset and invalid coordinates but preserves single zero axes',
     () {

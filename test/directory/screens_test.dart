@@ -1068,4 +1068,65 @@ void main() {
       await events.close();
     },
   );
+  testWidgets(
+    'pollers filter hides rows an old server returns and follows live flips',
+    (tester) async {
+      final events = StreamController<Map<String, dynamic>>.broadcast();
+      final api = ApiClient(
+        Uri.parse('https://test.invalid'),
+        client: MockClient((r) async {
+          if (r.url.path.endsWith('/scopes')) return http.Response('[]', 200);
+          // Ignores the poller param, like a server without it.
+          return http.Response(
+            jsonEncode({
+              'items': [
+                {'id': 'p', 'name': 'Polled', 'isPoller': true},
+                {'id': 'n', 'name': 'Plain'},
+              ],
+              'hasMore': false,
+            }),
+            200,
+          );
+        }),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: DirectoryScreen(
+              kind: 'nodes',
+              api: api,
+              region: const {},
+              events: events.stream,
+              onOpen: (_, _) {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Plain'), findsOneWidget);
+      await tester.tap(find.byTooltip('Filters'));
+      await tester.pumpAndSettle();
+      final poller = find.byKey(const ValueKey('poller:null'));
+      await tester.ensureVisible(poller);
+      await tester.tap(poller);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Yes').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Apply'));
+      await tester.pumpAndSettle();
+      expect(find.text('Polled'), findsOneWidget);
+      expect(find.text('Plain'), findsNothing);
+
+      events.add({
+        'type': 'event',
+        'event': 'nodeUpdate',
+        'data': {'nodeId': 'p', 'isPoller': false},
+      });
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Polled'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+      await events.close();
+    },
+  );
 }

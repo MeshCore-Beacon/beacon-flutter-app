@@ -500,6 +500,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       zoom: camera.zoom,
       style: _style,
       nodeType: _type,
+      pollersOnly: _pollersOnly,
       cluster: _cluster,
       neighbors: _mode,
       borders: _showBorders,
