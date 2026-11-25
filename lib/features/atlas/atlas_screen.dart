@@ -700,6 +700,7 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
               if (textOf(node['nodeTypeName']).isNotEmpty)
                 AtlasBadge(textOf(node['nodeTypeName'])),
               if (node['isObserver'] == true) AtlasBadge(at('observerBadge')),
+              if (node['isPoller'] == true) AtlasBadge(at('pollerBadge')),
               Tooltip(
                 message: textOf(node['publicKey']),
                 triggerMode: TooltipTriggerMode.tap,

@@ -299,6 +299,25 @@ void main() {
     await close(tester);
   });
 
+  testWidgets('a poller search row shows both badges, others do not', (
+    tester,
+  ) async {
+    fake.hill['isObserver'] = true;
+    fake.hill['isPoller'] = true;
+    fake.ridge['isObserver'] = true;
+    await pump(tester);
+    await search(tester, 'hill');
+    expect(find.text('OBSERVER'), findsOneWidget);
+    expect(find.text('POLLER'), findsOneWidget);
+    await search(tester, 'ridge');
+    expect(find.text('OBSERVER'), findsOneWidget);
+    expect(find.text('POLLER'), findsNothing);
+    fake.ridge.remove('isObserver');
+    await search(tester, 'ridg');
+    expect(find.text('POLLER'), findsNothing);
+    await close(tester);
+  });
+
   testWidgets('starts empty, finds a node by name and saves it as a card', (
     tester,
   ) async {

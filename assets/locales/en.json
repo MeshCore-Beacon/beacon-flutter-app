@@ -1244,6 +1244,7 @@
       "openPacket": "Open packet",
       "fieldObserver": "Observer",
       "observerBadge": "Observer",
+      "pollerBadge": "Poller",
       "viewAnalytics": "Analytics",
       "viewHeard": "Heard by",
       "viewObserver": "Observer",
