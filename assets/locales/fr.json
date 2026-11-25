@@ -289,7 +289,8 @@
       "observations_one": "{{formatted}} obs.",
       "observations_other": "{{formatted}} obs.",
       "observations_many": "{{formatted}} obs.",
-      "hops": "Sauts"
+      "hops": "Sauts",
+      "poller": "Interrogateur"
     },
     "nodes": {
       "lastHeard": "dernier contact {{ago}}",
@@ -305,7 +306,8 @@
       "neighbors_other": "{{formatted}} voisins",
       "neighbors_many": "{{formatted}} voisins",
       "possiblyForeign": "Possiblement étranger",
-      "possiblyForeignHint": "La position de ce nœud est hors de la zone locale de ce serveur."
+      "possiblyForeignHint": "La position de ce nœud est hors de la zone locale de ce serveur.",
+      "poller": "Interrogateur"
     },
     "packetRow": {
       "noResolution": "Aucune résolution de chemin disponible",
@@ -633,7 +635,8 @@
       "neighborLinks": "Liens de voisinage",
       "packetPath": "Trajet du paquet",
       "noPath": "Aucun trajet localisé sans ambiguïté n’est disponible pour ce paquet.",
-      "pathBreaks": "Les lignes s’interrompent aux sauts ambigus ou sans position."
+      "pathBreaks": "Les lignes s’interrompent aux sauts ambigus ou sans position.",
+      "pollersOnly": "Interrogateurs seulement"
     },
     "nodeFilters": {
       "label": "Filtres des nœuds",
@@ -646,7 +649,8 @@
       "no": "Non",
       "fieldName": "Nom",
       "fieldPubkey": "Clé publique",
-      "all": "Tous"
+      "all": "Tous",
+      "poller": "Interrogateurs seulement"
     },
     "packetAnalyzer": {
       "title": "Analyseur de paquets",

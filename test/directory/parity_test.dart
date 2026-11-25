@@ -161,4 +161,39 @@ void main() {
     expect(message, findsNothing);
     expect(find.text('Neighbor two'), findsOneWidget);
   });
+  testWidgets('node detail shows the POLLER badge only for pollers', (
+    tester,
+  ) async {
+    Future<void> pump(Map<String, dynamic> node) async {
+      final api = ApiClient(
+        Uri.parse('https://test.invalid'),
+        client: MockClient((r) async {
+          final path = r.url.path;
+          final body = path.endsWith('/observations')
+              ? {'items': [], 'hasMore': false}
+              : path.endsWith('/neighbors')
+              ? []
+              : node;
+          return http.Response(jsonEncode(body), 200);
+        }),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: EntityDetailScreen(
+            kind: 'node',
+            id: 'node-1',
+            api: api,
+            region: const {},
+            onOpen: (_, _) {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await pump({'id': 'node-1', 'nodeTypeName': 'repeater', 'isPoller': true});
+    expect(find.text('POLLER'), findsOneWidget);
+    await pump({'id': 'node-1', 'nodeTypeName': 'repeater'});
+    expect(find.text('POLLER'), findsNothing);
+  });
 }

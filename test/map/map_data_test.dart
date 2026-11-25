@@ -336,4 +336,38 @@ void main() {
     expect(f[1]['properties'].containsKey('telemetry'), false);
     expect(f[1]['properties'].containsKey('telemetryOld'), false);
   });
+  test('node features carry isPoller, false when the server omits it', () {
+    final f = nodeFeatures([
+      {'id': 'a', 'lat': 43, 'lng': -79, 'isPoller': true},
+      {'id': 'b', 'lat': 44, 'lng': -80},
+    ])['features'];
+    expect(f[0]['properties']['isPoller'], true);
+    expect(f[1]['properties']['isPoller'], false);
+  });
+  test('pollersOnly keeps poller nodes and still applies the type filter', () {
+    final nodes = <Map<String, dynamic>>[
+      {
+        'id': 'rp',
+        'nodeTypeName': 'repeater',
+        'isPoller': true,
+        'lat': 43,
+        'lng': -79,
+      },
+      {'id': 'r', 'nodeTypeName': 'repeater', 'lat': 44, 'lng': -80},
+      {
+        'id': 'cp',
+        'nodeTypeName': 'companion',
+        'isPoller': true,
+        'lat': 45,
+        'lng': -81,
+      },
+    ];
+    List ids(Map<String, dynamic> fc) =>
+        (fc['features'] as List).map((f) => f['id']).toList();
+    expect(ids(nodeFeatures(nodes, pollersOnly: true)), ['rp', 'cp']);
+    expect(ids(nodeFeatures(nodes, type: 'repeater', pollersOnly: true)), [
+      'rp',
+    ]);
+    expect(ids(nodeFeatures(nodes)), ['rp', 'r', 'cp']);
+  });
 }

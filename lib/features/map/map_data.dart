@@ -35,11 +35,15 @@ List<double> coordinates(Map<String, dynamic> n) => [
 Map<String, dynamic> nodeFeatures(
   List<Map<String, dynamic>> nodes, {
   String type = '',
+  bool pollersOnly = false,
   Map<String, TelemetryLabel> labels = const {},
 }) => collection(
   nodes
       .where(
-        (n) => hasLocation(n) && (type.isEmpty || n['nodeTypeName'] == type),
+        (n) =>
+            hasLocation(n) &&
+            (type.isEmpty || n['nodeTypeName'] == type) &&
+            (!pollersOnly || n['isPoller'] == true),
       )
       .map(
         (n) => feature('Point', coordinates(n), {
@@ -47,6 +51,7 @@ Map<String, dynamic> nodeFeatures(
           'name': n['name'] ?? n['id'],
           'nodeTypeName': n['nodeTypeName'] ?? 'unknown',
           'isObserver': n['isObserver'] == true,
+          'isPoller': n['isPoller'] == true,
           if (labels[n['id']] case final l?) ...{
             'telemetry': l.text,
             'telemetryOld': l.old,

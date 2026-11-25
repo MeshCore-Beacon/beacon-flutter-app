@@ -984,4 +984,88 @@ void main() {
       expect(find.text('Public'), findsOneWidget);
     },
   );
+  testWidgets(
+    'poller rows show the poller icon and the filter goes to the server',
+    (tester) async {
+      final events = StreamController<Map<String, dynamic>>.broadcast();
+      final requests = <Uri>[];
+      final api = ApiClient(
+        Uri.parse('https://test.invalid'),
+        client: MockClient((r) async {
+          requests.add(r.url);
+          if (r.url.path.endsWith('/scopes')) return http.Response('[]', 200);
+          return http.Response(
+            jsonEncode({
+              'items': [
+                {
+                  'id': 'p',
+                  'name': 'Polled',
+                  'isObserver': true,
+                  'isPoller': true,
+                },
+                {'id': 'o', 'name': 'Watcher', 'isObserver': true},
+                {'id': 'n', 'name': 'Plain'},
+              ],
+              'hasMore': false,
+            }),
+            200,
+          );
+        }),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: DirectoryScreen(
+              kind: 'nodes',
+              api: api,
+              region: const {},
+              events: events.stream,
+              onOpen: (_, _) {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.monitor_heart_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.sensors), findsOneWidget);
+
+      // A live update that flips a loaded node adds the icon without a reload.
+      final before = requests.length;
+      events.add({
+        'type': 'event',
+        'event': 'nodeUpdate',
+        'data': {'nodeId': 'n', 'isPoller': true},
+      });
+      await tester.pump();
+      await tester.pump();
+      expect(find.byIcon(Icons.monitor_heart_outlined), findsNWidgets(2));
+      expect(requests.length, before);
+
+      await tester.tap(find.byTooltip('Filters'));
+      await tester.pumpAndSettle();
+      final poller = find.byKey(const ValueKey('poller:null'));
+      await tester.ensureVisible(poller);
+      await tester.tap(poller);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Yes').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Apply'));
+      await tester.pumpAndSettle();
+      expect(requests.last.queryParameters['poller'], 'true');
+
+      // With the filter on, a row that stops polling can leave the list.
+      final reloads = requests.length;
+      events.add({
+        'type': 'event',
+        'event': 'nodeUpdate',
+        'data': {'nodeId': 'p', 'isPoller': false},
+      });
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(requests.skip(reloads).single.queryParameters['poller'], 'true');
+      await tester.pumpWidget(const SizedBox());
+      await events.close();
+    },
+  );
 }

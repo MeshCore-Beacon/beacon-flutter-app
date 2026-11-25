@@ -794,6 +794,11 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
               _ => colors.muted,
             },
           ),
+          if (d['isPoller'] == true)
+            nodeBadge(
+              trKey('nodeDetail.poller').toUpperCase(),
+              const Color(0xFFFFB454),
+            ),
           if (textOf(d['defaultScope']).isNotEmpty)
             nodeBadge(textOf(d['defaultScope']), colors.secondary),
           if (d['possiblyForeign'] == true)

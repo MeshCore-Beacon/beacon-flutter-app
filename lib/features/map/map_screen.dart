@@ -65,6 +65,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       _airports = [],
       _borders = [];
   String _style = 'dark', _type = '', _mode = 'selected';
+  bool _pollersOnly = false;
   String? _selected, _error, _mapError;
   int? _visibleCount;
   bool _loading = true,
@@ -96,6 +97,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       _settings = p.getBool('beacon-map-settings-open') ?? false;
       _style = p.getString('beacon-map-style') ?? 'dark';
       _type = p.getString('beacon-map-node-type') ?? '';
+      _pollersOnly = p.getBool('beacon-map-pollers-only') ?? false;
       _cluster = p.getBool('beacon-map-clustering') ?? true;
       _mode = p.getString('beacon-map-neighbors') ?? 'selected';
       _showBorders = p.getBool('beacon-map-borders') ?? false;
@@ -122,6 +124,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     await p.setBool('beacon-map-settings-open', _settings);
     await p.setString('beacon-map-style', _style);
     await p.setString('beacon-map-node-type', _type);
+    await p.setBool('beacon-map-pollers-only', _pollersOnly);
     await p.setBool('beacon-map-clustering', _cluster);
     await p.setString('beacon-map-neighbors', _mode);
     await p.setBool('beacon-map-borders', _showBorders);
@@ -562,6 +565,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     final layers = _layers.build(
       nodes: _nodes,
       type: _type,
+      pollersOnly: _pollersOnly,
       flow: _flow,
       mode: mode,
       selected: _selected,
@@ -674,6 +678,12 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                               },
                               _type,
                               (v) => _type = v,
+                            ),
+                            _choices(
+                              trKey('map.pollersOnly'),
+                              {'on': 'On', 'off': 'Off'},
+                              _pollersOnly ? 'on' : 'off',
+                              (v) => _pollersOnly = v == 'on',
                             ),
                             // Live shows every node unclustered but keeps the saved choice.
                             _choices(
@@ -908,12 +918,19 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   }
 }
 
-const _nodeIcon = [
+@visibleForTesting
+const nodeIconExpression = [
   'concat',
   'node-',
   ['get', 'nodeTypeName'],
   [
     'case',
+    [
+      '==',
+      ['get', 'isPoller'],
+      true,
+    ],
+    '-poller',
     [
       '==',
       ['get', 'isObserver'],
@@ -1261,7 +1278,7 @@ class _NativeMapState extends State<NativeMap> {
       );
       final markerStyle = widget.style == 'dark' ? 'glitch' : 'wireframe';
       for (final type in nodeTypes) {
-        for (final suffix in ['', '-observer']) {
+        for (final suffix in ['', '-observer', '-poller']) {
           final key = '$markerStyle-$type$suffix';
           await c.addImage(
             'node-$type$suffix',
@@ -1301,7 +1318,7 @@ class _NativeMapState extends State<NativeMap> {
         'beacon-nodes',
         'beacon-points',
         const SymbolLayerProperties(
-          iconImage: _nodeIcon,
+          iconImage: nodeIconExpression,
           iconSize: 0.41,
           iconAllowOverlap: true,
           iconIgnorePlacement: true,
@@ -1385,7 +1402,7 @@ class _NativeMapState extends State<NativeMap> {
         'beacon-live-nodes',
         'beacon-live-selected-marker',
         const SymbolLayerProperties(
-          iconImage: _nodeIcon,
+          iconImage: nodeIconExpression,
           iconSize: 0.41,
           iconAllowOverlap: true,
           iconIgnorePlacement: true,

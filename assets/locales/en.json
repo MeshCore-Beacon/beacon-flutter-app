@@ -283,7 +283,8 @@
       "noRecentPackets": "No recent packets",
       "observations_one": "{{formatted}} obs",
       "observations_other": "{{formatted}} obs",
-      "hops": "Hops"
+      "hops": "Hops",
+      "poller": "Poller"
     },
     "nodes": {
       "lastHeard": "last heard {{ago}}",
@@ -298,7 +299,8 @@
       "neighbors_one": "{{formatted}} neighbor",
       "neighbors_other": "{{formatted}} neighbors",
       "possiblyForeign": "Possibly foreign",
-      "possiblyForeignHint": "This node's position is outside this server's local area."
+      "possiblyForeignHint": "This node's position is outside this server's local area.",
+      "poller": "Poller"
     },
     "packetRow": {
       "noResolution": "No path resolution available",
@@ -617,7 +619,8 @@
       "neighborLinks": "Neighbor links",
       "packetPath": "Packet path",
       "noPath": "No unambiguous located path is available for this packet.",
-      "pathBreaks": "Lines break at ambiguous or unlocated hops."
+      "pathBreaks": "Lines break at ambiguous or unlocated hops.",
+      "pollersOnly": "Pollers only"
     },
     "nodeFilters": {
       "label": "Node filters",
@@ -630,7 +633,8 @@
       "no": "No",
       "fieldName": "Name",
       "fieldPubkey": "Public Key",
-      "all": "All"
+      "all": "All",
+      "poller": "Pollers only"
     },
     "packetAnalyzer": {
       "title": "Packet Analyzer",

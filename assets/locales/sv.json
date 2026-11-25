@@ -283,7 +283,8 @@
       "noRecentPackets": "Inga senaste paket",
       "observations_one": "{{formatted}} obs",
       "observations_other": "{{formatted}} obs",
-      "hops": "Hopp"
+      "hops": "Hopp",
+      "poller": "Pollare"
     },
     "nodes": {
       "lastHeard": "senast mottagen {{ago}}",
@@ -298,7 +299,8 @@
       "neighbors_one": "{{formatted}} granne",
       "neighbors_other": "{{formatted}} grannar",
       "possiblyForeign": "Möjligen främmande",
-      "possiblyForeignHint": "Nodens position ligger utanför serverns lokala område."
+      "possiblyForeignHint": "Nodens position ligger utanför serverns lokala område.",
+      "poller": "Pollare"
     },
     "packetRow": {
       "noResolution": "Ingen vägupplösning tillgänglig",
@@ -617,7 +619,8 @@
       "neighborLinks": "Grannlänkar",
       "packetPath": "Paketväg",
       "noPath": "Ingen entydig väg med positioner finns för det här paketet.",
-      "pathBreaks": "Linjerna bryts vid tvetydiga hopp eller hopp utan position."
+      "pathBreaks": "Linjerna bryts vid tvetydiga hopp eller hopp utan position.",
+      "pollersOnly": "Endast pollare"
     },
     "nodeFilters": {
       "label": "Nodfilter",
@@ -630,7 +633,8 @@
       "no": "Nej",
       "fieldName": "Namn",
       "fieldPubkey": "Publik nyckel",
-      "all": "Alla"
+      "all": "Alla",
+      "poller": "Endast pollare"
     },
     "packetAnalyzer": {
       "title": "Paketanalyserare",

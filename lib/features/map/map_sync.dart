@@ -23,6 +23,7 @@ class MapLayers {
   MapLayerData build({
     required List<Map<String, dynamic>> nodes,
     required String type,
+    bool pollersOnly = false,
     required bool flow,
     required String mode,
     required String? selected,
@@ -31,12 +32,16 @@ class MapLayers {
     required List<Map<String, dynamic>> borders,
     Map<String, TelemetryLabel> labels = const {},
   }) {
-    final typed = _typed([
-      nodes,
-      type,
-      labels,
-    ], () => nodeFeatures(nodes, type: type, labels: labels));
-    final all = flow && type.isNotEmpty;
+    final typed = _typed(
+      [nodes, type, pollersOnly, labels],
+      () => nodeFeatures(
+        nodes,
+        type: type,
+        pollersOnly: pollersOnly,
+        labels: labels,
+      ),
+    );
+    final all = flow && (type.isNotEmpty || pollersOnly);
     final live = _live([
       nodes,
       all,

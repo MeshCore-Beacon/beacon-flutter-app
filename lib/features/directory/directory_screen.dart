@@ -184,6 +184,9 @@ class _DirectoryScreenState extends State<DirectoryScreen>
           (search.text.trim().isNotEmpty &&
               data.containsKey('name') &&
               data['name'] != current['name']) ||
+          (filters['poller'] == 'true' &&
+              data.containsKey('isPoller') &&
+              data['isPoller'] != true) ||
           (textOf(filters['scope']).isNotEmpty &&
               data.containsKey('defaultScope') &&
               data['defaultScope'] != filters['scope']) ||
@@ -199,6 +202,7 @@ class _DirectoryScreenState extends State<DirectoryScreen>
         'radio',
         'iatas',
         'isObserver',
+        'isPoller',
       ]) {
         if (data.containsKey(key)) {
           if (data[key] == null &&
@@ -948,6 +952,9 @@ class _DirectoryScreenState extends State<DirectoryScreen>
                     'room_server',
                     'sensor',
                   ], update),
+                  select('poller', trKey('nodeFilters.poller'), [
+                    'true',
+                  ], update),
                   select('supportsMultibytePaths', 'Multibyte paths', [
                     'true',
                     'false',
@@ -1310,7 +1317,17 @@ class _DirectoryScreenState extends State<DirectoryScreen>
               line(age(r['lastSeen']), color: muted),
               const SizedBox(width: 8),
             ],
-            if (r['isObserver'] == true)
+            if (r['isPoller'] == true)
+              Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: Icon(
+                  Icons.monitor_heart_outlined,
+                  size: 13,
+                  color: const Color(0xFFFFB454),
+                  semanticLabel: trKey('nodes.poller'),
+                ),
+              )
+            else if (r['isObserver'] == true)
               const Padding(
                 padding: EdgeInsets.only(right: 4),
                 child: Icon(Icons.sensors, size: 13),
