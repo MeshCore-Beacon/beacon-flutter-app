@@ -110,7 +110,7 @@ Widget nodeTypeChip(
     key: ValueKey('chip-type-$key'),
     color: nodeTypeColor(type) ?? muted,
     glyph: nodeColors.containsKey(key) ? key : null,
-    label: label,
+    label: label.replaceAll('_', ' '),
   );
 }
 

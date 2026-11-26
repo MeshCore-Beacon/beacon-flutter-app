@@ -22,6 +22,7 @@ void main() {
           builder: (context) => Column(
             children: [
               nodeTypeChip(context, 'repeater', 'REPEATER', Colors.grey),
+              nodeTypeChip(context, 'room_server', 'ROOM_SERVER', Colors.grey),
               pollerChip(),
               observerChip(iconOnly: true),
             ],
@@ -42,6 +43,9 @@ void main() {
     expect(type.color, isNotNull);
     final poller = deco(find.byKey(const ValueKey('chip-poller')));
     expect(poller.color, isNull);
+    expect(find.text('ROOM SERVER'), findsOneWidget);
+    expect(find.text('ROOM_SERVER'), findsNothing);
+    expect(find.byKey(const ValueKey('chip-type-room_server')), findsOneWidget);
     expect(find.text('POLLER'), findsOneWidget);
     // Glyph-only chip has no text, only its accessible name.
     expect(
