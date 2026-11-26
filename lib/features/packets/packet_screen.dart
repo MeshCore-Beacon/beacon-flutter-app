@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../../core/api.dart';
+import '../../core/filter_sheet.dart';
 import '../../core/json.dart';
 import '../../core/sheet.dart';
 import '../../core/strings.dart';
@@ -297,24 +298,6 @@ class _PacketScreenState extends State<PacketScreen> {
       builder: (context) => StatefulBuilder(
         builder: (context, update) => BeaconSheet(
           title: tr('Filters'),
-          actions: [
-            TextButton(
-              onPressed: () {
-                update(() {
-                  types = {};
-                  routes = {};
-                  selectedScopes = {};
-                  selectedObservers = {};
-                  search.clear();
-                  mode = 'Hash';
-                });
-                searchDebounce?.cancel();
-                hashPrefix = null;
-                filtersChanged();
-              },
-              child: Text(tr('Clear all')),
-            ),
-          ],
           maxHeight: .9,
           child: SingleChildScrollView(
             child: Padding(
@@ -373,10 +356,22 @@ class _PacketScreenState extends State<PacketScreen> {
                         filtersChanged();
                       },
                     ),
-                  const SizedBox(height: 20),
-                  FilledButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: Text(tr('Done')),
+                  FilterSheetFooter(
+                    primaryLabel: 'Done',
+                    onClear: () {
+                      update(() {
+                        types = {};
+                        routes = {};
+                        selectedScopes = {};
+                        selectedObservers = {};
+                        search.clear();
+                        mode = 'Hash';
+                      });
+                      searchDebounce?.cancel();
+                      hashPrefix = null;
+                      filtersChanged();
+                    },
+                    onPrimary: () => Navigator.pop(context),
                   ),
                 ],
               ),

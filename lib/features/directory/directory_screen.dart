@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/api.dart';
+import '../../core/filter_sheet.dart';
 import '../../core/json.dart';
 import '../../core/sheet.dart';
 import '../../core/strings.dart';
@@ -918,12 +919,12 @@ class _DirectoryScreenState extends State<DirectoryScreen>
     List<String> values,
     StateSetter update,
   ) => Padding(
-    padding: const EdgeInsets.only(bottom: 14),
+    padding: const EdgeInsets.only(bottom: filterFieldGap),
     child: DropdownButtonFormField<String>(
       key: ValueKey('$key:${filters[key]}'),
       initialValue: filters[key] ?? '',
       isExpanded: true,
-      decoration: InputDecoration(labelText: tr(title)),
+      decoration: filterFieldDecoration(title),
       items: [
         DropdownMenuItem(value: '', child: Text(trKey('nodeFilters.any'))),
         ...{
@@ -1010,20 +1011,9 @@ class _DirectoryScreenState extends State<DirectoryScreen>
                 ],
                 if (['nodes', 'observers', 'traces'].contains(widget.kind))
                   select('scope', trKey('nodeFilters.scope'), scopes, update),
-                Row(
-                  children: [
-                    TextButton(
-                      onPressed: () {
-                        update(filters.clear);
-                      },
-                      child: const DirectoryText('Clear all'),
-                    ),
-                    const Spacer(),
-                    FilledButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const DirectoryText('Apply'),
-                    ),
-                  ],
+                FilterSheetFooter(
+                  onClear: () => update(filters.clear),
+                  onPrimary: () => Navigator.pop(context),
                 ),
               ],
             ),

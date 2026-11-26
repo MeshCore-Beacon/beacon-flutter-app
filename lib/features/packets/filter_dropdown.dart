@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../core/filter_sheet.dart';
 import '../../core/strings.dart';
 
 class FilterDropdown<T> extends StatefulWidget {
@@ -22,6 +23,7 @@ class FilterDropdown<T> extends StatefulWidget {
 }
 
 class _FilterDropdownState<T> extends State<FilterDropdown<T>> {
+  static const _rowHeight = 48.0;
   final menu = MenuController();
   final search = TextEditingController();
 
@@ -44,102 +46,105 @@ class _FilterDropdownState<T> extends State<FilterDropdown<T>> {
         .toList();
     final viewport = MediaQuery.of(context);
     final listHeight = math.min(
-      math.min(200.0, math.max(48.0, matching.length * 48.0)),
+      math.min(200.0, math.max(48.0, matching.length * _rowHeight)),
       math.max(80.0, (viewport.size.height - viewport.viewInsets.bottom) * .3),
     );
+    final theme = Theme.of(context);
+    // Same look as the DropdownButtonFormField menu the directory sheet uses.
+    final valueStyle = theme.textTheme.titleMedium;
+    final showSearch = widget.options.length > 8;
     return Padding(
-      padding: const EdgeInsets.only(top: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(tr(widget.label), style: Theme.of(context).textTheme.bodySmall),
-          const SizedBox(height: 6),
-          LayoutBuilder(
-            builder: (context, constraints) => MenuAnchor(
-              controller: menu,
-              consumeOutsideTap: true,
-              style: const MenuStyle(
-                padding: WidgetStatePropertyAll(EdgeInsets.zero),
-              ),
-              onOpen: () => setState(() => search.clear()),
-              onClose: () => FocusManager.instance.primaryFocus?.unfocus(),
-              menuChildren: [
-                SizedBox(
-                  width: constraints.maxWidth,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.all(8),
-                        child: TextField(
-                          key: ValueKey('search-${widget.label}'),
-                          controller: search,
-                          decoration: InputDecoration(
-                            hintText: tr('Search'),
-                            prefixIcon: const Icon(Icons.search, size: 18),
-                          ),
-                          onChanged: (_) => setState(() {}),
+      padding: const EdgeInsets.only(bottom: filterFieldGap),
+      child: LayoutBuilder(
+        builder: (context, constraints) => MenuAnchor(
+          controller: menu,
+          consumeOutsideTap: true,
+          style: MenuStyle(
+            padding: const WidgetStatePropertyAll(EdgeInsets.zero),
+            backgroundColor: WidgetStatePropertyAll(theme.canvasColor),
+            elevation: const WidgetStatePropertyAll(8),
+            shape: WidgetStatePropertyAll(
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(2)),
+            ),
+          ),
+          onOpen: () => setState(() => search.clear()),
+          onClose: () => FocusManager.instance.primaryFocus?.unfocus(),
+          menuChildren: [
+            SizedBox(
+              width: constraints.maxWidth,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (showSearch)
+                    Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: TextField(
+                        key: ValueKey('search-${widget.label}'),
+                        controller: search,
+                        decoration: InputDecoration(
+                          hintText: tr('Search'),
+                          prefixIcon: const Icon(Icons.search, size: 18),
                         ),
-                      ),
-                      SizedBox(
-                        height: listHeight,
-                        child: matching.isEmpty
-                            ? Center(child: Text(tr('No results')))
-                            : ListView.builder(
-                                primary: false,
-                                padding: EdgeInsets.zero,
-                                itemCount: matching.length,
-                                itemBuilder: (context, index) {
-                                  final option = matching[index];
-                                  return CheckboxListTile(
-                                    dense: true,
-                                    controlAffinity:
-                                        ListTileControlAffinity.leading,
-                                    title: Text(option.value),
-                                    value: widget.selected.contains(option.key),
-                                    onChanged: (checked) {
-                                      final next = {...widget.selected};
-                                      checked == true
-                                          ? next.add(option.key)
-                                          : next.remove(option.key);
-                                      widget.onChanged(next);
-                                    },
-                                  );
-                                },
-                              ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-              builder: (context, controller, child) => OutlinedButton(
-                key: ValueKey('filter-${widget.label}'),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(46),
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                ),
-                onPressed: () =>
-                    controller.isOpen ? controller.close() : controller.open(),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        values.isEmpty ? tr('All') : values,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                        onChanged: (_) => setState(() {}),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    const Icon(Icons.arrow_drop_down, size: 20),
-                  ],
-                ),
+                  SizedBox(
+                    height: listHeight,
+                    child: matching.isEmpty
+                        ? Center(child: Text(tr('No results')))
+                        : ListView.builder(
+                            primary: false,
+                            padding: EdgeInsets.zero,
+                            itemExtent: _rowHeight,
+                            itemCount: matching.length,
+                            itemBuilder: (context, index) {
+                              final option = matching[index];
+                              return CheckboxListTile(
+                                dense: true,
+                                controlAffinity:
+                                    ListTileControlAffinity.leading,
+                                title: Text(option.value, style: valueStyle),
+                                value: widget.selected.contains(option.key),
+                                onChanged: (checked) {
+                                  final next = {...widget.selected};
+                                  checked == true
+                                      ? next.add(option.key)
+                                      : next.remove(option.key);
+                                  widget.onChanged(next);
+                                },
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          builder: (context, controller, child) => InkWell(
+            key: ValueKey('filter-${widget.label}'),
+            borderRadius: BorderRadius.circular(6),
+            onTap: () =>
+                controller.isOpen ? controller.close() : controller.open(),
+            child: InputDecorator(
+              decoration: filterFieldDecoration(widget.label),
+              isEmpty: false,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      values.isEmpty ? trKey('nodeFilters.any') : values,
+                      style: valueStyle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Icon(Icons.arrow_drop_down),
+                ],
               ),
             ),
           ),
-        ],
+        ),
       ),
     );
   }
