@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:beacon/core/api.dart';
+import 'package:beacon/core/filter_sheet.dart';
 import 'package:beacon/features/directory/directory.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -372,7 +373,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Filters'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(DropdownButtonFormField<String>).at(2));
+    await tester.tap(find.byType(FilterField<String>).at(2));
     await tester.pumpAndSettle();
     expect(find.text('remote-broker').last, findsOneWidget);
   });

@@ -918,22 +918,19 @@ class _DirectoryScreenState extends State<DirectoryScreen>
     String title,
     List<String> values,
     StateSetter update,
-  ) => Padding(
-    padding: const EdgeInsets.only(bottom: filterFieldGap),
-    child: DropdownButtonFormField<String>(
-      key: ValueKey('$key:${filters[key]}'),
-      initialValue: filters[key] ?? '',
-      isExpanded: true,
-      decoration: filterFieldDecoration(title),
-      items: [
-        DropdownMenuItem(value: '', child: Text(trKey('nodeFilters.any'))),
-        ...{
-          ...values,
-          if (textOf(filters[key]).isNotEmpty) filters[key]!,
-        }.map((v) => DropdownMenuItem(value: v, child: Text(optionLabel(v)))),
-      ],
-      onChanged: (v) => update(() => filters[key] = v ?? ''),
-    ),
+  ) => FilterField<String>(
+    key: ValueKey('$key:${filters[key]}'),
+    label: title,
+    options: {
+      for (final v in {
+        ...values,
+        if (textOf(filters[key]).isNotEmpty) filters[key]!,
+      })
+        v: optionLabel(v),
+    },
+    selected: textOf(filters[key]).isEmpty ? {} : {filters[key]!},
+    onChanged: (picked) =>
+        update(() => filters[key] = picked.isEmpty ? '' : picked.first),
   );
   Future<void> showFilters() async {
     await showBeaconSheet<void>(

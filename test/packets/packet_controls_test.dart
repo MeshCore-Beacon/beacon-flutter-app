@@ -97,23 +97,19 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('filter-Observers')));
       await tester.pumpAndSettle();
-      await tester.ensureVisible(
-        find.widgetWithText(CheckboxListTile, 'Roof observer'),
-      );
-      await tester.tap(find.widgetWithText(CheckboxListTile, 'Roof observer'));
+      await tester.ensureVisible(find.text('Roof observer').last);
+      await tester.tap(find.text('Roof observer').last);
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('filter-Observers')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('filter-Scope')));
       await tester.pumpAndSettle();
       final before = requests.where((r) => r.path.endsWith('/packets')).length;
-      await tester.ensureVisible(find.widgetWithText(CheckboxListTile, '#bc'));
-      await tester.tap(find.widgetWithText(CheckboxListTile, '#bc'));
+      await tester.ensureVisible(find.text('#bc').last);
+      await tester.tap(find.text('#bc').last);
       await tester.pumpAndSettle();
-      await tester.ensureVisible(
-        find.widgetWithText(CheckboxListTile, '#west'),
-      );
-      await tester.tap(find.widgetWithText(CheckboxListTile, '#west'));
+      await tester.ensureVisible(find.text('#west').last);
+      await tester.tap(find.text('#west').last);
       await tester.pumpAndSettle();
       final last = requests.lastWhere((r) => r.path.endsWith('/packets'));
       expect(last.queryParameters['scopes'], '#bc,#west');
@@ -185,17 +181,15 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('filter-Observers')));
       await tester.pumpAndSettle();
-      await tester.ensureVisible(
-        find.widgetWithText(CheckboxListTile, 'Old observer'),
-      );
-      await tester.tap(find.widgetWithText(CheckboxListTile, 'Old observer'));
+      await tester.ensureVisible(find.text('Old observer').last);
+      await tester.tap(find.text('Old observer').last);
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('filter-Observers')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('filter-Scope')));
       await tester.pumpAndSettle();
-      await tester.ensureVisible(find.widgetWithText(CheckboxListTile, '#bc'));
-      await tester.tap(find.widgetWithText(CheckboxListTile, '#bc'));
+      await tester.ensureVisible(find.text('#bc').last);
+      await tester.tap(find.text('#bc').last);
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('filter-Scope')));
       await tester.pumpAndSettle();

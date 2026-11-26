@@ -57,13 +57,23 @@ void main() {
     transientRetries: 0,
     client: MockClient((r) async {
       final body = r.url.path.endsWith('/scopes')
-          ? ['#yow', '#yul']
+          ? [
+              for (final n
+                  in 'CAN Canada DET Gwinn NA ON ONNY ORD PAE PNW SEA Thurston USA WA West'
+                      .split(' '))
+                '#$n',
+            ]
           : {'items': <dynamic>[], 'hasMore': false};
       return http.Response.bytes(utf8.encode(jsonEncode(body)), 200);
     }),
   );
 
-  Future<void> sheet(WidgetTester tester, String name, Widget screen) async {
+  Future<void> sheet(
+    WidgetTester tester,
+    String name,
+    Widget screen, {
+    String? open,
+  }) async {
     tester.view.physicalSize = const Size(390 * 3, 844 * 3);
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.resetPhysicalSize);
@@ -81,6 +91,10 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Filters'));
     await tester.pumpAndSettle();
+    if (open != null) {
+      await tester.tap(find.byKey(ValueKey('filter-$open')));
+      await tester.pumpAndSettle();
+    }
     await tester.runAsync(() async {
       final boundary =
           _shot.currentContext!.findRenderObject()! as RenderRepaintBoundary;
@@ -91,24 +105,25 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   }
 
-  testWidgets('packets sheet', (tester) async {
-    await sheet(
-      tester,
-      'packets-sheet',
-      PacketScreen(api: api(), region: const {}, onOpen: (_, _) {}),
-    );
-  }, skip: !_on);
+  Widget packets() =>
+      PacketScreen(api: api(), region: const {}, onOpen: (_, _) {});
+  Widget nodes() => DirectoryScreen(
+    kind: 'nodes',
+    api: api(),
+    region: const {},
+    onOpen: (_, _) {},
+  );
 
-  testWidgets('nodes sheet', (tester) async {
-    await sheet(
-      tester,
-      'nodes-sheet',
-      DirectoryScreen(
-        kind: 'nodes',
-        api: api(),
-        region: const {},
-        onOpen: (_, _) {},
-      ),
-    );
-  }, skip: !_on);
+  for (final (name, make, open) in <(String, Widget Function(), String?)>[
+    ('nodes-closed', nodes, null),
+    ('nodes-scope-open', nodes, 'Scope'),
+    ('nodes-poller-open', nodes, 'Poller'),
+    ('packets-closed', packets, null),
+    ('packets-scope-open', packets, 'Scope'),
+    ('packets-route-open', packets, 'Route type'),
+  ]) {
+    testWidgets(name, (tester) async {
+      await sheet(tester, name, make(), open: open);
+    }, skip: !_on);
+  }
 }

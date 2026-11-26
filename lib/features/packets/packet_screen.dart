@@ -9,7 +9,6 @@ import '../../core/json.dart';
 import '../../core/sheet.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
-import 'filter_dropdown.dart';
 import 'packet_expansion.dart';
 import 'packet_model.dart';
 
@@ -311,8 +310,9 @@ class _PacketScreenState extends State<PacketScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  FilterDropdown<int>(
+                  FilterField<int>(
                     label: 'Payload type',
+                    multi: true,
                     options: payloadNames,
                     selected: types,
                     onChanged: (value) {
@@ -320,8 +320,9 @@ class _PacketScreenState extends State<PacketScreen> {
                       filtersChanged();
                     },
                   ),
-                  FilterDropdown<int>(
+                  FilterField<int>(
                     label: 'Route type',
+                    multi: true,
                     options: const {
                       0: 'TRANSPORT_FLOOD',
                       1: 'FLOOD',
@@ -334,8 +335,9 @@ class _PacketScreenState extends State<PacketScreen> {
                       filtersChanged();
                     },
                   ),
-                  FilterDropdown<String>(
+                  FilterField<String>(
                     label: 'Observers',
+                    multi: true,
                     options: Map.fromEntries(
                       observerNames.entries.toList()
                         ..sort((a, b) => a.value.compareTo(b.value)),
@@ -347,8 +349,9 @@ class _PacketScreenState extends State<PacketScreen> {
                     },
                   ),
                   if (scopes.isNotEmpty)
-                    FilterDropdown<String>(
+                    FilterField<String>(
                       label: 'Scope',
+                      multi: true,
                       options: {for (final name in scopes) name: name},
                       selected: selectedScopes,
                       onChanged: (value) {

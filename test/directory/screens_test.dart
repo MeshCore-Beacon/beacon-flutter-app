@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:beacon/core/api.dart';
+import 'package:beacon/core/filter_sheet.dart';
 import 'package:beacon/features/directory/directory.dart';
 import 'package:beacon/features/directory/node_chips.dart';
 import 'package:beacon/features/map/map_markers.dart';
@@ -405,6 +406,9 @@ void main() {
     await tester.tap(find.byTooltip('Filters'));
     await tester.pumpAndSettle();
     final scope = find.byKey(const ValueKey('scope:null'));
+    expect(find.byType(FilterField<String>), findsWidgets);
+    expect(find.byType(DropdownButtonFormField<String>), findsNothing);
+    expect(find.byType(MenuAnchor), findsNothing);
     await tester.ensureVisible(scope);
     await tester.tap(scope);
     await tester.pumpAndSettle();

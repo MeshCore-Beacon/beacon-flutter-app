@@ -44,7 +44,7 @@ void main() {
       'adv',
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(CheckboxListTile, 'ADVERT'));
+    await tester.tap(find.text('ADVERT'));
     await tester.pumpAndSettle();
     final request = requests.lastWhere((r) => r.path.endsWith('/packets'));
     expect(request.queryParameters['payloadTypes'], '4');
@@ -100,17 +100,21 @@ void main() {
       findsOneWidget,
     );
     expect(find.widgetWithText(FilledButton, 'Done'), findsOneWidget);
+    // Every field is the shared in-place picker, never a stock menu.
+    expect(find.byType(FilterField<String>), findsWidgets);
+    expect(find.byType(DropdownButtonFormField<String>), findsNothing);
+    expect(find.byType(MenuAnchor), findsNothing);
 
     await tester.tap(find.byKey(const ValueKey('filter-Payload type')));
     await tester.pumpAndSettle();
     final search = find.byKey(const ValueKey('search-Payload type'));
     await tester.enterText(search, 'adv');
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(CheckboxListTile, 'ADVERT'));
+    await tester.tap(find.text('ADVERT'));
     await tester.pumpAndSettle();
     await tester.enterText(search, 'grp_t');
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(CheckboxListTile, 'GRP_TXT'));
+    await tester.tap(find.text('GRP_TXT'));
     await tester.pumpAndSettle();
     expect(
       requests
