@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'sheet.dart';
 import 'strings.dart';
 import 'theme.dart';
 
@@ -296,4 +297,56 @@ class _FilterFieldState<T> extends State<FilterField<T>> {
       ),
     );
   }
+}
+
+/// A filter sheet's body: the fields scroll above, the footer stays pinned.
+/// Short content sizes itself; long content scrolls instead of growing.
+class FilterSheetBody extends StatelessWidget {
+  const FilterSheetBody({
+    super.key,
+    required this.fields,
+    required this.onClear,
+    required this.onPrimary,
+    this.primaryLabel = 'Apply',
+  });
+  final List<Widget> fields;
+  final VoidCallback onClear;
+  final VoidCallback onPrimary;
+  final String primaryLabel;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Flexible(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(
+            BeaconSheet.gutter,
+            8,
+            BeaconSheet.gutter,
+            0,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: fields,
+          ),
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(
+          BeaconSheet.gutter,
+          4,
+          BeaconSheet.gutter,
+          16,
+        ),
+        child: FilterSheetFooter(
+          onClear: onClear,
+          onPrimary: onPrimary,
+          primaryLabel: primaryLabel,
+        ),
+      ),
+    ],
+  );
 }

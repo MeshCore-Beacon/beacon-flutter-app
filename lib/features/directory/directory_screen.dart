@@ -939,81 +939,66 @@ class _DirectoryScreenState extends State<DirectoryScreen>
         builder: (context, update) => BeaconSheet(
           title: tr('Filters'),
           maxHeight: .9,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(
-              BeaconSheet.gutter,
-              8,
-              BeaconSheet.gutter,
-              16,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (widget.kind == 'nodes') ...[
-                  select('typeName', 'Node type', [
-                    'companion',
-                    'repeater',
-                    'room_server',
-                    'sensor',
-                  ], update),
-                  select('supportsMultibytePaths', 'Multibyte paths', [
-                    'true',
-                    'false',
-                  ], update),
-                  select('supportsMultibyteTraces', 'Multibyte traces', [
-                    'true',
-                    'false',
-                  ], update),
-                  select('poller', trKey('nodeFilters.poller'), [
-                    'true',
-                    'false',
-                  ], update),
-                ],
-                if (widget.kind == 'observers') ...[
-                  select('status', 'Status', ['online', 'offline'], update),
-                  select('type', 'Observer type', types, update),
-                  select('broker', 'Broker', brokers, update),
-                ],
-                if (widget.kind == 'channels') ...[
-                  select('keyKnown', 'Known key', ['true', 'false'], update),
-                  select('hashtag', 'Hashtag channel', [
-                    'true',
-                    'false',
-                  ], update),
-                ],
-                if (widget.kind == 'traces')
-                  select('type', 'Type', ['TRACE', 'PING'], update),
-                if (widget.kind == 'routes') ...[
-                  TextFormField(
-                    key: const ValueKey('routes-iata-filter'),
-                    initialValue: filters['iata'],
-                    decoration: InputDecoration(labelText: tr('IATA')),
-                    // IATA codes are uppercase on the server; match as typed.
-                    textCapitalization: TextCapitalization.characters,
-                    inputFormatters: [
-                      TextInputFormatter.withFunction(
-                        (_, value) =>
-                            value.copyWith(text: value.text.toUpperCase()),
-                      ),
-                    ],
-                    onChanged: (v) => filters['iata'] = v.toUpperCase(),
-                  ),
-                  select(
-                    'hopCount',
-                    'Hops',
-                    List.generate(16, (i) => '${i + 1}'),
-                    update,
-                  ),
-                ],
-                if (['nodes', 'observers', 'traces'].contains(widget.kind))
-                  select('scope', trKey('nodeFilters.scope'), scopes, update),
-                FilterSheetFooter(
-                  onClear: () => update(filters.clear),
-                  onPrimary: () => Navigator.pop(context),
+          child: FilterSheetBody(
+            onClear: () => update(filters.clear),
+            onPrimary: () => Navigator.pop(context),
+            fields: [
+              if (widget.kind == 'nodes') ...[
+                select('typeName', 'Node type', [
+                  'companion',
+                  'repeater',
+                  'room_server',
+                  'sensor',
+                ], update),
+                select('supportsMultibytePaths', 'Multibyte paths', [
+                  'true',
+                  'false',
+                ], update),
+                select('supportsMultibyteTraces', 'Multibyte traces', [
+                  'true',
+                  'false',
+                ], update),
+                select('poller', trKey('nodeFilters.poller'), [
+                  'true',
+                  'false',
+                ], update),
+              ],
+              if (widget.kind == 'observers') ...[
+                select('status', 'Status', ['online', 'offline'], update),
+                select('type', 'Observer type', types, update),
+                select('broker', 'Broker', brokers, update),
+              ],
+              if (widget.kind == 'channels') ...[
+                select('keyKnown', 'Known key', ['true', 'false'], update),
+                select('hashtag', 'Hashtag channel', ['true', 'false'], update),
+              ],
+              if (widget.kind == 'traces')
+                select('type', 'Type', ['TRACE', 'PING'], update),
+              if (widget.kind == 'routes') ...[
+                TextFormField(
+                  key: const ValueKey('routes-iata-filter'),
+                  initialValue: filters['iata'],
+                  decoration: InputDecoration(labelText: tr('IATA')),
+                  // IATA codes are uppercase on the server; match as typed.
+                  textCapitalization: TextCapitalization.characters,
+                  inputFormatters: [
+                    TextInputFormatter.withFunction(
+                      (_, value) =>
+                          value.copyWith(text: value.text.toUpperCase()),
+                    ),
+                  ],
+                  onChanged: (v) => filters['iata'] = v.toUpperCase(),
+                ),
+                select(
+                  'hopCount',
+                  'Hops',
+                  List.generate(16, (i) => '${i + 1}'),
+                  update,
                 ),
               ],
-            ),
+              if (['nodes', 'observers', 'traces'].contains(widget.kind))
+                select('scope', trKey('nodeFilters.scope'), scopes, update),
+            ],
           ),
         ),
       ),

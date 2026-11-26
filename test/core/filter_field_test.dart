@@ -1,4 +1,5 @@
 import 'package:beacon/core/filter_sheet.dart';
+import 'package:beacon/core/sheet.dart';
 import 'package:beacon/core/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -25,6 +26,7 @@ Finder field(String label) => find.byKey(ValueKey('filter-$label'));
 
 void main() {
   setUp(BeaconTheme.load);
+  footerTests();
 
   testWidgets('single: Any row first, radios, closes on pick', (tester) async {
     var selected = <String>{};
@@ -194,4 +196,67 @@ void main() {
         tester.getTopLeft(chevron(key)).dx;
     expect(fromRight('packets'), fromRight('directory'));
   });
+}
+
+void footerTests() {
+  testWidgets(
+    'a long open list keeps the footer in view and the fields scroll',
+    (tester) async {
+      tester.view.physicalSize = const Size(390, 600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: BeaconTheme.all.first.data,
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () => showBeaconSheet<void>(
+                  context,
+                  builder: (_) => BeaconSheet(
+                    title: 'Filters',
+                    maxHeight: .9,
+                    child: FilterSheetBody(
+                      onClear: () {},
+                      onPrimary: () {},
+                      fields: [
+                        for (final label in ['A', 'B', 'C', 'D'])
+                          FilterField<String>(
+                            label: label,
+                            options: {
+                              for (var i = 0; i < 30; i++) '#$i': '#opt$i',
+                            },
+                            selected: const {},
+                            onChanged: (_) {},
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      await tester.tap(field('A'));
+      await tester.pumpAndSettle();
+      final screen = tester.view.physicalSize;
+      final button = tester.getRect(find.widgetWithText(FilledButton, 'Apply'));
+      expect(button.bottom, lessThanOrEqualTo(screen.height));
+      expect(button.top, greaterThanOrEqualTo(0));
+      final scroll = tester.state<ScrollableState>(
+        find
+            .descendant(
+              of: find.byType(FilterSheetBody),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      expect(scroll.position.maxScrollExtent, greaterThan(0));
+    },
+  );
 }

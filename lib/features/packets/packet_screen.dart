@@ -298,87 +298,73 @@ class _PacketScreenState extends State<PacketScreen> {
         builder: (context, update) => BeaconSheet(
           title: tr('Filters'),
           maxHeight: .9,
-          child: SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(
-                BeaconSheet.gutter,
-                8,
-                BeaconSheet.gutter,
-                16,
+          child: FilterSheetBody(
+            primaryLabel: 'Done',
+            onClear: () {
+              update(() {
+                types = {};
+                routes = {};
+                selectedScopes = {};
+                selectedObservers = {};
+                search.clear();
+                mode = 'Hash';
+              });
+              searchDebounce?.cancel();
+              hashPrefix = null;
+              filtersChanged();
+            },
+            onPrimary: () => Navigator.pop(context),
+            fields: [
+              FilterField<int>(
+                label: 'Payload type',
+                multi: true,
+                options: payloadNames,
+                selected: types,
+                onChanged: (value) {
+                  update(() => types = value);
+                  filtersChanged();
+                },
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  FilterField<int>(
-                    label: 'Payload type',
-                    multi: true,
-                    options: payloadNames,
-                    selected: types,
-                    onChanged: (value) {
-                      update(() => types = value);
-                      filtersChanged();
-                    },
-                  ),
-                  FilterField<int>(
-                    label: 'Route type',
-                    multi: true,
-                    options: const {
-                      0: 'TRANSPORT_FLOOD',
-                      1: 'FLOOD',
-                      2: 'DIRECT',
-                      3: 'TRANSPORT_DIRECT',
-                    },
-                    selected: routes,
-                    onChanged: (value) {
-                      update(() => routes = value);
-                      filtersChanged();
-                    },
-                  ),
-                  FilterField<String>(
-                    label: 'Observers',
-                    multi: true,
-                    options: Map.fromEntries(
-                      observerNames.entries.toList()
-                        ..sort((a, b) => a.value.compareTo(b.value)),
-                    ),
-                    selected: selectedObservers,
-                    onChanged: (value) {
-                      update(() => selectedObservers = value);
-                      setState(() {});
-                    },
-                  ),
-                  if (scopes.isNotEmpty)
-                    FilterField<String>(
-                      label: 'Scope',
-                      multi: true,
-                      options: {for (final name in scopes) name: name},
-                      selected: selectedScopes,
-                      onChanged: (value) {
-                        update(() => selectedScopes = value);
-                        filtersChanged();
-                      },
-                    ),
-                  FilterSheetFooter(
-                    primaryLabel: 'Done',
-                    onClear: () {
-                      update(() {
-                        types = {};
-                        routes = {};
-                        selectedScopes = {};
-                        selectedObservers = {};
-                        search.clear();
-                        mode = 'Hash';
-                      });
-                      searchDebounce?.cancel();
-                      hashPrefix = null;
-                      filtersChanged();
-                    },
-                    onPrimary: () => Navigator.pop(context),
-                  ),
-                ],
+              FilterField<int>(
+                label: 'Route type',
+                multi: true,
+                options: const {
+                  0: 'TRANSPORT_FLOOD',
+                  1: 'FLOOD',
+                  2: 'DIRECT',
+                  3: 'TRANSPORT_DIRECT',
+                },
+                selected: routes,
+                onChanged: (value) {
+                  update(() => routes = value);
+                  filtersChanged();
+                },
               ),
-            ),
+              FilterField<String>(
+                label: 'Observers',
+                multi: true,
+                options: Map.fromEntries(
+                  observerNames.entries.toList()
+                    ..sort((a, b) => a.value.compareTo(b.value)),
+                ),
+                selected: selectedObservers,
+                onChanged: (value) {
+                  update(() => selectedObservers = value);
+                  setState(() {});
+                },
+              ),
+              if (scopes.isNotEmpty)
+                FilterField<String>(
+                  label: 'Scope',
+                  multi: true,
+                  options: {for (final name in scopes) name: name},
+                  selected: selectedScopes,
+                  onChanged: (value) {
+                    update(() => selectedScopes = value);
+                    filtersChanged();
+                  },
+                ),
+            ],
           ),
         ),
       ),
