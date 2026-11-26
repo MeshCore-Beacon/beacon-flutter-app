@@ -1,8 +1,11 @@
+import 'package:beacon/core/filter_sheet.dart';
+import 'package:beacon/core/theme.dart';
 import 'package:beacon/features/packets/filter_dropdown.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  matchTests();
   testWidgets('search filters choices and preserves multiple selections', (
     tester,
   ) async {
@@ -91,5 +94,90 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('search-Route type')), findsNothing);
     expect(find.byType(CheckboxListTile), findsNWidgets(2));
+  });
+}
+
+void matchTests() {
+  testWidgets('the field has the directory dropdown height and chevron', (
+    tester,
+  ) async {
+    await BeaconTheme.load();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: BeaconTheme.all.first.data,
+        home: Scaffold(
+          body: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                DropdownButtonFormField<String>(
+                  key: const ValueKey('directory'),
+                  initialValue: '',
+                  isExpanded: true,
+                  decoration: filterFieldDecoration('Scope'),
+                  items: const [
+                    DropdownMenuItem(value: '', child: Text('Any')),
+                  ],
+                  onChanged: (_) {},
+                ),
+                FilterDropdown<int>(
+                  key: const ValueKey('packets'),
+                  label: 'Scope',
+                  options: const {1: 'A'},
+                  selected: const {},
+                  onChanged: (_) {},
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    Size field(String key) => tester.getSize(
+      find
+          .descendant(
+            of: find.byKey(ValueKey(key)),
+            matching: find.byType(InputDecorator),
+          )
+          .first,
+    );
+    // The icon theme the chevron actually inherits: size and colour.
+    IconThemeData chevron(String key) => IconTheme.of(
+      tester.element(
+        find.descendant(
+          of: find.byKey(ValueKey(key)),
+          matching: find.byIcon(Icons.arrow_drop_down),
+        ),
+      ),
+    );
+    expect(field('packets'), field('directory'));
+    final a = chevron('packets'), b = chevron('directory');
+    expect(a.size, b.size);
+    // Same spot in the field, measured from its right edge.
+    double fromRight(String key) {
+      final box = field(key).width;
+      final left = tester
+          .getTopLeft(
+            find.descendant(
+              of: find.byKey(ValueKey(key)),
+              matching: find.byIcon(Icons.arrow_drop_down),
+            ),
+          )
+          .dx;
+      final fieldLeft = tester
+          .getTopLeft(
+            find
+                .descendant(
+                  of: find.byKey(ValueKey(key)),
+                  matching: find.byType(InputDecorator),
+                )
+                .first,
+          )
+          .dx;
+      return fieldLeft + box - left;
+    }
+
+    expect(fromRight('packets'), fromRight('directory'));
+    expect(a.color, b.color);
   });
 }

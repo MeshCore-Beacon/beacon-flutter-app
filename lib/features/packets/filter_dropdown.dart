@@ -128,19 +128,36 @@ class _FilterDropdownState<T> extends State<FilterDropdown<T>> {
             child: InputDecorator(
               decoration: filterFieldDecoration(widget.label),
               isEmpty: false,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      values.isEmpty ? trKey('nodeFilters.any') : values,
-                      style: valueStyle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+              // DropdownButtonFormField's row is 24dp tall (the chevron); match it.
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 24),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        values.isEmpty ? trKey('nodeFilters.any') : values,
+                        style: valueStyle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  const Icon(Icons.arrow_drop_down),
-                ],
+                    const SizedBox(width: 8),
+                    // Same icon theme DropdownButton gives its chevron.
+                    IconTheme(
+                      data: IconThemeData(
+                        size: 24,
+                        color: theme.brightness == Brightness.light
+                            ? Colors.grey.shade700
+                            : Colors.white70,
+                      ),
+                      // DropdownButton's chevron sits 4dp into the field padding.
+                      child: Transform.translate(
+                        offset: const Offset(4, 0),
+                        child: const Icon(Icons.arrow_drop_down),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
