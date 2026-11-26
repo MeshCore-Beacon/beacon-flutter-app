@@ -403,7 +403,7 @@ Uri mapShareUri(
     'zoom': zoom.toStringAsFixed(2),
     'style': style,
     if (nodeType.isNotEmpty) 'node_type': nodeType,
-    if (pollersOnly) 'pollers': '1',
+    'pollers': pollersOnly ? '1' : '0',
     'clustering': cluster ? 'on' : 'off',
     'neighbor_lines': neighbors,
     'borders': borders ? 'on' : 'off',
