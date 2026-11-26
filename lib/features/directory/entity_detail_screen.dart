@@ -16,6 +16,7 @@ import '../atlas/atlas.dart' show resolveObserverNode;
 import '../atlas/atlas_widgets.dart' show AtlasSegmented;
 import 'directory_widgets.dart';
 import 'meshmapper_section.dart';
+import 'node_chips.dart';
 import 'node_telemetry.dart';
 import 'observation_row.dart';
 import 'observer_info.dart';
@@ -784,29 +785,29 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
         spacing: 6,
         runSpacing: 6,
         children: [
-          nodeBadge(
+          nodeTypeChip(
+            context,
+            d['nodeTypeName'],
             textOf(d['nodeTypeName'], tr('Unknown')).toUpperCase(),
-            switch (textOf(d['nodeTypeName']).toLowerCase()) {
-              'repeater' => colors.success,
-              'room server' || 'room_server' => colors.secondary,
-              'companion' => colors.primary,
-              'sensor' => colors.warning,
-              _ => colors.muted,
-            },
+            colors.muted,
           ),
-          if (d['isPoller'] == true)
-            nodeBadge(
-              trKey('nodeDetail.poller').toUpperCase(),
-              const Color(0xFFFFB454),
-            ),
+          if (d['isPoller'] == true) pollerChip(),
+          // A poller is always an observer; isObserver or a linked radio also counts.
+          if (d['isPoller'] == true ||
+              d['isObserver'] == true ||
+              linkedObserverId != null)
+            observerChip(),
           if (textOf(d['defaultScope']).isNotEmpty)
-            nodeBadge(textOf(d['defaultScope']), colors.secondary),
-          if (d['possiblyForeign'] == true)
-            nodeBadge(tr('Possibly foreign'), colors.warning),
+            NodeChip(
+              key: const ValueKey('chip-scope'),
+              color: colors.secondary,
+              label: textOf(d['defaultScope']),
+            ),
+          if (d['possiblyForeign'] == true) cautionChip(tr('Possibly foreign')),
           if (meshMapper['carpeater'] == true)
             Tooltip(
               message: trKey('meshMapper.carpeaterHint'),
-              child: nodeBadge(trKey('meshMapper.carpeater'), colors.warning),
+              child: cautionChip(trKey('meshMapper.carpeater')),
             ),
         ],
       ),

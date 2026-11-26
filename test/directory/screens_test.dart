@@ -3,6 +3,8 @@ import 'dart:convert';
 
 import 'package:beacon/core/api.dart';
 import 'package:beacon/features/directory/directory.dart';
+import 'package:beacon/features/directory/node_chips.dart';
+import 'package:beacon/features/map/map_markers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -1026,8 +1028,8 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.byIcon(Icons.monitor_heart_outlined), findsOneWidget);
-      expect(find.byIcon(Icons.sensors), findsOneWidget);
+      expect(find.byKey(const ValueKey('chip-poller')), findsOneWidget);
+      expect(find.byKey(const ValueKey('chip-observer')), findsNWidgets(2));
 
       // A live update that flips a loaded node adds the icon without a reload.
       final before = requests.length;
@@ -1038,7 +1040,7 @@ void main() {
       });
       await tester.pump();
       await tester.pump();
-      expect(find.byIcon(Icons.monitor_heart_outlined), findsNWidgets(2));
+      expect(find.byKey(const ValueKey('chip-poller')), findsNWidgets(2));
       expect(requests.length, before);
 
       await tester.tap(find.byTooltip('Filters'));
@@ -1197,6 +1199,85 @@ void main() {
       expect(find.text('Plain'), findsNothing);
       await tester.pumpWidget(const SizedBox());
       await events.close();
+    },
+  );
+  testWidgets(
+    'list rows draw type chips in marker colours and role glyph chips',
+    (tester) async {
+      final api = ApiClient(
+        Uri.parse('https://test.invalid'),
+        client: MockClient((r) async {
+          if (r.url.path.endsWith('/scopes')) return http.Response('[]', 200);
+          return http.Response(
+            jsonEncode({
+              'items': [
+                {'id': 'a', 'name': 'Aa', 'nodeTypeName': 'companion'},
+                {
+                  'id': 'b',
+                  'name': 'Bb',
+                  'nodeTypeName': 'repeater',
+                  'isPoller': true,
+                  'isObserver': true,
+                },
+                {'id': 'c', 'name': 'Cc', 'nodeTypeName': 'room_server'},
+                {
+                  'id': 'd',
+                  'name': 'Dd',
+                  'nodeTypeName': 'sensor',
+                  'isObserver': true,
+                  'possiblyForeign': true,
+                },
+                {'id': 'e', 'name': 'Ee', 'nodeTypeName': 'gateway'},
+              ],
+              'hasMore': false,
+            }),
+            200,
+          );
+        }),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: DirectoryScreen(
+              kind: 'nodes',
+              api: api,
+              region: const {},
+              onOpen: (_, _) {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      Color colorOf(String type) => tester
+          .widget<NodeChip>(find.byKey(ValueKey('chip-type-$type')))
+          .color;
+      for (final type in nodeColors.keys) {
+        expect(colorOf(type), nodeTypeColor(type), reason: type);
+      }
+      // Unknown type is grey, not one of the marker colours.
+      final grey = colorOf('gateway');
+      expect(nodeColors.keys.map(nodeTypeColor), isNot(contains(grey)));
+      // One poller row (poller then observer glyph), one observer-only row.
+      expect(find.byKey(const ValueKey('chip-poller')), findsOneWidget);
+      expect(find.byKey(const ValueKey('chip-observer')), findsNWidgets(2));
+      final row = find.ancestor(
+        of: find.byKey(const ValueKey('chip-poller')),
+        matching: find.byType(Row),
+      );
+      final poller = tester.getTopLeft(
+        find.byKey(const ValueKey('chip-poller')),
+      );
+      final observer = tester.getTopLeft(
+        find.descendant(
+          of: row.first,
+          matching: find.byKey(const ValueKey('chip-observer')),
+        ),
+      );
+      expect(poller.dx, lessThan(observer.dx));
+      expect(
+        find.byKey(const ValueKey('chip-caution-Possibly foreign')),
+        findsOneWidget,
+      );
     },
   );
 }

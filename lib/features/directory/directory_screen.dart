@@ -11,6 +11,7 @@ import '../../core/strings.dart';
 import '../../core/theme.dart';
 import '../analytics/charts.dart' show countLabel;
 import 'directory_widgets.dart';
+import 'node_chips.dart';
 import 'paging.dart';
 
 /// Display text for a filter option value.
@@ -1324,24 +1325,19 @@ class _DirectoryScreenState extends State<DirectoryScreen>
               line(age(r['lastSeen']), color: muted),
               const SizedBox(width: 8),
             ],
-            if (r['isPoller'] == true)
-              Padding(
-                padding: const EdgeInsets.only(right: 4),
-                child: Icon(
-                  Icons.monitor_heart_outlined,
-                  size: 13,
-                  color: const Color(0xFFFFB454),
-                  semanticLabel: trKey('nodes.poller'),
-                ),
-              )
-            else if (r['isObserver'] == true)
-              const Padding(
-                padding: EdgeInsets.only(right: 4),
-                child: Icon(Icons.sensors, size: 13),
-              ),
-            badge(
-              textOf(r['nodeTypeName']),
-              color: BeaconColors.of(context).secondary,
+            if (r['isPoller'] == true) ...[
+              pollerChip(iconOnly: true),
+              const SizedBox(width: 4),
+            ],
+            if (r['isObserver'] == true || r['isPoller'] == true) ...[
+              observerChip(iconOnly: true),
+              const SizedBox(width: 4),
+            ],
+            nodeTypeChip(
+              context,
+              r['nodeTypeName'],
+              textOf(r['nodeTypeName'], tr('Unknown')).toUpperCase(),
+              BeaconColors.of(context).muted,
             ),
           ],
         ),
@@ -1361,7 +1357,7 @@ class _DirectoryScreenState extends State<DirectoryScreen>
         if (r['possiblyForeign'] == true)
           Padding(
             padding: const EdgeInsets.only(top: 5),
-            child: badge('Possibly foreign', color: Colors.orange),
+            child: cautionChip(tr('Possibly foreign')),
           ),
         if (rows(r['iatas']).isNotEmpty)
           Padding(
