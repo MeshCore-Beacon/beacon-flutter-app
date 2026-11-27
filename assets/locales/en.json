@@ -1696,10 +1696,16 @@
       "noTargets": "It polls no repeaters yet."
     },
     "atlasPoller": {
-      "polling_one": "Polling {{count}} repeater · {{used}}/{{max}} slots",
-      "polling_other": "Polling {{count}} repeaters · {{used}}/{{max}} slots",
+      "polling_one": "Polling {{count}} repeater",
+      "polling_other": "Polling {{count}} repeaters",
       "notPolling": "Not currently polling",
-      "open": "Poller view"
+      "open": "Poller view",
+      "slotsSplit": "{{own}} own · {{requested}} req",
+      "ofTargets": "of {{count}}",
+      "readings": "Readings",
+      "accepting": "accepting requests",
+      "notAccepting": "not accepting requests",
+      "stale": "not currently polling"
     }
   }
 }

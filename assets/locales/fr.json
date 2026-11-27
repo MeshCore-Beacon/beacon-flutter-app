@@ -1747,10 +1747,16 @@
       "noTargets": "Elle n’interroge encore aucun répéteur."
     },
     "atlasPoller": {
-      "polling_one": "Interroge {{count}} répéteur · {{used}}/{{max}} places",
-      "polling_other": "Interroge {{count}} répéteurs · {{used}}/{{max}} places",
+      "polling_one": "Interroge {{count}} répéteur",
+      "polling_other": "Interroge {{count}} répéteurs",
       "notPolling": "Aucune interrogation en cours",
-      "open": "Vue Interrogateur"
+      "open": "Vue Interrogateur",
+      "slotsSplit": "{{own}} pr · {{requested}} dem",
+      "ofTargets": "sur {{count}}",
+      "readings": "Mesures",
+      "accepting": "accepte les demandes",
+      "notAccepting": "n'accepte pas les demandes",
+      "stale": "aucune interrogation en cours"
     }
   }
 }

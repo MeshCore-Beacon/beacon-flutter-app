@@ -69,6 +69,8 @@ class AtlasStore extends ChangeNotifier {
   // Whether the server stores Telemetry tiles and views; otherwise they live
   // only in the local copy.
   bool _telemetrySync = false;
+  // Whether the server stores a pinned Poller view; otherwise the local copy keeps it.
+  bool _pollerSync = false;
   // Whether the server stores the 7 day range; otherwise the local copy keeps it.
   bool _weekSync = false;
   bool _disposed = false;
@@ -187,7 +189,8 @@ class AtlasStore extends ChangeNotifier {
 
   /// The server copy with what this server cannot store put back from [saved].
   SavedAtlas _kept(SavedAtlas server) {
-    final atlas = _telemetrySync ? server : carryTelemetry(server, saved);
+    var atlas = _telemetrySync ? server : carryTelemetry(server, saved);
+    if (!_pollerSync) atlas = carryPoller(atlas, saved);
     return _weekSync ? atlas : carryWeek(atlas, saved);
   }
 
@@ -216,6 +219,7 @@ class AtlasStore extends ChangeNotifier {
     try {
       server = parseServerAtlas(await account!.api.atlas());
       _telemetrySync = await account!.api.atlasTelemetry();
+      _pollerSync = await account!.api.atlasPoller();
       _weekSync = await account!.api.atlas7d();
     } catch (_) {
       return !_live(user, epoch);
@@ -269,6 +273,7 @@ class AtlasStore extends ChangeNotifier {
     Json doc;
     try {
       _telemetrySync = await account!.api.atlasTelemetry();
+      _pollerSync = await account!.api.atlasPoller();
       _weekSync = await account!.api.atlas7d();
       if (!_live(user, epoch)) return true;
       final body = atlasPutBody(
@@ -276,6 +281,7 @@ class AtlasStore extends ChangeNotifier {
         _observerKeys,
         _revision!,
         telemetry: _telemetrySync,
+        poller: _pollerSync,
         week: _weekSync,
       );
       doc = await account!.api.putAtlas(

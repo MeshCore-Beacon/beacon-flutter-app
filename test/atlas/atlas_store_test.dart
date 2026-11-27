@@ -43,7 +43,7 @@ class FakeServer {
   bool bareConflict = false;
   bool offline = false;
   int? staleAfter;
-  bool atlasTelemetry = false, atlas7d = false;
+  bool atlasTelemetry = false, atlas7d = false, atlasPoller = false;
 
   Map<String, dynamic> get doc => {
     'revision': revision,
@@ -64,7 +64,11 @@ class FakeServer {
     if (gate != null && r.method == 'PUT') await gate.future;
     if (r.url.path.endsWith('/info')) {
       return _ok({
-        'features': {'atlasTelemetry': atlasTelemetry, 'atlas7d': atlas7d},
+        'features': {
+          'atlasTelemetry': atlasTelemetry,
+          'atlas7d': atlas7d,
+          'atlasPoller': atlasPoller,
+        },
       });
     }
     if (r.method == 'GET') {
@@ -243,6 +247,46 @@ void main() {
       final sent = (jsonDecode(fake.puts.last.body)['pins'] as List).single;
       expect(sent['view'], 'telemetry');
       expect(sent['telemetryTiles'], ['noise', 'battery', 'uptime', 'airtime']);
+    });
+  });
+
+  group('pinned Poller view', () {
+    AtlasPin pollerPin() => AtlasPin.node(
+      id: nodeId,
+      publicKey: key,
+      name: 'Hill',
+      view: AtlasView.poller,
+    );
+
+    test(
+      'an older server is not sent it and the local copy keeps it',
+      () async {
+        // It stores Telemetry views, so only the Poller flag holds this back.
+        final fake = FakeServer()..atlasTelemetry = true;
+        final r = await rig(marked: true, fake: fake);
+        final store = r.store;
+        await store.idle;
+        store.update((v) => v.appended(pollerPin()));
+        await store.idle;
+        final sent = (jsonDecode(fake.puts.last.body)['pins'] as List).single;
+        expect((sent as Map).containsKey('view'), false);
+        expect(store.saved.pins.single.view, AtlasView.poller);
+        expect(cachedPins(r.prefs).single['view'], 'poller');
+      },
+    );
+
+    test('a server with the flag gets it', () async {
+      final fake = FakeServer()
+        ..atlasTelemetry = true
+        ..atlasPoller = true;
+      final r = await rig(marked: true, fake: fake);
+      final store = r.store;
+      await store.idle;
+      store.update((v) => v.appended(pollerPin()));
+      await store.idle;
+      final sent = (jsonDecode(fake.puts.last.body)['pins'] as List).single;
+      expect(sent['view'], 'poller');
+      expect(store.saved.pins.single.view, AtlasView.poller);
     });
   });
 

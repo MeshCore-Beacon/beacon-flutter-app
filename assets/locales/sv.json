@@ -1696,10 +1696,16 @@
       "noTargets": "Den avläser inga repeatrar ännu."
     },
     "atlasPoller": {
-      "polling_one": "Avläser {{count}} repeater · {{used}}/{{max}} platser",
-      "polling_other": "Avläser {{count}} repeatrar · {{used}}/{{max}} platser",
+      "polling_one": "Avläser {{count}} repeater",
+      "polling_other": "Avläser {{count}} repeatrar",
       "notPolling": "Avläser inte just nu",
-      "open": "Pollarvy"
+      "open": "Pollarvy",
+      "slotsSplit": "{{own}} eg · {{requested}} beg",
+      "ofTargets": "av {{count}}",
+      "readings": "Mätvärden",
+      "accepting": "tar emot förfrågningar",
+      "notAccepting": "tar inte emot förfrågningar",
+      "stale": "avläser inte just nu"
     }
   }
 }

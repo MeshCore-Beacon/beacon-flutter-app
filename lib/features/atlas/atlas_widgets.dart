@@ -8,6 +8,7 @@ import 'package:flutter/rendering.dart';
 import '../../core/json.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
+import '../directory/node_chips.dart';
 import 'atlas.dart';
 import 'observer_sample.dart';
 
@@ -606,6 +607,128 @@ class AtlasSegmented<T> extends StatelessWidget {
   }
 }
 
+const _tabGlyphs = {
+  AtlasView.analytics: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M5 20V11M12 20V4M19 20v-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>',
+  AtlasView.heard: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M7.5 7.5a6.4 6.4 0 0 0 0 9M16.5 7.5a6.4 6.4 0 0 1 0 9M4.3 4.5a10.6 10.6 0 0 0 0 15M19.7 4.5a10.6 10.6 0 0 1 0 15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>',
+  AtlasView.telemetry: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 17a8.5 8.5 0 1 1 16 0" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M12 15l4-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>',
+};
+
+/// A card tab's icon; Observer and Poller wear their role chip's glyph.
+Widget atlasViewIcon(AtlasView view, Color color) => switch (view) {
+  AtlasView.observer => nodeGlyph('observer', color, size: 13),
+  AtlasView.poller => nodeGlyph('poller', color, size: 13),
+  _ => glyphPicture(_tabGlyphs[view]!, color, 13),
+};
+
+/// A card's tabs: every tab an icon, and only the open one spells its name,
+/// so four fit a phone in any language. As tall as [AtlasSegmented].
+class AtlasTabs<T extends Object> extends StatelessWidget {
+  const AtlasTabs({
+    super.key,
+    required this.options,
+    required this.icon,
+    required this.value,
+    required this.onChanged,
+    required this.label,
+  });
+  final Map<T, String> options;
+  final Widget Function(T option, Color color) icon;
+  final T value;
+  final ValueChanged<T> onChanged;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = BeaconColors.of(context);
+    // A fifth tab leaves the open one room for a long name on a phone.
+    final iconWidth = options.length > 4 ? 38.0 : 44.0;
+    Widget tab(T option, String name) {
+      final active = option == value;
+      final ink = active ? c.bright : c.muted;
+      final button = Semantics(
+        button: true,
+        selected: active,
+        label: active ? null : name,
+        child: InkWell(
+          key: ValueKey('atlas-tab-${option is Enum ? option.name : option}'),
+          onTap: () => onChanged(option),
+          borderRadius: BorderRadius.circular(4),
+          child: Container(
+            width: active ? null : iconWidth,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+            decoration: BoxDecoration(
+              color: active ? c.primary.withValues(alpha: .15) : null,
+              border: Border.all(
+                color: active
+                    ? c.primary.withValues(alpha: .3)
+                    : Colors.transparent,
+              ),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                icon(option, ink),
+                if (active) ...[
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      name,
+                      maxLines: 1,
+                      softWrap: false,
+                      overflow: TextOverflow.fade,
+                      style: TextStyle(
+                        fontFamily: _mono,
+                        fontSize: 11,
+                        height: 14 / 11,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: .275,
+                        color: ink,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      );
+      return active
+          ? Expanded(child: button)
+          : Tooltip(message: name, excludeFromSemantics: true, child: button);
+    }
+
+    return Semantics(
+      container: true,
+      label: label,
+      child: Container(
+        padding: const EdgeInsets.all(2),
+        decoration: BoxDecoration(
+          color: c.raised,
+          border: Border.all(color: c.border),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Material(
+          type: MaterialType.transparency,
+          // The icon tabs take the height the open tab's name sets.
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final (i, MapEntry(:key, value: name))
+                    in options.entries.indexed) ...[
+                  if (i > 0) const SizedBox(width: 2),
+                  tab(key, name),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Small (i) marker holding the notes that would crowd a card.
 class AtlasInfoTip extends StatelessWidget {
   const AtlasInfoTip(this.lines, {super.key});
@@ -886,6 +1009,7 @@ class AtlasStatTile extends StatelessWidget {
     this.dots = false,
     this.wrapSublabel = false,
     this.valueTooltip,
+    this.valueColor,
     this.visual,
     this.onGraph,
     this.graphLabel,
@@ -901,6 +1025,9 @@ class AtlasStatTile extends StatelessWidget {
 
   /// The full value when the tile shows a shortened one.
   final String? valueTooltip;
+
+  /// Replaces the bright value colour.
+  final Color? valueColor;
   final List<bool>? presence;
   final String? sublabel;
 
@@ -938,7 +1065,7 @@ class AtlasStatTile extends StatelessWidget {
         height: 1.4,
         fontWeight: FontWeight.w700,
         fontFeatures: const [FontFeature.tabularFigures()],
-        color: c.bright,
+        color: valueColor ?? c.bright,
       ),
     );
     final full = valueTooltip;

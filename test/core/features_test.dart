@@ -35,6 +35,23 @@ void main() {
       expect(f.registration, false);
     });
 
+    test('atlasPoller is off unless the server says true', () {
+      expect(ServerFeatures.fromInfo(null).atlasPoller, false);
+      expect(const ServerFeatures.off().atlasPoller, false);
+      expect(
+        ServerFeatures.fromInfo({
+          'features': {'atlasPoller': 'yes'},
+        }).atlasPoller,
+        false,
+      );
+      expect(
+        ServerFeatures.fromInfo({
+          'features': {'atlasPoller': true},
+        }).atlasPoller,
+        true,
+      );
+    });
+
     test('atlas7d is off unless the server says true', () {
       expect(ServerFeatures.fromInfo(null).atlas7d, false);
       expect(const ServerFeatures.off().atlas7d, false);

@@ -153,6 +153,55 @@ void main() {
       });
     });
 
+    test('a pinned Poller view goes out only to a server that stores it', () {
+      Map view(AtlasView view, {bool poller = true, bool telemetry = true}) =>
+          (atlasPutBody(
+                        SavedAtlas(
+                          pins: [
+                            AtlasPin.node(
+                              id: nodeId,
+                              publicKey: key,
+                              name: 'Hill',
+                              view: view,
+                            ),
+                          ],
+                        ),
+                        const {},
+                        1,
+                        poller: poller,
+                        telemetry: telemetry,
+                      )['pins']
+                      as List)
+                  .single
+              as Map;
+      expect(view(AtlasView.poller)['view'], 'poller');
+      expect(view(AtlasView.poller, poller: false).containsKey('view'), false);
+      // Each flag holds back its own view only.
+      expect(view(AtlasView.poller, telemetry: false)['view'], 'poller');
+      expect(view(AtlasView.telemetry, poller: false)['view'], 'telemetry');
+      expect(view(AtlasView.observer, poller: false)['view'], 'observer');
+    });
+
+    test('the local Poller view survives a server that does not store it', () {
+      AtlasPin pin(String key, AtlasView? view) => AtlasPin.node(
+        id: nodeId,
+        publicKey: key,
+        name: 'Hill',
+        observerId: obsId,
+        tiles: const ['snr', 'battery', 'queue', 'errors'],
+        view: view,
+      );
+      final carried = carryPoller(
+        SavedAtlas(pins: [pin(key, null), pin(otherKey, AtlasView.heard)]),
+        SavedAtlas(
+          pins: [pin(key, AtlasView.poller), pin(otherKey, AtlasView.poller)],
+        ),
+      );
+      expect(carried.pins[0].toJson(), pin(key, AtlasView.poller).toJson());
+      // A view the server did store wins.
+      expect(carried.pins[1].view, AtlasView.heard);
+    });
+
     test('a week goes out as 3d to a server without it', () {
       const saved = SavedAtlas(range: AtlasRange.week);
       expect(atlasPutBody(saved, const {}, 1)['range'], '7d');
