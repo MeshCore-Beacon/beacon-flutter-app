@@ -26,7 +26,7 @@ void main() {
       expect(link.queryParameters['node_type'], 'repeater');
     },
   );
-  test('map links carry pollers=1 only while Pollers only is on', () {
+  test('map links carry the selected poller filter in both directions', () {
     Uri link(bool pollers) => mapShareUri(
       Uri.parse('https://example.org'),
       {},
@@ -42,7 +42,7 @@ void main() {
       flow: false,
     );
     expect(link(true).queryParameters['pollers'], '1');
-    expect(link(false).queryParameters.containsKey('pollers'), false);
+    expect(link(false).queryParameters['pollers'], '0');
   });
   test(
     'rejects reset and invalid coordinates but preserves single zero axes',
