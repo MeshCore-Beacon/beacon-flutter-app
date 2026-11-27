@@ -1650,6 +1650,50 @@
     "atlasGraph": {
       "open": "Öppna diagram: {{metric}}",
       "hint": "Nyp för att zooma, håll och dra för värden"
+    },
+    "nodePoller": {
+      "tab": "Pollare",
+      "slots": "Platser",
+      "slotsUsed": "platser används",
+      "meter": "{{used}} av {{max}} platser används",
+      "own_one": "{{count}} egen",
+      "own_other": "{{count}} egna",
+      "requested_one": "{{count}} begärd",
+      "requested_other": "{{count}} begärda",
+      "free_one": "{{count}} ledig",
+      "free_other": "{{count}} lediga",
+      "notOffered_one": "{{count}} erbjuds inte",
+      "notOffered_other": "{{count}} erbjuds inte",
+      "lastClaim": "Senaste anspråk",
+      "requests": "Förfrågningar",
+      "accepting": "tas emot",
+      "notAccepting": "tas inte emot",
+      "readings24h": "Mätvärden på 24 h",
+      "stale": "Avläser inte just nu. Senaste anspråk {{age}}.",
+      "targets": "Repeatrar den avläser",
+      "originOwn": "Egen",
+      "originRequested": "Begärd",
+      "rolePoller": "Pollare",
+      "roleStandby": "Reserv {{rank}}",
+      "roleUnassigned": "Inte tilldelad",
+      "state": {
+        "ok": "Svarar",
+        "pending": "Väntar på första avläsningen",
+        "noReply_one": "Inget svar, {{count}} gång i rad",
+        "noReply_other": "Inget svar, {{count}} gånger i rad",
+        "notDirect": "Inte inom direkt räckvidd",
+        "loginFailed": "Inloggningen misslyckades",
+        "adminStop": "Stoppad: repeatern gav adminåtkomst"
+      },
+      "lastReply": "Senaste svar",
+      "snr": "SNR",
+      "reading": "Mätvärde",
+      "never": "aldrig",
+      "evidence_one": "{{count}} annons mottagen, {{snr}} dB",
+      "evidence_other": "{{count}} annonser mottagna, {{snr}} dB",
+      "noEvidence": "Inga annonser mottagna från den",
+      "noClaim": "Den här radion har inget avläsningsanspråk.",
+      "noTargets": "Den avläser inga repeatrar ännu."
     }
   }
 }

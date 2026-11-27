@@ -1701,6 +1701,50 @@
     "atlasGraph": {
       "open": "Ouvrir le graphique : {{metric}}",
       "hint": "Pincez pour zoomer, maintenez et glissez pour les valeurs"
+    },
+    "nodePoller": {
+      "tab": "Interrogateur",
+      "slots": "Places",
+      "slotsUsed": "places utilisées",
+      "meter": "{{used}} places utilisées sur {{max}}",
+      "own_one": "{{count}} propre",
+      "own_other": "{{count}} propres",
+      "requested_one": "{{count}} demandée",
+      "requested_other": "{{count}} demandées",
+      "free_one": "{{count}} libre",
+      "free_other": "{{count}} libres",
+      "notOffered_one": "{{count}} non offerte",
+      "notOffered_other": "{{count}} non offertes",
+      "lastClaim": "Dernière déclaration",
+      "requests": "Demandes",
+      "accepting": "acceptées",
+      "notAccepting": "refusées",
+      "readings24h": "Mesures en 24 h",
+      "stale": "Aucune interrogation en cours. Dernière déclaration {{age}}.",
+      "targets": "Répéteurs interrogés",
+      "originOwn": "Propre",
+      "originRequested": "Demandé",
+      "rolePoller": "Interrogateur",
+      "roleStandby": "Réserve {{rank}}",
+      "roleUnassigned": "Non attribué",
+      "state": {
+        "ok": "Répond",
+        "pending": "En attente de la première interrogation",
+        "noReply_one": "Sans réponse, {{count}} fois de suite",
+        "noReply_other": "Sans réponse, {{count}} fois de suite",
+        "notDirect": "Hors de portée directe",
+        "loginFailed": "Échec de connexion",
+        "adminStop": "Arrêté : le répéteur a donné un accès admin"
+      },
+      "lastReply": "Dernière réponse",
+      "snr": "SNR",
+      "reading": "Mesure",
+      "never": "jamais",
+      "evidence_one": "{{count}} annonce reçue, {{snr}} dB",
+      "evidence_other": "{{count}} annonces reçues, {{snr}} dB",
+      "noEvidence": "Aucune annonce reçue de ce répéteur",
+      "noClaim": "Cette radio n’a aucune déclaration d’interrogation.",
+      "noTargets": "Elle n’interroge encore aucun répéteur."
     }
   }
 }
