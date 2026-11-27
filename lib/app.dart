@@ -679,7 +679,9 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
             ),
           )
         : EntityDetailScreen(
-            kind: kind,
+            // A poller is a node, opened on its Poller view.
+            kind: kind == 'poller' ? 'node' : kind,
+            initialView: kind == 'poller' ? 'poller' : null,
             id: id,
             api: api,
             region: region,

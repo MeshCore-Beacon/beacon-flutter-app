@@ -33,8 +33,13 @@ class EntityDetailScreen extends StatefulWidget {
     required this.onOpen,
     this.events,
     this.account,
+    this.initialView,
   });
   final String kind, id;
+
+  /// `poller` opens a node on its Poller view once that is offered; a node
+  /// that never offers it stays on Node.
+  final String? initialView;
   final ApiClient api;
   final Json region;
   final void Function(String, String) onOpen;
@@ -77,6 +82,7 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
   }
 
   String view = 'node';
+  late String? wantedView = widget.initialView;
   Json? observer;
   List<Json> adverts = [];
   Json advertsCursor = {};
@@ -402,6 +408,7 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
     final features = await widget.api.features();
     if (!mounted || pg != pollerGeneration || !features.polling) return;
     setState(() => pollingOn = true);
+    if (wantedView == 'poller' && pollerOffered) setView('poller');
   }
 
   Future<void> loadPoller({bool fresh = false}) async {
@@ -438,6 +445,7 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
   }
 
   void setView(String next) {
+    wantedView = null;
     if (next == view) return;
     setState(() => view = next);
     if (next == 'observer' && !observerStarted) loadObserver();

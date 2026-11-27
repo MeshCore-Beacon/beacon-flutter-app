@@ -102,6 +102,7 @@ void main() {
     String id = 'node-1',
     Stream<Json>? events,
     void Function(String, String)? onOpen,
+    String? initialView,
   }) async {
     tester.view.physicalSize = const Size(800, 4000);
     tester.view.devicePixelRatio = 1;
@@ -115,6 +116,7 @@ void main() {
           region: const {},
           onOpen: onOpen ?? (_, _) {},
           events: events,
+          initialView: initialView,
         ),
       ),
     );
@@ -265,6 +267,35 @@ void main() {
     await tester.pumpAndSettle();
     expect(nodeDetails, findsOneWidget);
     expect(find.text('Polled One'), findsNothing);
+  });
+
+  testWidgets('a node asked for on its Poller view opens there', (
+    tester,
+  ) async {
+    isPoller = true;
+    await pump(tester, initialView: 'poller');
+    expect(asked('/nodes/node-1/poller'), isTrue);
+    expect(find.text('Polled One'), findsOneWidget);
+    expect(nodeDetails, findsNothing);
+
+    await tester.tap(find.text(trKey('observerMerge.node')));
+    await tester.pumpAndSettle();
+    expect(nodeDetails, findsOneWidget);
+  });
+
+  testWidgets('a node that offers no Poller view opens on Node instead', (
+    tester,
+  ) async {
+    await pump(tester, initialView: 'poller');
+    expect(pollerTab, findsNothing);
+    expect(nodeDetails, findsOneWidget);
+    expect(asked('/nodes/node-1/poller'), isFalse);
+
+    isPoller = true;
+    pollingOn = false;
+    await pump(tester, id: 'node-2', initialView: 'poller');
+    expect(pollerTab, findsNothing);
+    expect(nodeDetails, findsOneWidget);
   });
 
   testWidgets('the Poller view is not offered without all three conditions', (
