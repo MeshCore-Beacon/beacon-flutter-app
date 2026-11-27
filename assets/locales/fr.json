@@ -1750,13 +1750,16 @@
       "polling_one": "Interroge {{count}} répéteur",
       "polling_other": "Interroge {{count}} répéteurs",
       "notPolling": "Aucune interrogation en cours",
-      "open": "Vue Interrogateur",
       "slotsSplit": "{{own}} pr · {{requested}} dem",
       "ofTargets": "sur {{count}}",
       "readings": "Mesures",
       "accepting": "accepte les demandes",
       "notAccepting": "n'accepte pas les demandes",
       "stale": "aucune interrogation en cours"
+    },
+    "atlasOpen": {
+      "node": "Ouvrir le nœud",
+      "observer": "Ouvrir l'observateur"
     }
   }
 }

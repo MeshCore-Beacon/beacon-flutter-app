@@ -454,6 +454,20 @@ class _AtlasCardState extends State<AtlasCard> {
         name ??
         formatHex(pin.isNode ? textOf(node?['id'], pin.id!) : pin.observerId!);
     final canOpen = !pin.isNode || node != null;
+    // The detail opens on the view that matches the card's tab.
+    void openSheet() {
+      if (!pin.isNode) return widget.onOpen('observer', pin.observerId!);
+      final id = textOf(node!['id']);
+      widget.onOpen(
+        view == AtlasView.poller
+            ? 'poller'
+            : view == AtlasView.observer
+            ? 'nodeObserver'
+            : 'node',
+        id,
+      );
+    }
+
     final slots = HourSlots(widget.range, widget.now);
     // A tile with nothing to draw offers no graph.
     VoidCallback? openGraph(String metric, Color color, AtlasGraph graph) =>
@@ -484,6 +498,8 @@ class _AtlasCardState extends State<AtlasCard> {
         ? textOf(node?['nodeTypeName'])
         : textOf(observer?['observerType']);
     // One tag shares the name's line; more get a row of their own under it.
+    // On the narrowest phones the buttons leave no room beside the name.
+    final narrow = MediaQuery.sizeOf(context).width < 360;
     final tags = <Widget>[
       if (!pin.isNode && type.isNotEmpty) AtlasBadge(type),
       if (pin.isNode) ...[
@@ -517,11 +533,7 @@ class _AtlasCardState extends State<AtlasCard> {
           ],
           Flexible(
             child: InkWell(
-              onTap: !canOpen
-                  ? null
-                  : () => pin.isNode
-                        ? widget.onOpen('node', textOf(node!['id']))
-                        : widget.onOpen('observer', pin.observerId!),
+              onTap: canOpen ? openSheet : null,
               child: Text(
                 shown,
                 maxLines: 1,
@@ -538,7 +550,10 @@ class _AtlasCardState extends State<AtlasCard> {
               ),
             ),
           ),
-          if (tags.length == 1) ...[const SizedBox(width: 8), tags.single],
+          if (tags.length == 1 && !narrow) ...[
+            const SizedBox(width: 8),
+            tags.single,
+          ],
         ],
       ),
     );
@@ -553,6 +568,11 @@ class _AtlasCardState extends State<AtlasCard> {
         ? trKey('atlasAlerts.bellOn', count: widget.alertsOn)
         : trKey('atlasAlerts.bell');
     final buttons = <Widget>[
+      AtlasIconButton(
+        icon: OpenIcon.new,
+        label: trKey(pin.isNode ? 'atlasOpen.node' : 'atlasOpen.observer'),
+        onPressed: canOpen ? openSheet : null,
+      ),
       if (widget.onAlerts case final onAlerts?)
         AtlasIconButton(
           key: ValueKey('atlas-bell-${pin.key}'),
@@ -570,13 +590,13 @@ class _AtlasCardState extends State<AtlasCard> {
           pressed: view == home,
           onPressed: view == home ? () {} : () => widget.onPinView(view),
         ),
+      widget.handle?.call(grip) ?? grip,
       AtlasIconButton(
         icon: CrossIcon.new,
         label: at('remove'),
         muted: true,
         onPressed: widget.onRemove,
       ),
-      widget.handle?.call(grip) ?? grip,
     ];
     // The boxes stay 28 by 26 with 4 between. Each takes touches 48 high and
     // out to the middle of the gap; the ends reach into the space beside them.
@@ -584,7 +604,8 @@ class _AtlasCardState extends State<AtlasCard> {
       mainAxisSize: MainAxisSize.min,
       children: [
         for (final (i, button) in buttons.indexed) ...[
-          if (i > 0) const SizedBox(width: 4),
+          // Remove stands a little apart from the grip.
+          if (i > 0) SizedBox(width: i == buttons.length - 1 ? 8 : 4),
           AtlasHitSlop(
             slop: EdgeInsets.fromLTRB(
               i == 0 ? 4 : 2,
@@ -1410,8 +1431,7 @@ class _AtlasCardState extends State<AtlasCard> {
                       count: targets.where((t) => t['role'] == 'poller').length,
                     )
                   : trKey('atlasPoller.notPolling'),
-              right: trKey('atlasPoller.open'),
-              onRight: () => widget.onOpen('poller', textOf(node['id'])),
+              right: '',
               loading: pollerQuery?.loading ?? false,
               failed: pollerQuery?.error != null && pollerData == null,
             ),
@@ -1423,7 +1443,7 @@ class _AtlasCardState extends State<AtlasCard> {
     return AtlasPanel(
       title: title,
       right: actions,
-      tags: tags.length < 2
+      tags: tags.isEmpty || (tags.length == 1 && !narrow)
           ? null
           : Wrap(
               key: const ValueKey('atlas-tags'),
@@ -1477,7 +1497,6 @@ class _Footer extends StatelessWidget {
     required this.loading,
     required this.failed,
     this.tip = const [],
-    this.onRight,
   });
   final String? left;
   final Color? dot;
@@ -1485,8 +1504,6 @@ class _Footer extends StatelessWidget {
   final bool loading, failed;
   final List<String> tip;
 
-  /// Makes the right side a link.
-  final VoidCallback? onRight;
   @override
   Widget build(BuildContext context) {
     final c = BeaconColors.of(context);
@@ -1536,25 +1553,7 @@ class _Footer extends StatelessWidget {
             id: 'state',
             child: text(state, color: failed ? c.danger : null),
           ),
-        LayoutId(
-          id: 'right',
-          child: onRight == null
-              ? text(right)
-              : Semantics(
-                  button: true,
-                  child: InkWell(
-                    onTap: onRight,
-                    // The whole line's height takes the tap.
-                    child: SizedBox(
-                      height: height,
-                      child: Center(
-                        widthFactor: 1,
-                        child: text(right, color: c.primary),
-                      ),
-                    ),
-                  ),
-                ),
-        ),
+        LayoutId(id: 'right', child: text(right)),
         if (tip.isNotEmpty) LayoutId(id: 'tip', child: AtlasInfoTip(tip)),
       ],
     );

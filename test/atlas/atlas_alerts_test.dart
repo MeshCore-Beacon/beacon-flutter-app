@@ -351,7 +351,7 @@ void main() {
     await close(tester);
   });
 
-  testWidgets('the bell comes first, before pin, remove and drag', (
+  testWidgets('open comes first, then the bell, pin, drag and remove', (
     tester,
   ) async {
     final r = await rig();
@@ -367,10 +367,11 @@ void main() {
         b.label,
     ];
     expect(labels, [
+      'Open node',
       'Alerts: 2 on',
       'Open on this tab',
-      'Remove',
       'Drag to reorder',
+      'Remove',
     ]);
     await close(tester);
   });
@@ -819,10 +820,11 @@ void main() {
                 .evaluate())
           tester.getRect(find.byWidget(e.widget)),
       ];
-      expect(boxes, hasLength(4));
+      expect(boxes, hasLength(5));
       for (final (i, box) in boxes.indexed) {
         expect(box.size, const Size(28, 26));
-        if (i > 0) expect(box.left - boxes[i - 1].right, 4);
+        // Remove stands a little apart from the grip.
+        if (i > 0) expect(box.left - boxes[i - 1].right, i == 4 ? 8 : 4);
         expect(box.top, boxes.first.top);
       }
       final panel = tester.getRect(card);
@@ -840,7 +842,7 @@ void main() {
       for (final point in [
         box.bottomCenter + const Offset(0, 8),
         box.topCenter - const Offset(0, 10),
-        box.centerLeft - const Offset(3, 0),
+        box.centerLeft - const Offset(1, 0),
       ]) {
         await tester.tapAt(point);
         await tester.pumpAndSettle();
@@ -869,10 +871,10 @@ void main() {
           (w) => w is AtlasIconButton && w.label == 'Remove',
         ),
       );
-      final pinView = find.descendant(
+      final grip = find.descendant(
         of: card,
         matching: find.byWidgetPredicate(
-          (w) => w is AtlasIconButton && w.label == 'Open on this tab',
+          (w) => w is AtlasIconButton && w.label == 'Drag to reorder',
         ),
       );
       // Bell side of the gap between the bell and the pin.
@@ -885,8 +887,8 @@ void main() {
       await tester.tapAt(const Offset(180, 20));
       await tester.pumpAndSettle();
 
-      // Remove side of the gap between the pin and remove: only remove fires.
-      expect(tester.getRect(remove).left - tester.getRect(pinView).right, 4);
+      // Remove side of the gap between the grip and remove: only remove fires.
+      expect(tester.getRect(remove).left - tester.getRect(grip).right, 8);
       await tester.tapAt(
         tester.getRect(remove).centerLeft - const Offset(1, 0),
       );

@@ -1396,47 +1396,40 @@ void main() {
       expect(inTile('claim', 'accepting requests'), findsNothing);
       expect(find.text('Not currently polling'), findsOneWidget);
       expect(find.textContaining('Polling '), findsNothing);
-      expect(find.text('Poller view'), findsOneWidget);
       await close(tester);
     });
 
-    testWidgets('the footer counts the repeaters it polls and opens its view', (
-      tester,
-    ) async {
-      fake.pollerDoc = {
-        ...fake.pollerDoc!,
-        'targets': [
-          ...fake.pollerDoc!['targets'] as List,
-          {'nodeId': 'c', 'role': 'standby', 'state': 'ok'},
-        ],
-      };
-      await open(tester);
-      expect(find.text('Polling 2 repeaters'), findsOneWidget);
-      final dot = find.descendant(
-        of: find
-            .ancestor(
-              of: find.text('Polling 2 repeaters'),
-              matching: find.byType(Row),
-            )
-            .first,
-        matching: find.byKey(const ValueKey('atlas-footer-dot')),
-      );
-      expect(
-        (tester.widget<Container>(dot).decoration! as BoxDecoration).color,
-        pollerColor,
-      );
-      // One line, the link on it.
-      expect(
-        tester.getCenter(find.text('Poller view')).dy,
-        moreOrLessEquals(
-          tester.getCenter(find.text('Polling 2 repeaters')).dy,
-          epsilon: 1,
-        ),
-      );
-      await tester.tap(find.text('Poller view'));
-      expect(opened, [('poller', nodeId)]);
-      await close(tester);
-    });
+    testWidgets(
+      'the footer counts the repeaters it polls; the open button goes to its view',
+      (tester) async {
+        fake.pollerDoc = {
+          ...fake.pollerDoc!,
+          'targets': [
+            ...fake.pollerDoc!['targets'] as List,
+            {'nodeId': 'c', 'role': 'standby', 'state': 'ok'},
+          ],
+        };
+        await open(tester);
+        expect(find.text('Polling 2 repeaters'), findsOneWidget);
+        final dot = find.descendant(
+          of: find
+              .ancestor(
+                of: find.text('Polling 2 repeaters'),
+                matching: find.byType(Row),
+              )
+              .first,
+          matching: find.byKey(const ValueKey('atlas-footer-dot')),
+        );
+        expect(
+          (tester.widget<Container>(dot).decoration! as BoxDecoration).color,
+          pollerColor,
+        );
+        expect(find.text('Poller view'), findsNothing);
+        await tester.tap(find.byTooltip('Open node'));
+        expect(opened, [('poller', nodeId)]);
+        await close(tester);
+      },
+    );
 
     testWidgets('counts one repeater in the singular', (tester) async {
       fake.pollerDoc = {
@@ -1763,7 +1756,7 @@ void main() {
     });
 
     for (final code in supportedLanguages) {
-      testWidgets('fits its five tabs and the Poller view in $code', (
+      testWidgets('fits its five tabs and the Poller tab in $code', (
         tester,
       ) async {
         await open(tester);

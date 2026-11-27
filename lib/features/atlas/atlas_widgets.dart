@@ -467,6 +467,39 @@ class CrossIcon extends CustomPainter {
   bool shouldRepaint(CrossIcon old) => old.color != color;
 }
 
+/// A box with an arrow leaving its corner: opens the node or observer.
+class OpenIcon extends CustomPainter {
+  const OpenIcon(this.color);
+  final Color color;
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width, h = size.height;
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    canvas.drawPath(
+      Path()
+        ..moveTo(w * .4, h * .25)
+        ..lineTo(w * .15, h * .25)
+        ..lineTo(w * .15, h * .82)
+        ..lineTo(w * .85, h * .82)
+        ..lineTo(w * .85, h * .64)
+        ..moveTo(w * .55, h * .18)
+        ..lineTo(w * .9, h * .18)
+        ..lineTo(w * .9, h * .43)
+        ..moveTo(w * .9, h * .18)
+        ..lineTo(w * .45, h * .5),
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(OpenIcon old) => old.color != color;
+}
+
 /// Two arrows pulling apart: the sparkline opens larger.
 class ExpandIcon extends CustomPainter {
   const ExpandIcon(this.color);

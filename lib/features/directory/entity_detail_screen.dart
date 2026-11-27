@@ -257,6 +257,9 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
         detail = value;
         loading = false;
       });
+      if (wantedView == 'observer' && linkedObserverId != null) {
+        setView('observer');
+      }
       if (view == 'observer' && !observerStarted) unawaited(loadObserver());
       if (!pollingOn && value['isPoller'] == true && linkedObserverId != null) {
         unawaited(checkPolling());

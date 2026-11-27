@@ -1699,13 +1699,16 @@
       "polling_one": "Polling {{count}} repeater",
       "polling_other": "Polling {{count}} repeaters",
       "notPolling": "Not currently polling",
-      "open": "Poller view",
       "slotsSplit": "{{own}} own · {{requested}} req",
       "ofTargets": "of {{count}}",
       "readings": "Readings",
       "accepting": "accepting requests",
       "notAccepting": "not accepting requests",
       "stale": "not currently polling"
+    },
+    "atlasOpen": {
+      "node": "Open node",
+      "observer": "Open observer"
     }
   }
 }
