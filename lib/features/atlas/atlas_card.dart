@@ -502,6 +502,8 @@ class _AtlasCardState extends State<AtlasCard> {
         ? textOf(node?['nodeTypeName'])
         : textOf(observer?['observerType']);
     // One tag shares the name's line; more get a row of their own under it.
+    // The narrowest phones have no room beside the name, so one tag drops too.
+    final narrow = MediaQuery.sizeOf(context).width < 360;
     final tags = <Widget>[
       if (!pin.isNode && type.isNotEmpty) AtlasBadge(type),
       if (pin.isNode) ...[
@@ -552,7 +554,10 @@ class _AtlasCardState extends State<AtlasCard> {
               ),
             ),
           ),
-          if (tags.length == 1) ...[const SizedBox(width: 8), tags.single],
+          if (tags.length == 1 && !narrow) ...[
+            const SizedBox(width: 8),
+            tags.single,
+          ],
         ],
       ),
     );
@@ -1446,7 +1451,7 @@ class _AtlasCardState extends State<AtlasCard> {
       title: title,
       right: actions,
       dashed: widget.editing,
-      tags: tags.length < 2
+      tags: tags.isEmpty || (tags.length == 1 && !narrow)
           ? null
           : Wrap(
               key: const ValueKey('atlas-tags'),

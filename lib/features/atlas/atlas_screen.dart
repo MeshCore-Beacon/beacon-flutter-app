@@ -462,8 +462,52 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
               ? 'searchTooShort'
               : null)
         : atlasSearch(field, typed).hint;
-    // The narrowest phones have no slack for the edit button beside the search.
+    // The narrowest phones give the search a row to itself.
     final tight = MediaQuery.sizeOf(context).width < 360;
+    final count = Tooltip(
+      message: at(store.signedIn ? 'syncedToAccount' : 'localOnly'),
+      triggerMode: TooltipTriggerMode.tap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: full ? c.warning.withValues(alpha: .07) : c.surface,
+          border: Border.all(
+            color: full ? c.warning.withValues(alpha: .15) : c.border,
+          ),
+          borderRadius: BorderRadius.circular(2),
+        ),
+        child: Text(
+          at(
+            'savedCountShort',
+            args: {'count': saved.pins.length, 'limit': limit},
+          ),
+          style: atlasMono(11, full ? c.warning : c.muted),
+        ),
+      ),
+    );
+    final rangeSwitch = AtlasSegmented<AtlasRange>(
+      label: at('range'),
+      value: range,
+      onChanged: (range) =>
+          store.update((value) => value.copyWith(range: range)),
+      options: {
+        for (final option in AtlasRange.values)
+          if (option != AtlasRange.week ||
+              features?.atlas7d == true ||
+              range == AtlasRange.week)
+            option: atlasRangeLabel(option),
+      },
+    );
+    final pencil = saved.pins.isEmpty
+        ? null
+        : AtlasIconButton(
+            key: const ValueKey('atlas-edit'),
+            icon: PencilIcon.new,
+            label: trKey(editing ? 'atlasEdit.done' : 'atlasEdit.edit'),
+            tooltip: trKey(editing ? 'atlasEdit.doneHelp' : 'atlasEdit.help'),
+            pressed: editing,
+            onPressed: () => setState(() => editing = !editing),
+          );
     return Column(
       children: [
         Container(
@@ -472,70 +516,50 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
             color: c.base,
             border: Border(bottom: BorderSide(color: c.borderSubtle)),
           ),
-          child: Row(
-            children: [
-              Expanded(
-                child: _SearchBar(
-                  controller: search,
-                  field: field,
-                  onField: changeField,
-                  onChanged: typing,
-                ),
-              ),
-              SizedBox(width: tight ? 4 : 6),
-              Tooltip(
-                message: at(store.signedIn ? 'syncedToAccount' : 'localOnly'),
-                triggerMode: TooltipTriggerMode.tap,
-                child: Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: tight ? 6 : 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: full ? c.warning.withValues(alpha: .07) : c.surface,
-                    border: Border.all(
-                      color: full ? c.warning.withValues(alpha: .15) : c.border,
+          child: tight
+              ? Column(
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _SearchBar(
+                            controller: search,
+                            field: field,
+                            onField: changeField,
+                            onChanged: typing,
+                          ),
+                        ),
+                      ],
                     ),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                  child: Text(
-                    at(
-                      'savedCountShort',
-                      args: {'count': saved.pins.length, 'limit': limit},
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        count,
+                        const SizedBox(width: 8),
+                        rangeSwitch,
+                        const Spacer(),
+                        ?pencil,
+                      ],
                     ),
-                    style: atlasMono(11, full ? c.warning : c.muted),
-                  ),
+                  ],
+                )
+              : Row(
+                  children: [
+                    Expanded(
+                      child: _SearchBar(
+                        controller: search,
+                        field: field,
+                        onField: changeField,
+                        onChanged: typing,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    count,
+                    const SizedBox(width: 8),
+                    rangeSwitch,
+                    if (pencil != null) ...[const SizedBox(width: 6), pencil],
+                  ],
                 ),
-              ),
-              SizedBox(width: tight ? 4 : 8),
-              AtlasSegmented<AtlasRange>(
-                label: at('range'),
-                value: range,
-                onChanged: (range) =>
-                    store.update((value) => value.copyWith(range: range)),
-                options: {
-                  for (final option in AtlasRange.values)
-                    if (option != AtlasRange.week ||
-                        features?.atlas7d == true ||
-                        range == AtlasRange.week)
-                      option: atlasRangeLabel(option),
-                },
-              ),
-              if (saved.pins.isNotEmpty) ...[
-                SizedBox(width: tight ? 4 : 6),
-                AtlasIconButton(
-                  key: const ValueKey('atlas-edit'),
-                  icon: PencilIcon.new,
-                  label: trKey(editing ? 'atlasEdit.done' : 'atlasEdit.edit'),
-                  tooltip: trKey(
-                    editing ? 'atlasEdit.doneHelp' : 'atlasEdit.help',
-                  ),
-                  pressed: editing,
-                  onPressed: () => setState(() => editing = !editing),
-                ),
-              ],
-            ],
-          ),
         ),
         Expanded(
           child: SingleChildScrollView(

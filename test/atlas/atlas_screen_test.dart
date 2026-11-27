@@ -1178,6 +1178,25 @@ void main() {
     await close(tester);
   });
 
+  for (final (width, rows) in [(320.0, 2), (375.0, 1)]) {
+    testWidgets('the toolbar takes $rows row(s) at $width', (tester) async {
+      await pump(tester, pins: [nodePin()], size: Size(width, 800));
+      final field = tester.getRect(find.byType(TextField).first);
+      final pencil = tester.getRect(find.byKey(const ValueKey('atlas-edit')));
+      final range = tester.getRect(find.text('24h').first);
+      if (rows == 2) {
+        expect(pencil.top, greaterThan(field.bottom));
+        expect(range.center.dy, moreOrLessEquals(pencil.center.dy, epsilon: 1));
+        expect(pencil.right, moreOrLessEquals(width - 16, epsilon: 1));
+        expect(find.text('Find a node'), findsOneWidget);
+        expect(tester.getSize(find.text('Find a node')).width, greaterThan(70));
+      } else {
+        expect(pencil.center.dy, moreOrLessEquals(field.center.dy, epsilon: 2));
+      }
+      await close(tester);
+    });
+  }
+
   testWidgets('the card header stays on one line, the name giving way', (
     tester,
   ) async {
@@ -1670,6 +1689,21 @@ void main() {
         tester.getCenter(find.byKey(typeChip)).dy,
         tester.getCenter(find.text('Hill')).dy,
       );
+      await close(tester);
+    });
+
+    testWidgets('one tag gets a row under the name on a narrow phone', (
+      tester,
+    ) async {
+      await pump(tester, pins: [nodePin()], size: const Size(320, 800));
+      for (final editing in [false, true]) {
+        if (editing) await edit(tester);
+        expect(find.byKey(tagRow), findsOneWidget);
+        expect(
+          tester.getTopLeft(find.byKey(typeChip)).dy,
+          greaterThan(tester.getBottomLeft(find.text('Hill')).dy),
+        );
+      }
       await close(tester);
     });
 
