@@ -1760,6 +1760,12 @@
     "atlasOpen": {
       "node": "Ouvrir le nœud",
       "observer": "Ouvrir l'observateur"
+    },
+    "atlasEdit": {
+      "edit": "Modifier les cartes",
+      "done": "Terminer la modification",
+      "help": "Épingler un onglet, réordonner ou retirer des cartes",
+      "doneHelp": "Terminer la modification des cartes"
     }
   }
 }

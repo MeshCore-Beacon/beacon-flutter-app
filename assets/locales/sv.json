@@ -1709,6 +1709,12 @@
     "atlasOpen": {
       "node": "Öppna nod",
       "observer": "Öppna observatör"
+    },
+    "atlasEdit": {
+      "edit": "Redigera kort",
+      "done": "Klar med redigering",
+      "help": "Fäst en flik, ändra ordning eller ta bort kort",
+      "doneHelp": "Avsluta redigering"
     }
   }
 }

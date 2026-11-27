@@ -229,6 +229,12 @@ AtlasIconButton button(WidgetTester tester, String key) =>
 bool filled(AtlasIconButton b) => (b.icon(Colors.black) as BellIcon).filled;
 Finder k(String id) => find.byKey(ValueKey(id));
 
+/// Switches the cards to their edit buttons: pin, drag and remove.
+Future<void> edit(WidgetTester tester) async {
+  await tester.tap(find.byKey(const ValueKey('atlas-edit')));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   setUp(() async {
     await loadAssets();
@@ -351,7 +357,7 @@ void main() {
     await close(tester);
   });
 
-  testWidgets('open comes first, then the bell, pin, drag and remove', (
+  testWidgets('open comes first, then the bell; the rest wait for edit mode', (
     tester,
   ) async {
     final r = await rig();
@@ -366,13 +372,7 @@ void main() {
       ))
         b.label,
     ];
-    expect(labels, [
-      'Open node',
-      'Alerts: 2 on',
-      'Open on this tab',
-      'Drag to reorder',
-      'Remove',
-    ]);
+    expect(labels, ['Open node', 'Alerts: 2 on']);
     await close(tester);
   });
 
@@ -820,11 +820,10 @@ void main() {
                 .evaluate())
           tester.getRect(find.byWidget(e.widget)),
       ];
-      expect(boxes, hasLength(5));
+      expect(boxes, hasLength(2));
       for (final (i, box) in boxes.indexed) {
         expect(box.size, const Size(28, 26));
-        // Remove stands a little apart from the grip.
-        if (i > 0) expect(box.left - boxes[i - 1].right, i == 4 ? 8 : 4);
+        if (i > 0) expect(box.left - boxes[i - 1].right, 4);
         expect(box.top, boxes.first.top);
       }
       final panel = tester.getRect(card);
@@ -862,7 +861,7 @@ void main() {
       final r = await rig();
       await pump(tester, r, size: const Size(360, 800));
       final card = find.ancestor(
-        of: bell(busy),
+        of: find.text('Busy'),
         matching: find.byType(AtlasPanel),
       );
       final remove = find.descendant(
@@ -888,7 +887,8 @@ void main() {
       await tester.pumpAndSettle();
 
       // Remove side of the gap between the grip and remove: only remove fires.
-      expect(tester.getRect(remove).left - tester.getRect(grip).right, 8);
+      await edit(tester);
+      expect(tester.getRect(remove).left - tester.getRect(grip).right, 4);
       await tester.tapAt(
         tester.getRect(remove).centerLeft - const Offset(1, 0),
       );
@@ -903,8 +903,9 @@ void main() {
     ) async {
       final r = await rig();
       await pump(tester, r, size: const Size(360, 800));
+      await edit(tester);
       final card = find.ancestor(
-        of: bell(quiet),
+        of: find.text('Quiet'),
         matching: find.byType(AtlasPanel),
       );
       final grip = find.descendant(

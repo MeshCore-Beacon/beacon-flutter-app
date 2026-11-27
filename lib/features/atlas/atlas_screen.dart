@@ -66,6 +66,7 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
   // Each card keeps the view picked this session; only the pin saves it as where the card opens.
   final open = <String, AtlasView>{};
   bool resumed = true;
+  bool editing = false;
   late int now = widget.clock().millisecondsSinceEpoch;
 
   /// The server's card cap, from /info.
@@ -461,6 +462,8 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
               ? 'searchTooShort'
               : null)
         : atlasSearch(field, typed).hint;
+    // The narrowest phones have no slack for the edit button beside the search.
+    final tight = MediaQuery.sizeOf(context).width < 360;
     return Column(
       children: [
         Container(
@@ -479,13 +482,13 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
                   onChanged: typing,
                 ),
               ),
-              const SizedBox(width: 6),
+              SizedBox(width: tight ? 4 : 6),
               Tooltip(
                 message: at(store.signedIn ? 'syncedToAccount' : 'localOnly'),
                 triggerMode: TooltipTriggerMode.tap,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: tight ? 6 : 10,
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
@@ -504,7 +507,7 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
+              SizedBox(width: tight ? 4 : 8),
               AtlasSegmented<AtlasRange>(
                 label: at('range'),
                 value: range,
@@ -518,6 +521,19 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
                       option: atlasRangeLabel(option),
                 },
               ),
+              if (saved.pins.isNotEmpty) ...[
+                SizedBox(width: tight ? 4 : 6),
+                AtlasIconButton(
+                  key: const ValueKey('atlas-edit'),
+                  icon: PencilIcon.new,
+                  label: trKey(editing ? 'atlasEdit.done' : 'atlasEdit.edit'),
+                  tooltip: trKey(
+                    editing ? 'atlasEdit.doneHelp' : 'atlasEdit.help',
+                  ),
+                  pressed: editing,
+                  onPressed: () => setState(() => editing = !editing),
+                ),
+              ],
             ],
           ),
         ),
@@ -611,6 +627,7 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
                             ),
                             onOpen: widget.onOpen,
                             handle: handle,
+                            editing: editing,
                           );
                         },
                       ),

@@ -1709,6 +1709,12 @@
     "atlasOpen": {
       "node": "Open node",
       "observer": "Open observer"
+    },
+    "atlasEdit": {
+      "edit": "Edit cards",
+      "done": "Done editing",
+      "help": "Pin a tab, reorder or remove cards",
+      "doneHelp": "Finish editing"
     }
   }
 }

@@ -138,8 +138,12 @@ class AtlasPanel extends StatelessWidget {
     required this.title,
     this.right,
     this.tags,
+    this.dashed = false,
     required this.child,
   });
+
+  /// A dashed outline: the card is being edited.
+  final bool dashed;
   final Widget title;
   final Widget? right;
 
@@ -150,9 +154,10 @@ class AtlasPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = BeaconColors.of(context);
     return Container(
+      foregroundDecoration: dashed ? _DashedBorder(c.muted) : null,
       decoration: BoxDecoration(
         color: c.surface,
-        border: Border.all(color: c.border),
+        border: Border.all(color: dashed ? Colors.transparent : c.border),
         borderRadius: BorderRadius.circular(8),
       ),
       // Outside the padding, so a header button's touch area can reach into it.
@@ -192,6 +197,34 @@ class AtlasPanel extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _DashedBorder extends Decoration {
+  const _DashedBorder(this.color);
+  final Color color;
+  @override
+  BoxPainter createBoxPainter([VoidCallback? onChanged]) =>
+      _DashedBorderPainter(color);
+}
+
+class _DashedBorderPainter extends BoxPainter {
+  _DashedBorderPainter(this.color);
+  final Color color;
+  @override
+  void paint(Canvas canvas, Offset offset, ImageConfiguration configuration) {
+    final rect = (offset & configuration.size!).deflate(.5);
+    final outline = Path()
+      ..addRRect(RRect.fromRectAndRadius(rect, const Radius.circular(8)));
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+    for (final metric in outline.computeMetrics()) {
+      for (var at = 0.0; at < metric.length; at += 7) {
+        canvas.drawPath(metric.extractPath(at, at + 4), paint);
+      }
+    }
   }
 }
 
@@ -465,6 +498,33 @@ class CrossIcon extends CustomPainter {
 
   @override
   bool shouldRepaint(CrossIcon old) => old.color != color;
+}
+
+/// A pencil: the cards can be pinned, moved and removed.
+class PencilIcon extends CustomPainter {
+  const PencilIcon(this.color);
+  final Color color;
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width, top = (size.height - w) / 2;
+    canvas.drawPath(
+      Path()
+        ..moveTo(w * .1, top + w * .9)
+        ..lineTo(w * .17, top + w * .65)
+        ..lineTo(w * .7, top + w * .1)
+        ..lineTo(w * .9, top + w * .3)
+        ..lineTo(w * .36, top + w * .84)
+        ..close(),
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2
+        ..strokeJoin = StrokeJoin.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(PencilIcon old) => old.color != color;
 }
 
 /// A box with an arrow leaving its corner: opens the node or observer.

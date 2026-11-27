@@ -127,6 +127,7 @@ class AtlasCard extends StatefulWidget {
     required this.onTelemetryTilesChange,
     required this.onOpen,
     this.handle,
+    this.editing = false,
     this.onAlerts,
     this.alertsOn = 0,
     this.alertsFiring = 0,
@@ -148,6 +149,9 @@ class AtlasCard extends StatefulWidget {
 
   /// Wraps the grip so the page can start a reorder from it.
   final Widget Function(Widget grip)? handle;
+
+  /// Shows pin, drag and remove in place of open and alerts.
+  final bool editing;
 
   /// Opens this radio's alerts, given the name the card shows. Null on a
   /// server without alerts, which hides the bell.
@@ -498,8 +502,6 @@ class _AtlasCardState extends State<AtlasCard> {
         ? textOf(node?['nodeTypeName'])
         : textOf(observer?['observerType']);
     // One tag shares the name's line; more get a row of their own under it.
-    // On the narrowest phones the buttons leave no room beside the name.
-    final narrow = MediaQuery.sizeOf(context).width < 360;
     final tags = <Widget>[
       if (!pin.isNode && type.isNotEmpty) AtlasBadge(type),
       if (pin.isNode) ...[
@@ -550,10 +552,7 @@ class _AtlasCardState extends State<AtlasCard> {
               ),
             ),
           ),
-          if (tags.length == 1 && !narrow) ...[
-            const SizedBox(width: 8),
-            tags.single,
-          ],
+          if (tags.length == 1) ...[const SizedBox(width: 8), tags.single],
         ],
       ),
     );
@@ -567,36 +566,40 @@ class _AtlasCardState extends State<AtlasCard> {
         : widget.alertsOn > 0
         ? trKey('atlasAlerts.bellOn', count: widget.alertsOn)
         : trKey('atlasAlerts.bell');
+    // Editing swaps the everyday buttons for the ones that change the card.
     final buttons = <Widget>[
-      AtlasIconButton(
-        icon: OpenIcon.new,
-        label: trKey(pin.isNode ? 'atlasOpen.node' : 'atlasOpen.observer'),
-        onPressed: canOpen ? openSheet : null,
-      ),
-      if (widget.onAlerts case final onAlerts?)
+      if (widget.editing) ...[
+        if (views.length > 1)
+          AtlasIconButton(
+            icon: (color) => PinIcon(color, filled: view == home),
+            label: at('pinView'),
+            tooltip: at(view == home ? 'viewPinned' : 'pinViewHelp'),
+            pressed: view == home,
+            onPressed: view == home ? () {} : () => widget.onPinView(view),
+          ),
+        widget.handle?.call(grip) ?? grip,
         AtlasIconButton(
-          key: ValueKey('atlas-bell-${pin.key}'),
-          icon: (color) => BellIcon(color, filled: widget.alertsOn > 0),
-          label: bellLabel,
-          color: widget.alertsFiring > 0 ? c.danger : null,
-          tinted: widget.alertsOn > 0,
-          onPressed: () => onAlerts(shown),
+          icon: CrossIcon.new,
+          label: at('remove'),
+          muted: true,
+          onPressed: widget.onRemove,
         ),
-      if (views.length > 1)
+      ] else ...[
         AtlasIconButton(
-          icon: (color) => PinIcon(color, filled: view == home),
-          label: at('pinView'),
-          tooltip: at(view == home ? 'viewPinned' : 'pinViewHelp'),
-          pressed: view == home,
-          onPressed: view == home ? () {} : () => widget.onPinView(view),
+          icon: OpenIcon.new,
+          label: trKey(pin.isNode ? 'atlasOpen.node' : 'atlasOpen.observer'),
+          onPressed: canOpen ? openSheet : null,
         ),
-      widget.handle?.call(grip) ?? grip,
-      AtlasIconButton(
-        icon: CrossIcon.new,
-        label: at('remove'),
-        muted: true,
-        onPressed: widget.onRemove,
-      ),
+        if (widget.onAlerts case final onAlerts?)
+          AtlasIconButton(
+            key: ValueKey('atlas-bell-${pin.key}'),
+            icon: (color) => BellIcon(color, filled: widget.alertsOn > 0),
+            label: bellLabel,
+            color: widget.alertsFiring > 0 ? c.danger : null,
+            tinted: widget.alertsOn > 0,
+            onPressed: () => onAlerts(shown),
+          ),
+      ],
     ];
     // The boxes stay 28 by 26 with 4 between. Each takes touches 48 high and
     // out to the middle of the gap; the ends reach into the space beside them.
@@ -604,8 +607,7 @@ class _AtlasCardState extends State<AtlasCard> {
       mainAxisSize: MainAxisSize.min,
       children: [
         for (final (i, button) in buttons.indexed) ...[
-          // Remove stands a little apart from the grip.
-          if (i > 0) SizedBox(width: i == buttons.length - 1 ? 8 : 4),
+          if (i > 0) const SizedBox(width: 4),
           AtlasHitSlop(
             slop: EdgeInsets.fromLTRB(
               i == 0 ? 4 : 2,
@@ -1443,7 +1445,8 @@ class _AtlasCardState extends State<AtlasCard> {
     return AtlasPanel(
       title: title,
       right: actions,
-      tags: tags.isEmpty || (tags.length == 1 && !narrow)
+      dashed: widget.editing,
+      tags: tags.length < 2
           ? null
           : Wrap(
               key: const ValueKey('atlas-tags'),

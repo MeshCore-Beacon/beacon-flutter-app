@@ -316,6 +316,12 @@ bool footerFresh(WidgetTester tester, String text) {
   return color == BeaconColors.of(tester.element(dot)).success;
 }
 
+/// Switches the cards to their edit buttons: pin, drag and remove.
+Future<void> edit(WidgetTester tester) async {
+  await tester.tap(find.byKey(const ValueKey('atlas-edit')));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   // Asset loads never finish inside a widget test's fake clock.
   setUp(() async {
@@ -658,6 +664,7 @@ void main() {
 
     testWidgets('pins the view', (tester) async {
       final prefs = await pump(tester, pins: [nodePin()]);
+      await edit(tester);
       await tester.tap(tab('telemetry'));
       await tester.pumpAndSettle();
       await tester.tap(find.bySemanticsLabel('Open on this tab'));
@@ -926,6 +933,7 @@ void main() {
 
   testWidgets('pins the tab a card opens on', (tester) async {
     final prefs = await pump(tester, pins: [nodePin()]);
+    await edit(tester);
     expect(find.byTooltip('The card opens on this tab'), findsOneWidget);
     await tester.tap(tab('heard'));
     await tester.pumpAndSettle();
@@ -1063,6 +1071,20 @@ void main() {
     await close(tester);
   });
 
+  testWidgets('pin, drag and remove wait for edit mode', (tester) async {
+    await pump(tester, pins: [nodePin()]);
+    expect(find.byTooltip('Open node'), findsOneWidget);
+    expect(find.byTooltip('Remove'), findsNothing);
+    expect(find.byTooltip('Drag to reorder'), findsNothing);
+    await edit(tester);
+    expect(find.byTooltip('Open node'), findsNothing);
+    expect(find.byTooltip('Remove'), findsOneWidget);
+    expect(find.byTooltip('Drag to reorder'), findsOneWidget);
+    await edit(tester);
+    expect(find.byTooltip('Remove'), findsNothing);
+    await close(tester);
+  });
+
   testWidgets('removes a card', (tester) async {
     final prefs = await pump(
       tester,
@@ -1071,6 +1093,7 @@ void main() {
         {'kind': 'node', 'id': otherId, 'publicKey': otherKey, 'name': 'Ridge'},
       ],
     );
+    await edit(tester);
     expect(find.byTooltip('Stale'), findsOneWidget);
     await tester.tap(find.byTooltip('Remove').first);
     await tester.pumpAndSettle();
@@ -1087,6 +1110,7 @@ void main() {
         {'kind': 'node', 'id': otherId, 'publicKey': otherKey, 'name': 'Ridge'},
       ],
     );
+    await edit(tester);
     final grips = find.byTooltip('Drag to reorder');
     final target = tester.getCenter(grips.last);
     final gesture = await tester.startGesture(tester.getCenter(grips.first));
@@ -1159,6 +1183,7 @@ void main() {
   ) async {
     fake.hill = {...fake.hill, 'name': 'A very long repeater name on a hill'};
     await pump(tester, pins: [nodePin()]);
+    await edit(tester);
     final name = find.text('A very long repeater name on a hill');
     final badge = find.text('REPEATER');
     expect(tester.getCenter(name).dy, tester.getCenter(badge).dy);
@@ -1514,6 +1539,7 @@ void main() {
 
     testWidgets('pinning it saves the view on the pin', (tester) async {
       final prefs = await open(tester, view: null);
+      await edit(tester);
       await tester.tap(tab('poller'));
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Make this the tab the card opens on'));
@@ -1658,6 +1684,7 @@ void main() {
         'observerId': observerId,
       };
       await pump(tester, pins: [nodePin()], size: const Size(375, 844));
+      await edit(tester);
       final name = find.text('A very long repeater name on a hill');
       final row = find.byKey(tagRow);
       for (final chip in [typeChip, pollerChip, observerChip]) {
