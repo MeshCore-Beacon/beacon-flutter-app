@@ -1694,6 +1694,12 @@
       "noEvidence": "No adverts heard from it",
       "noClaim": "This radio has no polling claim.",
       "noTargets": "It polls no repeaters yet."
+    },
+    "atlasPoller": {
+      "polling_one": "Polling {{count}} repeater · {{used}}/{{max}} slots",
+      "polling_other": "Polling {{count}} repeaters · {{used}}/{{max}} slots",
+      "notPolling": "Not currently polling",
+      "open": "Poller view"
     }
   }
 }

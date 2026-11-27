@@ -8,6 +8,7 @@ import '../../core/strings.dart';
 import '../../core/theme.dart';
 import '../../core/units.dart';
 import '../analytics/charts.dart';
+import '../directory/node_chips.dart';
 import '../directory/node_telemetry.dart';
 import 'atlas.dart';
 import 'atlas_graph.dart';
@@ -286,6 +287,16 @@ class _AtlasCardState extends State<AtlasCard> {
         pollUnlessMissing,
       );
     }
+    // What a poller holds, for the line under its Observer view.
+    _use<Json>(
+      'poller',
+      node?['isPoller'] == true ? nodeId : null,
+      active && open,
+      () async => (await api.features()).polling
+          ? api.nodePoller(nodeId!)
+          : <String, dynamic>{},
+      pollUnlessMissing,
+    );
     // Only a repeater or room server on a polling server is asked; others read
     // none. The tab shows when Beacon has readings for it or is polling it.
     final polled = isPolledNodeType(textOf(node?['nodeTypeName']));
@@ -439,7 +450,7 @@ class _AtlasCardState extends State<AtlasCard> {
           );
     String graphLabel(String metric) =>
         trKey('atlasGraph.open').replaceAll('{{metric}}', metric);
-    // One line always: a dot carries the status and the name gives way first.
+    // A dot carries the status and the name gives way first.
     final (dotColor, dotLabel) = pin.isNode
         ? switch (node?['stale']) {
             false => (c.success, at('recent')),
@@ -452,6 +463,19 @@ class _AtlasCardState extends State<AtlasCard> {
     final type = pin.isNode
         ? textOf(node?['nodeTypeName'])
         : textOf(observer?['observerType']);
+    // One tag shares the name's line; more get a row of their own under it.
+    final tags = <Widget>[
+      if (!pin.isNode && type.isNotEmpty) AtlasBadge(type),
+      if (pin.isNode) ...[
+        if (type.isNotEmpty)
+          nodeTypeChip(context, type, type.toUpperCase(), c.muted),
+        if (node?['isPoller'] == true) pollerChip(),
+        if (node?['isObserver'] == true ||
+            node?['isPoller'] == true ||
+            id != null)
+          observerChip(),
+      ],
+    ];
     final title = ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 26),
       child: Row(
@@ -494,7 +518,7 @@ class _AtlasCardState extends State<AtlasCard> {
               ),
             ),
           ),
-          if (type.isNotEmpty) ...[const SizedBox(width: 8), AtlasBadge(type)],
+          if (tags.length == 1) ...[const SizedBox(width: 8), tags.single],
         ],
       ),
     );
@@ -993,6 +1017,34 @@ class _AtlasCardState extends State<AtlasCard> {
           ? formatRadioParts(freq: compact[0], sf: compact[2])
           : formatRadioParts(freq: field('radioFreqMhz'), sf: field('radioSf'));
       final lastStatus = number(observer?['lastStatusAt'])?.toInt();
+      // No line for a server without the route, or a radio with no claim.
+      final pollerQuery = _queries['poller'];
+      final claim = isNotFound(pollerQuery?.error)
+          ? null
+          : (pollerQuery?.data as Json?)?['claim'];
+      final pollerLine = claim is! Map
+          ? null
+          : _PollerLine(
+              live: claim['live'] == true,
+              text: claim['live'] != true
+                  ? trKey('atlasPoller.notPolling')
+                  : trKey(
+                          'atlasPoller.polling',
+                          // Standbys hold a slot but do not poll.
+                          count: rows((pollerQuery?.data as Json)['targets'])
+                              .where((t) => t['role'] == 'poller')
+                              .length,
+                        )
+                        .replaceAll(
+                          '{{used}}',
+                          '${number(object(claim['slots'])['used'])?.toInt() ?? 0}',
+                        )
+                        .replaceAll(
+                          '{{max}}',
+                          '${number(object(claim['slots'])['max'])?.toInt() ?? 0}',
+                        ),
+              onOpen: () => widget.onOpen('poller', textOf(node!['id'])),
+            );
       body.add(
         Column(
           key: _body,
@@ -1033,6 +1085,7 @@ class _AtlasCardState extends State<AtlasCard> {
                 at('observerHelp'),
               ],
             ),
+            ?pollerLine,
           ],
         ),
       );
@@ -1203,6 +1256,14 @@ class _AtlasCardState extends State<AtlasCard> {
     return AtlasPanel(
       title: title,
       right: actions,
+      tags: tags.length < 2
+          ? null
+          : Wrap(
+              key: const ValueKey('atlas-tags'),
+              spacing: 6,
+              runSpacing: 6,
+              children: tags,
+            ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
@@ -1306,6 +1367,69 @@ class _Footer extends StatelessWidget {
         LayoutId(id: 'right', child: text(right)),
         LayoutId(id: 'tip', child: AtlasInfoTip(tip)),
       ],
+    );
+  }
+}
+
+/// What a poller holds, on one line, and the way to its Poller view.
+class _PollerLine extends StatelessWidget {
+  const _PollerLine({
+    required this.text,
+    required this.live,
+    required this.onOpen,
+  });
+  final String text;
+  final bool live;
+  final VoidCallback onOpen;
+  @override
+  Widget build(BuildContext context) {
+    final c = BeaconColors.of(context);
+    final height = MediaQuery.textScalerOf(context)
+        .scale(16.5)
+        .clamp(22.0, 64.0);
+    return SizedBox(
+      key: const ValueKey('atlas-poller-line'),
+      height: height,
+      child: Row(
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: live ? pollerColor : c.dim.withValues(alpha: .3),
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              text,
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.ellipsis,
+              style: atlasMono(11, c.muted),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Semantics(
+            button: true,
+            child: InkWell(
+              onTap: onOpen,
+              child: SizedBox(
+                height: height,
+                child: Center(
+                  widthFactor: 1,
+                  child: Text(
+                    trKey('atlasPoller.open'),
+                    maxLines: 1,
+                    style: atlasMono(11, c.primary),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

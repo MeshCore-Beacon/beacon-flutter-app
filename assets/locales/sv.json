@@ -1694,6 +1694,12 @@
       "noEvidence": "Inga annonser mottagna från den",
       "noClaim": "Den här radion har inget avläsningsanspråk.",
       "noTargets": "Den avläser inga repeatrar ännu."
+    },
+    "atlasPoller": {
+      "polling_one": "Avläser {{count}} repeater · {{used}}/{{max}} platser",
+      "polling_other": "Avläser {{count}} repeatrar · {{used}}/{{max}} platser",
+      "notPolling": "Avläser inte just nu",
+      "open": "Pollarvy"
     }
   }
 }

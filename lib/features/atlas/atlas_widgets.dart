@@ -136,10 +136,14 @@ class AtlasPanel extends StatelessWidget {
     super.key,
     required this.title,
     this.right,
+    this.tags,
     required this.child,
   });
   final Widget title;
   final Widget? right;
+
+  /// A row of its own under the title, across the card.
+  final Widget? tags;
   final Widget child;
   @override
   Widget build(BuildContext context) {
@@ -178,6 +182,7 @@ class AtlasPanel extends StatelessWidget {
                     if (right != null) ...[const SizedBox(width: 8), right!],
                   ],
                 ),
+                if (tags != null) ...[const SizedBox(height: 6), tags!],
                 const SizedBox(height: 10),
                 child,
               ],

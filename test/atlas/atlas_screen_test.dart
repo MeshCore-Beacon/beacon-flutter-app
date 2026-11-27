@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:beacon/core/account.dart';
 import 'package:beacon/core/api.dart';
@@ -16,6 +17,7 @@ import 'package:beacon/features/atlas/atlas_widgets.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -85,6 +87,21 @@ class Server {
     'poller': {'observerId': observerId, 'name': 'Roof'},
     'standbys': <dynamic>[],
   };
+
+  /// What /nodes/{id}/poller answers; null is a 404.
+  Map<String, dynamic>? pollerDoc = {
+    'claim': {
+      'receivedAt': tick - 720000,
+      'live': true,
+      'acceptsRequests': true,
+      'slots': {'max': 8, 'used': 2, 'own': 2, 'requested': 0, 'free': 6},
+    },
+    'readings24h': 40,
+    'targets': [
+      {'nodeId': 'a', 'name': 'One', 'role': 'poller', 'state': 'ok'},
+      {'nodeId': 'b', 'name': 'Two', 'role': 'poller', 'state': 'ok'},
+    ],
+  };
   List<Map<String, dynamic>> readings = [
     {'t': tick - 7200000, 'batteryMv': 4100, 'temperatureC': 15.2},
     {'t': tick - 3600000, 'batteryMv': 4226},
@@ -122,6 +139,7 @@ class Server {
       };
     }
     if (path == '/nodes/$nodeId/polling') return pollingDoc;
+    if (path == '/nodes/$nodeId/poller') return pollerDoc;
     if (path == '/nodes/$nodeId/telemetry') {
       return {'polled': readings.isNotEmpty, 'points': readings};
     }
@@ -1140,6 +1158,107 @@ void main() {
     await close(tester);
   });
 
+  group('poller line', () {
+    const line = ValueKey('atlas-poller-line');
+    Future<void> open(WidgetTester tester) async {
+      fake.hill = {...fake.hill, 'isPoller': true, 'observerId': observerId};
+      await pump(
+        tester,
+        pins: [
+          nodePin({'observerId': observerId, 'view': 'observer'}),
+        ],
+        size: const Size(375, 844),
+      );
+    }
+
+    bool asked() => fake.requests.any((u) => u.path.endsWith('/poller'));
+
+    testWidgets('says what the poller holds and opens its Poller view', (
+      tester,
+    ) async {
+      await open(tester);
+      expect(find.text('Polling 2 repeaters · 2/8 slots'), findsOneWidget);
+      await tester.tap(find.text('Poller view'));
+      expect(opened, [('poller', nodeId)]);
+      await close(tester);
+    });
+
+    testWidgets('counts one repeater in the singular', (tester) async {
+      fake.pollerDoc = {
+        ...fake.pollerDoc!,
+        'targets': [(fake.pollerDoc!['targets'] as List).first],
+      };
+      await open(tester);
+      expect(find.text('Polling 1 repeater · 2/8 slots'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('says when the claim has gone stale', (tester) async {
+      fake.pollerDoc = {
+        ...fake.pollerDoc!,
+        'claim': {...fake.pollerDoc!['claim'] as Map, 'live': false},
+      };
+      await open(tester);
+      expect(find.text('Not currently polling'), findsOneWidget);
+      expect(find.text('Poller view'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('is missing on a server without the route', (tester) async {
+      fake.pollerDoc = null;
+      await open(tester);
+      expect(asked(), isTrue);
+      expect(find.byKey(line), findsNothing);
+      expect(find.text('NOISE FLOOR'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('is missing for a radio with no claim', (tester) async {
+      fake.pollerDoc = {'claim': null, 'readings24h': 0, 'targets': []};
+      await open(tester);
+      expect(asked(), isTrue);
+      expect(find.byKey(line), findsNothing);
+      await close(tester);
+    });
+
+    testWidgets('is missing and asks nothing with polling off', (tester) async {
+      fake.polling = false;
+      await open(tester);
+      expect(find.byKey(line), findsNothing);
+      expect(asked(), isFalse);
+      await close(tester);
+    });
+
+    testWidgets('is asked for only on the Observer view of a poller', (
+      tester,
+    ) async {
+      fake.hill = {...fake.hill, 'isPoller': true, 'observerId': observerId};
+      await pump(
+        tester,
+        pins: [
+          nodePin({'observerId': observerId}),
+        ],
+      );
+      expect(asked(), isFalse);
+      await tester.tap(find.text('Observer'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(line), findsOneWidget);
+      await close(tester);
+
+      fake = Server();
+      await pump(
+        tester,
+        pins: [
+          nodePin({'observerId': observerId, 'view': 'observer'}),
+        ],
+      );
+      expect(find.text('NOISE FLOOR'), findsOneWidget);
+      expect(asked(), isFalse);
+      expect(find.byKey(line), findsNothing);
+      await close(tester);
+    });
+  });
+
   testWidgets('lays cards out in two and three columns on wide screens', (
     tester,
   ) async {
@@ -1243,5 +1362,106 @@ void main() {
     expect(puts, isEmpty);
     expect(store.saved.pins, isEmpty);
     await close(tester);
+  });
+
+  // Last: its real font stays loaded for whatever runs after it.
+  group('header tags', () {
+    const typeChip = ValueKey('chip-type-repeater');
+    const pollerChip = ValueKey('chip-poller');
+    const observerChip = ValueKey('chip-observer');
+    const tagRow = ValueKey('atlas-tags');
+
+    testWidgets('one tag sits on the name\'s line', (tester) async {
+      await pump(tester, pins: [nodePin()], size: const Size(375, 844));
+      expect(find.byKey(tagRow), findsNothing);
+      expect(find.byKey(pollerChip), findsNothing);
+      expect(find.byKey(observerChip), findsNothing);
+      expect(
+        tester.getCenter(find.byKey(typeChip)).dy,
+        tester.getCenter(find.text('Hill')).dy,
+      );
+      await close(tester);
+    });
+
+    testWidgets('a poller\'s three tags get a row under the name at 375 px', (
+      tester,
+    ) async {
+      // The test font is far wider than the app's, so measure with the real one.
+      await tester.runAsync(() async {
+        final bytes = File('assets/fonts/JetBrainsMono.ttf').readAsBytesSync();
+        await (FontLoader(
+          'JetBrainsMono',
+        )..addFont(Future.value(ByteData.sublistView(bytes)))).load();
+      });
+      fake.hill = {
+        ...fake.hill,
+        'name': 'A very long repeater name on a hill',
+        'isPoller': true,
+        'observerId': observerId,
+      };
+      await pump(tester, pins: [nodePin()], size: const Size(375, 844));
+      final name = find.text('A very long repeater name on a hill');
+      final row = find.byKey(tagRow);
+      for (final chip in [typeChip, pollerChip, observerChip]) {
+        expect(
+          find.descendant(of: row, matching: find.byKey(chip)),
+          findsOneWidget,
+        );
+      }
+      // All three on one line, under the name and the buttons, inside the card.
+      final tops = {
+        for (final chip in [typeChip, pollerChip, observerChip])
+          tester.getTopLeft(find.byKey(chip)).dy,
+      };
+      expect(tops, hasLength(1));
+      expect(tops.single, greaterThan(tester.getBottomLeft(name).dy));
+      expect(
+        tops.single,
+        greaterThan(tester.getBottomLeft(find.byTooltip('Remove')).dy),
+      );
+      expect(
+        tester.getTopLeft(find.byKey(typeChip)).dx,
+        tester.getTopLeft(find.byTooltip('Recent')).dx,
+      );
+      expect(
+        tester.getTopRight(find.byKey(observerChip)).dx,
+        lessThan(tester.getTopRight(find.byTooltip('Drag to reorder')).dx),
+      );
+      expect(
+        tester.getCenter(name).dy,
+        tester.getCenter(find.byTooltip('Recent')).dy,
+      );
+      await close(tester);
+    });
+
+    testWidgets('an observing node gets the Observer tag', (tester) async {
+      await pump(
+        tester,
+        pins: [
+          nodePin({'observerId': observerId}),
+        ],
+      );
+      expect(find.byKey(tagRow), findsOneWidget);
+      expect(find.byKey(observerChip), findsOneWidget);
+      expect(find.byKey(pollerChip), findsNothing);
+      await close(tester);
+    });
+
+    testWidgets('an observer card keeps its one badge beside the name', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        pins: [
+          {'kind': 'observer', 'observerId': observerId, 'name': 'Roof'},
+        ],
+      );
+      expect(find.byKey(tagRow), findsNothing);
+      expect(
+        tester.getCenter(find.text('MESHCORETOMQTT')).dy,
+        tester.getCenter(find.text('Roof')).dy,
+      );
+      await close(tester);
+    });
   });
 }

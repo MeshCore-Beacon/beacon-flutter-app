@@ -1745,6 +1745,12 @@
       "noEvidence": "Aucune annonce reçue de ce répéteur",
       "noClaim": "Cette radio n’a aucune déclaration d’interrogation.",
       "noTargets": "Elle n’interroge encore aucun répéteur."
+    },
+    "atlasPoller": {
+      "polling_one": "Interroge {{count}} répéteur · {{used}}/{{max}} places",
+      "polling_other": "Interroge {{count}} répéteurs · {{used}}/{{max}} places",
+      "notPolling": "Aucune interrogation en cours",
+      "open": "Vue Interrogateur"
     }
   }
 }
