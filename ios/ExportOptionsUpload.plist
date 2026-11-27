@@ -18,6 +18,9 @@
     <dict>
         <key>meshcorebeacon.app</key>
         <string>Beacon AppStore</string>
+        <!-- The Notification Service Extension that decrypts alerts. -->
+        <key>meshcorebeacon.app.NotificationService</key>
+        <string>Beacon NotificationService AppStore</string>
     </dict>
     <key>stripSwiftSymbols</key>
     <true/>

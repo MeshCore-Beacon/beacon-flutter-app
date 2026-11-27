@@ -5,6 +5,7 @@ analyzer:
     - build/**
     - android/**
     - ios/**
+    - third_party/**
   language:
     strict-casts: true
 

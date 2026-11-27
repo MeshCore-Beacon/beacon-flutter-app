@@ -28,6 +28,7 @@ class LiveConnection extends ChangeNotifier {
     DateTime Function()? now,
     this.ticket,
     this.reconnectGrace = const Duration(seconds: 3),
+    this.handshakeTimeout = const Duration(seconds: 20),
   }) : _now = now ?? DateTime.now;
   final DateTime Function() _now;
 
@@ -35,14 +36,58 @@ class LiveConnection extends ChangeNotifier {
   final Duration reconnectGrace;
   Timer? _grace;
 
+  /// How long an unanswered upgrade may take before the attempt is closed.
+  final Duration handshakeTimeout;
+
   /// Fetches a /ws ticket before each connect; null, or a failure, connects without one.
   final Future<String> Function()? ticket;
   final Uri uri;
   final Map<String, dynamic> region;
   final _events = StreamController<Json>.broadcast();
   Stream<Json> get events => _events.stream;
+  int _resolvedListeners = 0;
+  bool? _configuredResolution;
+
+  /// Only consumers needing live path candidates should listen here. Multiple
+  /// consumers share one connection; the final cancellation releases the opt-in.
+  late final Stream<Json> resolvedEvents = Stream<Json>.multi((controller) {
+    if (_disposed) {
+      controller.close();
+      return;
+    }
+    _resolvedListeners++;
+    _syncResolution();
+    final subscription = events.listen(
+      controller.addSync,
+      onError: controller.addErrorSync,
+      onDone: controller.closeSync,
+    );
+    controller.onCancel = () {
+      _resolvedListeners--;
+      _syncResolution();
+      return subscription.cancel();
+    };
+  }, isBroadcast: true);
+
+  void _configure() {
+    _configuredResolution = _resolvedListeners > 0;
+    _send({
+      'type': 'configure',
+      'resolvePath': _configuredResolution,
+      'includeRepeats': false,
+    });
+  }
+
+  void _syncResolution() {
+    if (_configuredResolution != null &&
+        _configuredResolution != (_resolvedListeners > 0)) {
+      _configure();
+    }
+  }
+
   String status = 'offline';
   WebSocket? _socket;
+  HttpClient? _handshakeClient;
   Timer? _heartbeat;
   Timer? _retry;
   int _attempts = 0;
@@ -92,10 +137,30 @@ class LiveConnection extends ChangeNotifier {
       final pass = await _ticket();
       if (!_running || _disposed || generation != _generation) return;
       // Keep dart:io's "Dart/" UA here too: the scrape block lets it in.
-      final socket = await WebSocket.connect(
-        uri.toString(),
-        headers: pass == null ? null : {'X-Beacon-Ticket': pass},
-      ).timeout(const Duration(seconds: 20));
+      final client = HttpClient();
+      _handshakeClient = client;
+      final WebSocket socket;
+      try {
+        socket =
+            await WebSocket.connect(
+                  uri.toString(),
+                  headers: pass == null ? null : {'X-Beacon-Ticket': pass},
+                  customClient: client,
+                )
+                .then((socket) {
+                  // A timeout stops awaiting a Future, not the underlying handshake.
+                  // Also close a socket if its upgrade completed at the cancellation boundary.
+                  if (!_running || _disposed || generation != _generation) {
+                    unawaited(socket.close());
+                  }
+                  return socket;
+                })
+                .timeout(handshakeTimeout);
+      } finally {
+        // Successfully upgraded sockets are detached from their HTTP client.
+        client.close(force: true);
+        if (identical(_handshakeClient, client)) _handshakeClient = null;
+      }
       if (!_running || _disposed || generation != _generation) {
         await socket.close();
         return;
@@ -118,11 +183,7 @@ class LiveConnection extends ChangeNotifier {
                 .split(',')
                 .where((e) => e.isNotEmpty)
                 .toList();
-            _send({
-              'type': 'configure',
-              'resolvePath': true,
-              'includeRepeats': false,
-            });
+            _configure();
             _send({
               'type': 'subscribe',
               'id': 'active',
@@ -172,6 +233,7 @@ class LiveConnection extends ChangeNotifier {
   void _disconnected(int generation) {
     if (generation != _generation || !_running || _disposed) return;
     ++_generation;
+    _configuredResolution = null;
     _heartbeat?.cancel();
     _socket?.close();
     _socket = null;
@@ -202,6 +264,9 @@ class LiveConnection extends ChangeNotifier {
     _running = false;
     _subscribedAt = null;
     ++_generation;
+    _handshakeClient?.close(force: true);
+    _handshakeClient = null;
+    _configuredResolution = null;
     _retry?.cancel();
     _heartbeat?.cancel();
     _socket?.close();

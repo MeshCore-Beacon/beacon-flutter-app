@@ -298,6 +298,7 @@ void main() {
     ], List.filled(10, null));
     expect(empty.types, isEmpty);
     expect(empty.counts, hasLength(72));
+    expect(sum(null, null, null, AtlasRange.week).counts, hasLength(168));
     final sample = sum(
       null,
       tele([

@@ -8,6 +8,7 @@ import 'package:flutter/rendering.dart';
 import '../../core/json.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
+import 'atlas.dart';
 import 'observer_sample.dart';
 
 const _mono = 'JetBrainsMono';
@@ -20,6 +21,11 @@ String at(String key, {int? count, Map<String, Object?> args = const {}}) {
   }
   return text;
 }
+
+/// The 7 day label lives in its own namespace: it came after atlas.ranges.
+String atlasRangeLabel(AtlasRange range) => range == AtlasRange.week
+    ? trKey('atlasRange.7d')
+    : at('ranges.${range.id}');
 
 String formatHex(String value) => shortKey(value).toUpperCase();
 
@@ -50,6 +56,10 @@ String average(double? value, [String unit = '']) => value == null
 
 String percent(double v) => '${v < 10 ? v.toStringAsFixed(1) : v.round()}%';
 String formatBattery(double volts) => '${volts.toStringAsFixed(2)}V';
+
+/// At most two units, for a tile: "164d 12h", "12h 7m", "7m".
+String shortUptime(double seconds) =>
+    formatUptime(seconds).split(' ').take(2).join(' ');
 
 String formatUptime(double seconds) {
   final s = seconds.floor();
@@ -135,42 +145,120 @@ class AtlasPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = BeaconColors.of(context);
     return Container(
-      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: c.surface,
         border: Border.all(color: c.border),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Material(
-        type: MaterialType.transparency,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      // Outside the padding, so a header button's touch area can reach into it.
+      child: AtlasHitArea(
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Material(
+            type: MaterialType.transparency,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Expanded(
-                  child: DefaultTextStyle.merge(
-                    style: TextStyle(
-                      fontFamily: _mono,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: .55,
-                      color: c.normal,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: DefaultTextStyle.merge(
+                        style: TextStyle(
+                          fontFamily: _mono,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: .55,
+                          color: c.normal,
+                        ),
+                        child: title,
+                      ),
                     ),
-                    child: title,
-                  ),
+                    if (right != null) ...[const SizedBox(width: 8), right!],
+                  ],
                 ),
-                if (right != null) ...[const SizedBox(width: 8), right!],
+                const SizedBox(height: 10),
+                child,
               ],
             ),
-            const SizedBox(height: 10),
-            child,
-          ],
+          ),
         ),
       ),
     );
+  }
+}
+
+/// Lets an [AtlasHitSlop] inside it take touches that land outside its own
+/// box. Nothing moves or grows: only where a touch counts changes.
+class AtlasHitArea extends SingleChildRenderObjectWidget {
+  const AtlasHitArea({super.key, super.child});
+  @override
+  RenderObject createRenderObject(BuildContext context) => _RenderHitArea();
+}
+
+class _RenderHitArea extends RenderProxyBox {
+  final targets = <_RenderHitSlop>{};
+
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    if (!size.contains(position)) return false;
+    for (final target in targets) {
+      if (!target.attached || !target.hasSize) continue;
+      final box = MatrixUtils.transformRect(
+        target.getTransformTo(this),
+        Offset.zero & target.size,
+      );
+      if (!target.slop.inflateRect(box).contains(position)) continue;
+      // Sent to the middle of the child, as a Material button's padding does.
+      final center = target.size.center(Offset.zero);
+      final hit = result.addWithRawTransform(
+        transform: MatrixUtils.forceToPoint(center),
+        position: center,
+        hitTest: (result, position) => target.hitTest(result, position: center),
+      );
+      if (hit) {
+        result.add(BoxHitTestEntry(this, position));
+        return true;
+      }
+    }
+    return super.hitTest(result, position: position);
+  }
+}
+
+/// Widens the touch area of [child] by [slop] without changing its layout.
+/// It needs an [AtlasHitArea] above it that covers the wider area.
+class AtlasHitSlop extends SingleChildRenderObjectWidget {
+  const AtlasHitSlop({super.key, required this.slop, super.child});
+  final EdgeInsets slop;
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderHitSlop()..slop = slop;
+  @override
+  void updateRenderObject(BuildContext context, RenderObject renderObject) =>
+      (renderObject as _RenderHitSlop).slop = slop;
+}
+
+class _RenderHitSlop extends RenderProxyBox {
+  EdgeInsets slop = EdgeInsets.zero;
+  _RenderHitArea? _area;
+
+  @override
+  void attach(PipelineOwner owner) {
+    super.attach(owner);
+    RenderObject? above = parent;
+    while (above != null && above is! _RenderHitArea) {
+      above = above.parent;
+    }
+    _area = above as _RenderHitArea?;
+    _area?.targets.add(this);
+  }
+
+  @override
+  void detach() {
+    _area?.targets.remove(this);
+    _area = null;
+    super.detach();
   }
 }
 
@@ -246,8 +334,14 @@ class AtlasIconButton extends StatelessWidget {
     this.onPressed,
     this.pressed,
     this.muted = false,
+    this.color,
+    this.tinted = false,
   });
   final CustomPainter Function(Color color) icon;
+
+  /// Replaces the icon colour; [tinted] fills the box as a pressed button's.
+  final Color? color;
+  final bool tinted;
   final String label;
   final String? tooltip;
   final VoidCallback? onPressed;
@@ -256,6 +350,7 @@ class AtlasIconButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = BeaconColors.of(context);
+    final ink = color ?? (muted ? c.muted : c.primary);
     return Tooltip(
       message: tooltip ?? label,
       child: Semantics(
@@ -270,14 +365,13 @@ class AtlasIconButton extends StatelessWidget {
             height: 26,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: pressed == true ? c.primary.withValues(alpha: .1) : null,
+              color: pressed == true || tinted
+                  ? (color ?? c.primary).withValues(alpha: .1)
+                  : null,
               border: Border.all(color: c.border),
               borderRadius: BorderRadius.circular(4),
             ),
-            child: CustomPaint(
-              size: const Size(10, 14),
-              painter: icon(muted ? c.muted : c.primary),
-            ),
+            child: CustomPaint(size: const Size(10, 14), painter: icon(ink)),
           ),
         ),
       ),
@@ -320,6 +414,36 @@ class PinIcon extends CustomPainter {
   bool shouldRepaint(PinIcon old) => old.color != color || old.filled != filled;
 }
 
+class BellIcon extends CustomPainter {
+  const BellIcon(this.color, {required this.filled});
+  final Color color;
+  final bool filled;
+  @override
+  void paint(Canvas canvas, Size size) {
+    final body = Path()
+      ..moveTo(1.2, 10)
+      ..lineTo(2.4, 8.6)
+      ..lineTo(2.4, 5.6)
+      ..cubicTo(2.4, 1.6, 7.6, 1.6, 7.6, 5.6)
+      ..lineTo(7.6, 8.6)
+      ..lineTo(8.8, 10)
+      ..close();
+    final stroke = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2
+      ..strokeJoin = StrokeJoin.round
+      ..strokeCap = StrokeCap.round;
+    if (filled) canvas.drawPath(body, Paint()..color = color);
+    canvas.drawPath(body, stroke);
+    canvas.drawLine(const Offset(4, 12.2), const Offset(6, 12.2), stroke);
+  }
+
+  @override
+  bool shouldRepaint(BellIcon old) =>
+      old.color != color || old.filled != filled;
+}
+
 class CrossIcon extends CustomPainter {
   const CrossIcon(this.color);
   final Color color;
@@ -335,6 +459,39 @@ class CrossIcon extends CustomPainter {
 
   @override
   bool shouldRepaint(CrossIcon old) => old.color != color;
+}
+
+/// Two arrows pulling apart: the sparkline opens larger.
+class ExpandIcon extends CustomPainter {
+  const ExpandIcon(this.color);
+  final Color color;
+  @override
+  void paint(Canvas canvas, Size size) {
+    final s = size.width, a = s * .4;
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    canvas.drawPath(
+      Path()
+        ..moveTo(s - a, 0)
+        ..lineTo(s, 0)
+        ..lineTo(s, a)
+        ..moveTo(s, 0)
+        ..lineTo(s * .58, s * .42)
+        ..moveTo(a, s)
+        ..lineTo(0, s)
+        ..lineTo(0, s - a)
+        ..moveTo(0, s)
+        ..lineTo(s * .42, s * .58),
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(ExpandIcon old) => old.color != color;
 }
 
 class GripIcon extends CustomPainter {
@@ -496,10 +653,13 @@ class SparklinePainter extends CustomPainter {
     this.color, {
     this.markPeak = false,
     this.interpolateGaps = false,
+    this.dots = false,
   });
   final List<double?> values;
   final Color color;
-  final bool markPeak, interpolateGaps;
+
+  /// [dots]: one dot per reading and no line, for a series too short to trace.
+  final bool markPeak, interpolateGaps, dots;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -513,8 +673,10 @@ class SparklinePainter extends CustomPainter {
             ? _sparkWidth / 2
             : i / (values.length - 1) * _sparkWidth) *
         scale;
-    double y(double v) =>
-        sparkHeight - 1 - (v - min) / range * (sparkHeight - 2);
+    // A lone reading sits mid-height, not on the floor.
+    double y(double v) => known.length == 1
+        ? sparkHeight / 2
+        : sparkHeight - 1 - (v - min) / range * (sparkHeight - 2);
     Paint stroke(double width, [double alpha = 1]) => Paint()
       ..color = color.withValues(alpha: color.a * alpha)
       ..style = PaintingStyle.stroke
@@ -532,6 +694,12 @@ class SparklinePainter extends CustomPainter {
         runs.last.add(Offset(x(i), y(v)));
         samples.add((i, v));
       }
+    }
+    if (dots) {
+      canvas.drawPoints(PointMode.points, [
+        for (final run in runs) ...run,
+      ], stroke(4));
+      return;
     }
     final line = stroke(1.5)..strokeCap = StrokeCap.butt;
     for (final run in runs) {
@@ -571,6 +739,7 @@ class SparklinePainter extends CustomPainter {
       old.color != color ||
       old.markPeak != markPeak ||
       old.interpolateGaps != interpolateGaps ||
+      old.dots != dots ||
       !_same(old.values, values);
 }
 
@@ -709,18 +878,36 @@ class AtlasStatTile extends StatelessWidget {
     this.presence,
     this.sublabel,
     this.interpolateGaps = false,
+    this.dots = false,
+    this.wrapSublabel = false,
+    this.valueTooltip,
     this.visual,
+    this.onGraph,
+    this.graphLabel,
   });
   final Widget label;
   final String value;
   final Color accent;
   final List<double?>? spark;
-  final bool markPeak, interpolateGaps;
+  final bool markPeak, interpolateGaps, dots;
+
+  /// Lets a long sub-label run to a second line instead of cutting it.
+  final bool wrapSublabel;
+
+  /// The full value when the tile shows a shortened one.
+  final String? valueTooltip;
   final List<bool>? presence;
   final String? sublabel;
 
   /// Replaces the sparkline.
   final Widget? visual;
+
+  /// Opens the sparkline's graph. Only the sparkline takes the tap, and only
+  /// when it has a point to show.
+  final VoidCallback? onGraph;
+
+  /// What the sparkline's tap is announced as.
+  final String? graphLabel;
 
   static Widget text(String label) => Builder(
     builder: (context) => Text(label.toUpperCase(), style: labelStyle(context)),
@@ -734,10 +921,41 @@ class AtlasStatTile extends StatelessWidget {
     color: BeaconColors.of(context).muted,
   );
 
+  Widget _value(BeaconColors c) {
+    final text = Text(
+      value,
+      maxLines: 1,
+      softWrap: false,
+      overflow: TextOverflow.fade,
+      style: TextStyle(
+        fontFamily: _mono,
+        fontSize: 20,
+        height: 1.4,
+        fontWeight: FontWeight.w700,
+        fontFeatures: const [FontFeature.tabularFigures()],
+        color: c.bright,
+      ),
+    );
+    final full = valueTooltip;
+    return full == null
+        ? text
+        : Tooltip(
+            message: full,
+            triggerMode: TooltipTriggerMode.tap,
+            child: Semantics(label: full, excludeSemantics: true, child: text),
+          );
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = BeaconColors.of(context);
-    final chart =
+    final graph =
+        visual == null &&
+            presence == null &&
+            (spark?.any((v) => v != null) ?? false)
+        ? onGraph
+        : null;
+    final plain =
         visual ??
         SizedBox(
           height: sparkHeight,
@@ -751,10 +969,40 @@ class AtlasStatTile extends StatelessWidget {
                     accent,
                     markPeak: markPeak,
                     interpolateGaps: interpolateGaps,
+                    dots: dots,
                   ),
                 )
               : null,
         );
+    final chart = graph == null
+        ? plain
+        : Semantics(
+            button: true,
+            label: graphLabel,
+            child: Material(
+              type: MaterialType.transparency,
+              child: InkWell(
+                key: const ValueKey('atlas-tile-graph'),
+                onTap: graph,
+                borderRadius: BorderRadius.circular(3),
+                // The gap above the sparkline takes the tap too.
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(child: plain),
+                      const SizedBox(width: 6),
+                      CustomPaint(
+                        size: const Size.square(9),
+                        painter: ExpandIcon(c.muted),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
@@ -775,8 +1023,8 @@ class AtlasStatTile extends StatelessWidget {
               if (sublabel != null)
                 Text(
                   sublabel!,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  maxLines: wrapSublabel ? null : 1,
+                  overflow: wrapSublabel ? null : TextOverflow.ellipsis,
                   style: TextStyle(
                     fontFamily: _mono,
                     fontSize: 9,
@@ -787,22 +1035,9 @@ class AtlasStatTile extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 2),
-          Text(
-            value,
-            maxLines: 1,
-            softWrap: false,
-            overflow: TextOverflow.fade,
-            style: TextStyle(
-              fontFamily: _mono,
-              fontSize: 20,
-              height: 1.4,
-              fontWeight: FontWeight.w700,
-              fontFeatures: const [FontFeature.tabularFigures()],
-              color: c.bright,
-            ),
-          ),
+          _value(c),
           const Spacer(),
-          const SizedBox(height: 6),
+          if (graph == null) const SizedBox(height: 6),
           chart,
         ],
       ),

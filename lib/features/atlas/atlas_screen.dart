@@ -2,12 +2,16 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../core/account.dart';
 import '../../core/api.dart';
+import '../../core/features.dart';
 import '../../core/json.dart';
 import '../../core/preferences.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
+import '../account/profile_screen.dart';
 import 'atlas.dart';
+import 'atlas_alerts.dart';
 import 'atlas_card.dart';
 import 'atlas_grid.dart';
 import 'atlas_store.dart';
@@ -38,10 +42,15 @@ class AtlasScreen extends StatefulWidget {
     required this.api,
     required this.preferences,
     required this.onOpen,
+    this.store,
     this.clock = DateTime.now,
   });
   final ApiClient api;
   final Preferences preferences;
+
+  /// The server's shared store, so Settings and this screen see one Atlas.
+  /// Without it the screen keeps its own, local only.
+  final AtlasStore? store;
   final void Function(String kind, String id) onOpen;
   final DateTime Function() clock;
   @override
@@ -54,10 +63,29 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
   final search = TextEditingController();
   Timer? debounce;
   String field = 'name', typed = '';
-  // One card at a time is away from the view it opens on.
-  ({String key, AtlasView view})? open;
+  // Each card keeps the view picked this session; only the pin saves it as where the card opens.
+  final open = <String, AtlasView>{};
   bool resumed = true;
   late int now = widget.clock().millisecondsSinceEpoch;
+
+  /// The server's card cap, from /info.
+  int limit = atlasLimitFallback;
+
+  /// Null until /info answers; the bell waits for it.
+  ServerFeatures? features;
+
+  /// The account and pins the alerts were last asked for.
+  String? _alertsFor;
+
+  /// Not under another route, as of the last build.
+  bool _current = true;
+
+  /// A refresh came due while hidden; it runs when the screen shows again.
+  bool _alertsDue = false;
+
+  /// The account whose alerts the bells show; null without accounts.
+  AccountState? get account => store.account;
+  bool get alertsOn => features?.alerts == true && account != null;
 
   int searchRun = 0;
   bool searching = false, searchFailed = false, hasMore = false;
@@ -66,32 +94,130 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
 
   SavedAtlas get saved => store.saved;
 
+  /// The range shown and fetched; the saved one is never rewritten for it.
+  AtlasRange get range => effectiveRange(saved.range, features?.atlas7d);
+
   @override
   void initState() {
     super.initState();
-    store = AtlasStore(widget.preferences, widget.preferences.active!.url)
-      ..addListener(changed);
+    store =
+        widget.store ??
+        AtlasStore(widget.preferences, widget.preferences.active!.url);
+    store.addListener(changed);
+    account?.alerts.addListener(_alertsChanged);
+    // Pick up what another device changed since the last visit.
+    unawaited(store.sync());
+    unawaited(
+      widget.api.features().then((f) {
+        if (!mounted) return;
+        setState(() {
+          limit = f.atlasLimit;
+          features = f;
+        });
+        _loadAlerts();
+      }, onError: (_) {}),
+    );
     ticker = Timer.periodic(atlasRefresh, (_) {
-      if (mounted) {
-        setState(() => now = widget.clock().millisecondsSinceEpoch);
-      }
+      if (!mounted) return;
+      setState(() => now = widget.clock().millisecondsSinceEpoch);
+      _refreshAlerts();
     });
     WidgetsBinding.instance.addObserver(this);
   }
 
   void changed() {
     if (!mounted) return;
-    // An import replaced the cards, so no card is away from its home view.
-    if (open != null && !saved.pins.any((pin) => pin.key == open!.key)) {
-      open = null;
-    }
+    // An import replaced the cards, so views of cards that are gone go too.
+    open.removeWhere((key, _) => !saved.pins.any((pin) => pin.key == key));
     setState(() {});
+    _loadAlerts();
+  }
+
+  void _alertsChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// One load for every card, again when the account or the pins change. It
+  /// waits for the Atlas to save, as the server lists a target per saved pin.
+  void _loadAlerts() {
+    final account = this.account;
+    if (!alertsOn || account == null || !account.signedIn) {
+      _alertsFor = null;
+      return;
+    }
+    final wanted = [
+      account.epoch,
+      for (final pin in saved.pins) pin.key,
+    ].join('/');
+    if (wanted == _alertsFor) return;
+    _alertsFor = wanted;
+    // A microtask later, so the store has started the sync this change needs.
+    unawaited(
+      Future.microtask(() => store.idle).then((_) {
+        // A newer change has its own wait; two would load the same thing twice.
+        if (mounted && _alertsFor == wanted) return account.alerts.load();
+      }),
+    );
+  }
+
+  /// Reads the rule states again, on the minute tick and on resume. Like the
+  /// cards it waits while the app is backgrounded or the screen is covered.
+  void _refreshAlerts() {
+    final account = this.account;
+    if (!alertsOn || account == null || !account.signedIn) return;
+    if (!resumed || !_current) {
+      _alertsDue = true;
+      return;
+    }
+    _alertsDue = false;
+    unawaited(account.alerts.load());
+  }
+
+  Json? _alertTarget(AtlasPin pin) {
+    final account = this.account;
+    if (account == null || !account.signedIn) return null;
+    return alertTargetFor(
+      pin,
+      account.alerts.targets,
+      observerKey: pin.isNode ? null : store.observerKey(pin.observerId!),
+    );
+  }
+
+  void _openAlerts(AtlasPin pin, String name) {
+    final account = this.account, features = this.features;
+    if (account == null || features == null) return;
+    showAtlasAlerts(
+      context,
+      account: account,
+      name: name,
+      unit: features.temperatureUnit,
+      portal: features.portal,
+      // By key, so the sheet follows the pin through a relink.
+      target: () {
+        final now = saved.pins.where((p) => p.key == pin.key).firstOrNull;
+        return _alertTarget(now ?? pin);
+      },
+      onProfile: () => Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => ProfileScreen(
+            account: account,
+            api: widget.api,
+            onOpen: widget.onOpen,
+            serverName: widget.preferences.active?.name ?? '',
+            showAlerts: true,
+          ),
+        ),
+      ),
+    );
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final next = state == AppLifecycleState.resumed;
-    if (next != resumed && mounted) setState(() => resumed = next);
+    if (next == resumed || !mounted) return;
+    setState(() => resumed = next);
+    // A rule may have fired or cleared while the app was away.
+    if (next) _refreshAlerts();
   }
 
   @override
@@ -100,16 +226,15 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
     ticker.cancel();
     debounce?.cancel();
     search.dispose();
-    store
-      ..removeListener(changed)
-      ..dispose();
+    store.removeListener(changed);
+    account?.alerts.removeListener(_alertsChanged);
+    if (widget.store == null) store.dispose();
     super.dispose();
   }
 
-  AtlasView viewOf(AtlasPin pin) =>
-      open?.key == pin.key ? open!.view : pin.homeView;
+  AtlasView viewOf(AtlasPin pin) => open[pin.key] ?? pin.homeView;
   void setView(AtlasPin pin, AtlasView view) => setState(
-    () => open = view == pin.homeView ? null : (key: pin.key, view: view),
+    () => view == pin.homeView ? open.remove(pin.key) : open[pin.key] = view,
   );
 
   void typing(String value) {
@@ -190,10 +315,13 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
       addFailed = false;
     });
     final id = textOf(row['id']), name = textOf(row['displayName']);
+    final epoch = store.epoch;
     try {
       final observer = object(await widget.api.getCached('/observers/$id'));
       final match = await resolveObserverNode(widget.api, observer);
       if (!mounted) return;
+      // Another account signed in while the lookup ran: it is not theirs to add.
+      if (!store.sameAccount(epoch)) return setState(() => adding = false);
       if (match == null) {
         store.update(
           (value) =>
@@ -232,15 +360,18 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
     }
   }
 
-  void replace(AtlasPin pin, AtlasPin Function(AtlasPin) change) =>
-      store.update(
-        (value) => value.copyWith(
-          pins: [
-            for (final other in value.pins)
-              other.key == pin.key ? change(other) : other,
-          ],
-        ),
-      );
+  void replace(
+    AtlasPin pin,
+    AtlasPin Function(AtlasPin) change, {
+    bool relink = false,
+  }) => (relink ? store.relink : store.update)(
+    (value) => value.copyWith(
+      pins: [
+        for (final other in value.pins)
+          other.key == pin.key ? change(other) : other,
+      ],
+    ),
+  );
 
   void remove(AtlasPin pin) => store.update(
     (value) => value.copyWith(
@@ -253,13 +384,13 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
 
   void pinView(AtlasPin pin, AtlasView view) {
     replace(pin, (other) => other.isNode ? other.withView(view) : other);
-    if (open?.key == pin.key) setState(() => open = null);
+    if (open.containsKey(pin.key)) setState(() => open.remove(pin.key));
   }
 
   // An observer pin whose key now resolves to a node takes that node's place
   // in its own slot, and keeps opening on the Observer view it had.
   void upgrade(AtlasPin pin, Json match, String observerId) =>
-      store.update((value) {
+      store.relink((value) {
         final key = textOf(match['publicKey']).toLowerCase();
         final tiles = value.pins
             .where((other) => other.key == pin.key)
@@ -279,6 +410,7 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
                           name: other.name,
                           observerId: observerId,
                           tiles: other.tiles ?? tiles,
+                          telemetryTiles: other.telemetryTiles,
                           view: other.view,
                         )
                       : other,
@@ -315,9 +447,15 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final c = BeaconColors.of(context);
-    final full = saved.pins.length >= atlasLimit;
+    final full = saved.pins.length >= limit;
     // A detail screen pushed over the tab pauses the polling, as leaving the tab does.
-    final active = resumed && (ModalRoute.of(context)?.isCurrent ?? true);
+    _current = ModalRoute.of(context)?.isCurrent ?? true;
+    final active = resumed && _current;
+    if (active && _alertsDue) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _alertsDue) _refreshAlerts();
+      });
+    }
     final hint = field == 'observer'
         ? (typed.isNotEmpty && typed.length < _searchMin
               ? 'searchTooShort'
@@ -343,7 +481,7 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
               ),
               const SizedBox(width: 6),
               Tooltip(
-                message: at('localOnly'),
+                message: at(store.signedIn ? 'syncedToAccount' : 'localOnly'),
                 triggerMode: TooltipTriggerMode.tap,
                 child: Container(
                   padding: const EdgeInsets.symmetric(
@@ -360,7 +498,7 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
                   child: Text(
                     at(
                       'savedCountShort',
-                      args: {'count': saved.pins.length, 'limit': atlasLimit},
+                      args: {'count': saved.pins.length, 'limit': limit},
                     ),
                     style: atlasMono(11, full ? c.warning : c.muted),
                   ),
@@ -369,12 +507,15 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
               const SizedBox(width: 8),
               AtlasSegmented<AtlasRange>(
                 label: at('range'),
-                value: saved.range,
+                value: range,
                 onChanged: (range) =>
                     store.update((value) => value.copyWith(range: range)),
                 options: {
-                  for (final range in AtlasRange.values)
-                    range: at('ranges.${range.id}'),
+                  for (final option in AtlasRange.values)
+                    if (option != AtlasRange.week ||
+                        features?.atlas7d == true ||
+                        range == AtlasRange.week)
+                      option: atlasRangeLabel(option),
                 },
               ),
             ],
@@ -389,6 +530,22 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    if (store.notice case final notice?)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 14),
+                        child: Text(switch (notice.kind) {
+                          AtlasNoticeKind.conflict => at('conflict'),
+                          AtlasNoticeKind.overflow => at(
+                            'overflow',
+                            count: notice.count,
+                          ),
+                          AtlasNoticeKind.failed => at('syncFailed'),
+                          AtlasNoticeKind.overLimit => trKey(
+                            'atlasLimits.overLimit',
+                            count: notice.limit,
+                          ).replaceAll('{{remove}}', '${notice.count}'),
+                        }, style: atlasMono(11, c.warning)),
+                      ),
                     if (store.storageFailed)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 14),
@@ -410,7 +567,7 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
                         title: at('emptyTitle'),
                         subtitle: at(
                           'emptyDescription',
-                          args: {'limit': atlasLimit},
+                          args: {'limit': limit},
                         ),
                       )
                     else
@@ -419,10 +576,16 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
                         onReorder: reorder,
                         itemBuilder: (context, index, handle) {
                           final pin = saved.pins[index];
+                          final counts = alertCounts(_alertTarget(pin));
                           return AtlasCard(
+                            onAlerts: alertsOn
+                                ? (name) => _openAlerts(pin, name)
+                                : null,
+                            alertsOn: counts.on,
+                            alertsFiring: counts.firing,
                             api: widget.api,
                             pin: pin,
-                            range: saved.range,
+                            range: range,
                             active: active,
                             now: now,
                             view: viewOf(pin),
@@ -434,11 +597,18 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
                               (other) => other.isNode
                                   ? other.relinked(id, observerId)
                                   : other,
+                              relink: true,
                             ),
                             onUpgrade: (match, observerId) =>
                                 upgrade(pin, match, observerId),
                             onTilesChange: (tiles) =>
                                 replace(pin, (other) => other.withTiles(tiles)),
+                            onTelemetryTilesChange: (tiles) => replace(
+                              pin,
+                              (other) => other.isNode
+                                  ? other.withTelemetryTiles(tiles)
+                                  : other,
+                            ),
                             onOpen: widget.onOpen,
                             handle: handle,
                           );
@@ -530,6 +700,7 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
               if (textOf(node['nodeTypeName']).isNotEmpty)
                 AtlasBadge(textOf(node['nodeTypeName'])),
               if (node['isObserver'] == true) AtlasBadge(at('observerBadge')),
+              if (node['isPoller'] == true) AtlasBadge(at('pollerBadge')),
               Tooltip(
                 message: textOf(node['publicKey']),
                 triggerMode: TooltipTriggerMode.tap,
@@ -590,10 +761,7 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
         if (hasMore && hint == null)
           note(at('refine', args: {'limit': _searchLimit})),
         if (full && hint == null)
-          note(
-            at('limitReached', args: {'limit': atlasLimit}),
-            color: c.warning,
-          ),
+          note(at('limitReached', args: {'limit': limit}), color: c.warning),
       ],
     );
   }

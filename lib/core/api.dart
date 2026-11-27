@@ -6,13 +6,26 @@ import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
+import 'features.dart';
 import 'json.dart';
 
 class ApiException implements Exception {
-  const ApiException(this.message, {this.status, this.retryAfter});
+  const ApiException(
+    this.message, {
+    this.status,
+    this.retryAfter,
+    this.code,
+    this.body,
+  });
   final String message;
   final int? status;
   final Duration? retryAfter;
+
+  /// The server's `error.code`, set by [AuthApi] so screens can branch on it.
+  final String? code;
+
+  /// The decoded error response, set by [AuthApi] for answers that carry data.
+  final Map<String, dynamic>? body;
   @override
   String toString() => message;
 }
@@ -79,34 +92,64 @@ Future<T?> withPageCursorFallback<T>(
   }
 }
 
-/// Reads a GET body, giving up once it passes [maxBytes] so a hostile
-/// server can't exhaust memory.
+/// Reads a GET body with the same size and lifetime bounds as account calls.
 Future<http.Response> getLimited(
   http.Client client,
   Uri url,
-  int maxBytes,
-) async {
+  int maxBytes, {
+  Duration timeout = const Duration(seconds: 25),
+}) => requestLimited(client, 'GET', url, maxBytes, timeout: timeout);
+
+/// Bounds the whole exchange, including a stalled body. Aborting only this
+/// request leaves other screens' requests on the shared client alone.
+Future<http.Response> requestLimited(
+  http.Client client,
+  String method,
+  Uri url,
+  int maxBytes, {
+  Map<String, String> headers = const {},
+  String? body,
+  Duration timeout = const Duration(seconds: 25),
+}) {
   // Keep dart:io's "Dart/" UA: the analyzer's scrape block lets it in.
-  final request = http.Request('GET', url);
-  final response = await client.send(request);
-  const tooLarge = ApiException('Server response is too large.');
-  if ((response.contentLength ?? 0) > maxBytes) {
-    unawaited(response.stream.listen(null).cancel());
-    throw tooLarge;
+  final abort = Completer<void>();
+  final request = http.AbortableRequest(
+    method,
+    url,
+    abortTrigger: abort.future,
+  );
+  request.headers.addAll(headers);
+  if (body != null) request.body = body;
+  Future<http.Response> exchange() async {
+    final response = await client.send(request);
+    const tooLarge = ApiException('Server response is too large.');
+    if ((response.contentLength ?? 0) > maxBytes) {
+      unawaited(response.stream.listen(null).cancel());
+      throw tooLarge;
+    }
+    final bytes = BytesBuilder(copy: false);
+    await for (final chunk in response.stream) {
+      bytes.add(chunk);
+      if (bytes.length > maxBytes) throw tooLarge;
+    }
+    return http.Response.bytes(
+      bytes.takeBytes(),
+      response.statusCode,
+      request: request,
+      headers: response.headers,
+      isRedirect: response.isRedirect,
+      persistentConnection: response.persistentConnection,
+      reasonPhrase: response.reasonPhrase,
+    );
   }
-  final bytes = BytesBuilder(copy: false);
-  await for (final chunk in response.stream) {
-    bytes.add(chunk);
-    if (bytes.length > maxBytes) throw tooLarge;
-  }
-  return http.Response.bytes(
-    bytes.takeBytes(),
-    response.statusCode,
-    request: request,
-    headers: response.headers,
-    isRedirect: response.isRedirect,
-    persistentConnection: response.persistentConnection,
-    reasonPhrase: response.reasonPhrase,
+
+  // The abort only reaches a connected request, so the wait ends here too.
+  return exchange().timeout(
+    timeout,
+    onTimeout: () {
+      abort.complete();
+      throw TimeoutException('The server took too long to respond.', timeout);
+    },
   );
 }
 
@@ -150,14 +193,16 @@ class ApiClient {
   }
 
   bool _reference(String path) =>
-      {'/iatas', '/regions', '/scopes', '/brokers'}.contains(path) ||
+      {'/iatas', '/regions', '/scopes', '/brokers', '/info'}.contains(path) ||
       RegExp(r'^/iatas/[^/]+/border$').hasMatch(path);
+
+  static const _referenceTtl = Duration(minutes: 5);
 
   Duration _ttl(String path, Map<String, dynamic> params) {
     if (path.endsWith('/border')) return const Duration(hours: 1);
-    if (_reference(path)) return const Duration(minutes: 5);
+    if (_reference(path)) return _referenceTtl;
     if (path == '/nodes' && '${params['neighbors']}' == 'true') {
-      return const Duration(minutes: 5);
+      return _referenceTtl;
     }
     return const Duration(seconds: 30);
   }
@@ -230,11 +275,14 @@ class ApiClient {
     while (_cache.length > 256 || _cacheBytes > 8 * 1024 * 1024) {
       final evicted = _cache.keys.first;
       _cacheBytes -= _cache.remove(evicted)!.body.length;
-      _cacheTokens.remove(evicted);
+      // Body eviction must not lose the policy owner of a valid shared read.
+      if (!_pending.containsKey(evicted)) _cacheTokens.remove(evicted);
     }
   }
 
   void invalidateCache({String? prefix}) {
+    _features = null;
+    _featuresUntil = null;
     bool matches(String key) {
       final path = Uri.parse(key).path;
       final target = prefix == null ? null : uri(prefix).path;
@@ -328,6 +376,12 @@ class ApiClient {
     if (!found) {
       invalidateCache(prefix: path);
     } else {
+      // Retire in-flight reads of this list, including first loads without a cached
+      // snapshot. Existing callers may finish; new readers must not join them.
+      final listPath = uri(path).path;
+      bool isListRead(String key) => Uri.parse(key).path == listPath;
+      _cacheTokens.removeWhere((key, _) => isListRead(key));
+      _pending.removeWhere((key, _) => isListRead(key));
       invalidateCache(prefix: '$path/$id');
     }
   }
@@ -373,18 +427,21 @@ class ApiClient {
       );
     }
     try {
+      final cacheKey = _key(path, params);
+      final cacheToken = _cacheTokens[cacheKey];
       final response = await getLimited(
         _client,
         uri(path, params),
         maxResponseBytes,
-      ).timeout(const Duration(seconds: 25));
+      );
       if (_closed) throw const ApiException('Connection changed.');
       if ((response.headers['cache-control'] ?? '').toLowerCase().contains(
-        'no-store',
-      )) {
-        final key = _key(path, params);
-        _cacheBytes -= _cache.remove(key)?.body.length ?? 0;
-        _cacheTokens.remove(key);
+            'no-store',
+          ) &&
+          identical(cacheToken, _cacheTokens[cacheKey])) {
+        _cacheBytes -= _cache.remove(cacheKey)?.body.length ?? 0;
+        _cacheTokens.remove(cacheKey);
+        unawaited(_pending.remove(cacheKey));
       }
       if (response.statusCode == 204) return null;
       dynamic body;
@@ -453,6 +510,51 @@ class ApiClient {
     if (seconds == null) return unparsable;
     return Duration(seconds: seconds.clamp(1, 300));
   }
+
+  /// Server feature flags from /info; all off on any failure so nothing new shows.
+  /// A success lasts like other reference data, a 404 (no flags on this server) the
+  /// client's life, any other failure a minute; invalidateCache() clears it.
+  Future<ServerFeatures> features() {
+    final until = _featuresUntil;
+    if (_features == null || (until != null && !_now().isBefore(until))) {
+      _featuresUntil = null;
+      _features = _readFeatures();
+    }
+    return _features!;
+  }
+
+  Future<ServerFeatures>? _features;
+  DateTime? _featuresUntil;
+
+  Future<ServerFeatures> _readFeatures() async {
+    try {
+      final f = ServerFeatures.fromInfo(object(await getCached('/info')));
+      _featuresUntil = _now().add(_referenceTtl);
+      return f;
+    } catch (e) {
+      if (!(e is ApiException && e.status == 404)) {
+        _featuresUntil = _now().add(const Duration(seconds: 60));
+      }
+      return const ServerFeatures.off();
+    }
+  }
+
+  /// Polled readings for a repeater or room server; the server picks the bucket
+  /// size from [range] (24h, 168h or 720h).
+  Future<Json> nodeTelemetry(String id, {String range = '168h'}) async =>
+      object(
+        await getCached('/nodes/${Uri.encodeComponent(id)}/telemetry', {
+          'range': range,
+          'interval': switch (range) {
+            '24h' => '1h',
+            '720h' => '24h',
+            _ => '6h',
+          },
+        }),
+      );
+
+  Future<Json> nodePolling(String id) async =>
+      object(await getCached('/nodes/${Uri.encodeComponent(id)}/polling'));
 
   /// A short-lived ticket that lets this app open /ws on servers requiring an Origin.
   Future<String> wsTicket() async =>

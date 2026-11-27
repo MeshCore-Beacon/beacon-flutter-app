@@ -26,6 +26,24 @@ void main() {
       expect(link.queryParameters['node_type'], 'repeater');
     },
   );
+  test('map links carry the selected poller filter in both directions', () {
+    Uri link(bool pollers) => mapShareUri(
+      Uri.parse('https://example.org'),
+      {},
+      lat: 1,
+      lng: 2,
+      zoom: 3,
+      style: 'dark',
+      nodeType: '',
+      pollersOnly: pollers,
+      cluster: true,
+      neighbors: 'selected',
+      borders: false,
+      flow: false,
+    );
+    expect(link(true).queryParameters['pollers'], '1');
+    expect(link(false).queryParameters['pollers'], '0');
+  });
   test(
     'rejects reset and invalid coordinates but preserves single zero axes',
     () {
@@ -322,4 +340,52 @@ void main() {
       expect(neighborMode('off', live: true), 'off');
     },
   );
+  test('node features carry a telemetry label on the matching node only', () {
+    final nodes = <Map<String, dynamic>>[
+      {'id': 'a', 'lat': 43, 'lng': -79},
+      {'id': 'b', 'lat': 44, 'lng': -80},
+    ];
+    final f = nodeFeatures(
+      nodes,
+      labels: {'a': (text: '4.08V  1°  38m', old: true)},
+    )['features'];
+    expect(f[0]['properties']['telemetry'], '4.08V  1°  38m');
+    expect(f[0]['properties']['telemetryOld'], true);
+    expect(f[1]['properties'].containsKey('telemetry'), false);
+    expect(f[1]['properties'].containsKey('telemetryOld'), false);
+  });
+  test('node features carry isPoller, false when the server omits it', () {
+    final f = nodeFeatures([
+      {'id': 'a', 'lat': 43, 'lng': -79, 'isPoller': true},
+      {'id': 'b', 'lat': 44, 'lng': -80},
+    ])['features'];
+    expect(f[0]['properties']['isPoller'], true);
+    expect(f[1]['properties']['isPoller'], false);
+  });
+  test('pollersOnly keeps poller nodes and still applies the type filter', () {
+    final nodes = <Map<String, dynamic>>[
+      {
+        'id': 'rp',
+        'nodeTypeName': 'repeater',
+        'isPoller': true,
+        'lat': 43,
+        'lng': -79,
+      },
+      {'id': 'r', 'nodeTypeName': 'repeater', 'lat': 44, 'lng': -80},
+      {
+        'id': 'cp',
+        'nodeTypeName': 'companion',
+        'isPoller': true,
+        'lat': 45,
+        'lng': -81,
+      },
+    ];
+    List ids(Map<String, dynamic> fc) =>
+        (fc['features'] as List).map((f) => f['id']).toList();
+    expect(ids(nodeFeatures(nodes, pollersOnly: true)), ['rp', 'cp']);
+    expect(ids(nodeFeatures(nodes, type: 'repeater', pollersOnly: true)), [
+      'rp',
+    ]);
+    expect(ids(nodeFeatures(nodes)), ['rp', 'r', 'cp']);
+  });
 }

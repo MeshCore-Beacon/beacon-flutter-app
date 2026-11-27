@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/json.dart';
+import '../../core/sheet.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
 
@@ -207,20 +208,10 @@ class ObserverInfo extends StatelessWidget {
                     children: [
                       Expanded(
                         child: InkWell(
-                          onTap: () => showDialog<void>(
-                            context: context,
-                            builder: (context) => AlertDialog(
-                              title: Text(tr('Public key')),
-                              content: SingleChildScrollView(
-                                child: SelectableText(key),
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(context),
-                                  child: Text(tr('Close')),
-                                ),
-                              ],
-                            ),
+                          onTap: () => showValueSheet(
+                            context,
+                            title: tr('Public key'),
+                            value: key,
                           ),
                           child: Text(
                             key.length > 18

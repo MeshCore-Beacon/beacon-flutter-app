@@ -6,18 +6,25 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'core/account.dart';
 import 'core/api.dart';
+import 'core/auth_api.dart';
 import 'core/instance.dart';
 import 'core/json.dart';
 import 'core/live.dart';
 import 'core/preferences.dart';
+import 'core/push.dart';
 import 'core/region_selection.dart';
 import 'core/runtime_config.dart';
+import 'core/sheet.dart';
 import 'core/strings.dart';
 import 'core/theme.dart';
+import 'core/token_store.dart';
 import 'core/version_gate.dart';
+import 'features/account/sign_in.dart';
 import 'features/analytics/analytics_screen.dart';
 import 'features/atlas/atlas_screen.dart';
+import 'features/atlas/atlas_store.dart';
 import 'features/directory/directory.dart';
 import 'features/map/map_screen.dart';
 import 'features/packets/packet_detail.dart';
@@ -31,14 +38,38 @@ class BeaconApp extends StatefulWidget {
     this.connectLive = true,
     this.apiFactory,
     this.versionGate,
+    this.signInFlow,
+    this.linkSource,
+    this.tokens,
+    this.accounts,
+    this.authFactory,
+    this.push,
   });
   final Preferences preferences;
   final bool connectLive;
   final ApiClient Function(Uri)? apiFactory;
 
+  /// App-wide push state; null leaves push off, as in tests.
+  final PushHub? push;
+
   /// Minimum-app-version checks. Defaults to one that reads `/api/v1/info`
   /// through [apiFactory].
   final VersionGate? versionGate;
+
+  /// Browser sign-in. Null leaves it off, as in tests.
+  final SignInFlow? signInFlow;
+
+  /// Where callback links come from; needed with [signInFlow] to receive any.
+  final LinkSource? linkSource;
+
+  /// Where sign-in tokens live; memory only when null, as in tests.
+  final TokenStore? tokens;
+
+  /// Shared with the sign-in flow so a new sign-in reaches the open account.
+  final AccountRegistry? accounts;
+
+  /// Builds the signed-in client for a server URL; tests swap in a mock.
+  final AuthApi Function(String url, TokenStore tokens)? authFactory;
   @override
   State<BeaconApp> createState() => _BeaconAppState();
 }
@@ -48,13 +79,33 @@ class _BeaconAppState extends State<BeaconApp> with WidgetsBindingObserver {
   late final VersionGate gate =
       widget.versionGate ??
       VersionGate(fetchInfo: VersionGate.apiFetcher(widget.apiFactory));
+  late final TokenStore tokens = widget.tokens ?? MemoryTokenStore();
+  late final AccountRegistry accounts = widget.accounts ?? AccountRegistry();
   String? active;
   GateStatus? shown;
+  SignInLinks? _signInLinks;
   @override
   void initState() {
     super.initState();
+    final flow = widget.signInFlow;
+    final source = widget.linkSource;
+    // Here, not in a screen, so a callback is caught whichever one is open.
+    if (flow != null && source != null) {
+      _signInLinks = SignInLinks(flow, source);
+      unawaited(_signInLinks!.listen());
+    }
     active = widget.preferences.active?.url;
     widget.preferences.addListener(changed);
+    if (widget.push case final hub?) {
+      hub.activeUrl = () => widget.preferences.active?.url;
+      hub.selectServer = widget.preferences.selectServer;
+      // Before the token goes, while it still authorizes the device removal.
+      widget.preferences.beforeRemove = (url) => hub.forget(
+        url,
+        widget.authFactory?.call(url, tokens) ?? AuthApi(url, tokens),
+      );
+      unawaited(hub.start());
+    }
     final server = widget.preferences.active;
     if (server != null) gate.check(server);
     gate.addListener(gateChanged);
@@ -111,6 +162,7 @@ class _BeaconAppState extends State<BeaconApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     widget.preferences.removeListener(changed);
     gate.removeListener(gateChanged);
+    unawaited(_signInLinks?.dispose());
     if (widget.versionGate == null) gate.dispose();
     super.dispose();
   }
@@ -139,6 +191,10 @@ class _BeaconAppState extends State<BeaconApp> with WidgetsBindingObserver {
         preferences: widget.preferences,
         connectLive: widget.connectLive,
         apiFactory: widget.apiFactory,
+        tokens: tokens,
+        accounts: accounts,
+        authFactory: widget.authFactory,
+        push: widget.push,
       ),
     };
   }
@@ -146,7 +202,7 @@ class _BeaconAppState extends State<BeaconApp> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     language = widget.preferences.language;
-    return VersionGateScope(
+    final app = VersionGateScope(
       gate: gate,
       child: MaterialApp(
         navigatorKey: navigator,
@@ -159,28 +215,25 @@ class _BeaconAppState extends State<BeaconApp> with WidgetsBindingObserver {
         home: home(),
       ),
     );
+    final flow = widget.signInFlow;
+    return flow == null ? app : SignInScope(flow: flow, child: app);
   }
 }
 
 Future<void> showServerSwitcher(
   BuildContext context,
-  Preferences preferences,
-) async {
-  final manage = await showModalBottomSheet<bool>(
-    context: context,
-    useSafeArea: true,
-    builder: (context) => SafeArea(
-      top: false,
-      child: ListView(
-        shrinkWrap: true,
+  Preferences preferences, {
+  AccountState? account,
+  ApiClient? api,
+  AtlasStore? atlas,
+  void Function(String, String)? onOpen,
+}) async {
+  final manage = await showBeaconSheet<bool>(
+    context,
+    builder: (context) => BeaconSheet(
+      title: tr('Servers'),
+      child: BeaconSheetRows(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Text(
-              tr('Servers'),
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-          ),
           for (final s in preferences.servers)
             ListTile(
               selected: s.url == preferences.active?.url,
@@ -210,7 +263,15 @@ Future<void> showServerSwitcher(
   if (manage == true && context.mounted) {
     await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => SettingsPage(preferences: preferences)),
+      MaterialPageRoute(
+        builder: (_) => SettingsPage(
+          preferences: preferences,
+          account: account,
+          api: api,
+          atlas: atlas,
+          onOpen: onOpen,
+        ),
+      ),
     );
   }
 }
@@ -418,16 +479,29 @@ class BeaconHome extends StatefulWidget {
     required this.preferences,
     this.connectLive = true,
     this.apiFactory,
+    required this.tokens,
+    required this.accounts,
+    this.authFactory,
+    this.push,
   });
+  final PushHub? push;
   final Preferences preferences;
   final bool connectLive;
   final ApiClient Function(Uri)? apiFactory;
+  final TokenStore tokens;
+  final AccountRegistry accounts;
+  final AuthApi Function(String url, TokenStore tokens)? authFactory;
   @override
   State<BeaconHome> createState() => _BeaconHomeState();
 }
 
 class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
   late final ApiClient api;
+  late final AccountState account;
+  PushRegistration? pushRegistration;
+
+  // One store for this server, so the Atlas tab and Settings share it.
+  late final AtlasStore atlas;
   late LiveConnection live;
   StreamSubscription<Json>? liveEvents;
   late Map<String, dynamic> region;
@@ -440,6 +514,30 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
     super.initState();
     final instance = widget.preferences.active!;
     api = widget.apiFactory?.call(instance.base) ?? ApiClient(instance.base);
+    account = AccountState(
+      widget.authFactory?.call(instance.url, widget.tokens) ??
+          AuthApi(instance.url, widget.tokens),
+    );
+    widget.accounts.register(instance.url, account);
+    account.addListener(_rememberAccountName);
+    if (widget.push case final hub?) {
+      pushRegistration = PushRegistration(
+        hub: hub,
+        account: account,
+        features: api.features,
+        serverUrl: instance.url,
+        serverName: () =>
+            widget.preferences.servers
+                .where((s) => s.url == instance.url)
+                .firstOrNull
+                ?.name ??
+            instance.name,
+      );
+      account.push = pushRegistration;
+      hub.attach(instance.url, _pushTapped);
+    }
+    atlas = AtlasStore(widget.preferences, instance.url, account: account);
+    unawaited(account.refresh());
     region = widget.preferences.regionFor(instance.url);
     selection = RegionSelection.restore(
       widget.preferences.regionSelectionFor(instance.url),
@@ -450,6 +548,26 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
     if (widget.connectLive) live.start();
     WidgetsBinding.instance.addObserver(this);
     if (widget.connectLive) loadConfig();
+  }
+
+  bool _wasSignedIn = false;
+
+  /// Keeps the username for this server's row in Settings.
+  void _rememberAccountName() {
+    final url = account.api.base;
+    final user = account.user;
+    if (user != null) {
+      final username = textOf(user['username']);
+      unawaited(
+        widget.preferences.setAccountName(
+          url,
+          textOf(user['displayName'], username),
+        ),
+      );
+    } else if (_wasSignedIn) {
+      unawaited(widget.preferences.setAccountName(url, null));
+    }
+    _wasSignedIn = user != null;
   }
 
   Future<void> loadConfig() async {
@@ -468,6 +586,12 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
     liveEvents?.cancel();
     live.dispose();
     api.close();
+    widget.accounts.unregister(account.api.base, account);
+    account.removeListener(_rememberAccountName);
+    atlas.dispose();
+    widget.push?.detach(account.api.base, _pushTapped);
+    pushRegistration?.dispose();
+    account.dispose();
     super.dispose();
   }
 
@@ -493,7 +617,31 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
       );
       if (!mounted || result.status == GateStatus.blocked) return;
     }
+    unawaited(account.refresh());
     if (widget.connectLive) live.start();
+  }
+
+  // A tap that switched servers lands in initState, before the shell pops to root.
+  void _pushTapped(PushTarget t) => unawaited(
+    Future(() {
+      if (mounted) return openAlertTarget(t.kind, t.publicKey, t.id);
+    }),
+  );
+
+  /// A tapped alert carries the radio's id; without one it names the radio by
+  /// public key, and the detail routes take ids, which the Atlas holds. A cold
+  /// start waits for the Atlas to load first.
+  Future<void> openAlertTarget(
+    String kind,
+    String publicKey,
+    String? radioId,
+  ) async {
+    var id = radioId ?? atlas.idForRadio(kind, publicKey);
+    if (id == null) {
+      await atlas.idle.timeout(const Duration(seconds: 10), onTimeout: () {});
+      id = atlas.idForRadio(kind, publicKey);
+    }
+    if (id != null && mounted) open(kind == 'node' ? 'node' : 'observer', id);
   }
 
   void open(String kind, String id) {
@@ -527,6 +675,7 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
               onOpen: open,
               selectedNodeId: id,
               events: live.events,
+              flowEvents: live.resolvedEvents,
             ),
           )
         : EntityDetailScreen(
@@ -536,27 +685,36 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
             region: region,
             onOpen: open,
             events: live.events,
+            account: account,
           );
     Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
   }
 
-  Future<void> switcher() => showServerSwitcher(context, widget.preferences);
+  Future<void> switcher() => showServerSwitcher(
+    context,
+    widget.preferences,
+    account: account,
+    api: api,
+    atlas: atlas,
+    onOpen: open,
+  );
 
   void settings() => Navigator.push(
     context,
     MaterialPageRoute(
-      builder: (_) => SettingsPage(preferences: widget.preferences),
+      builder: (_) => SettingsPage(
+        preferences: widget.preferences,
+        account: account,
+        api: api,
+        atlas: atlas,
+        onOpen: open,
+      ),
     ),
   );
   Future<void> chooseRegion() async {
-    final picked = await showModalBottomSheet<(RegionSelection, Json)>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (_) => SafeArea(
-        top: false,
-        child: RegionSheet(api: api, initial: selection),
-      ),
+    final picked = await showBeaconSheet<(RegionSelection, Json)>(
+      context,
+      builder: (_) => RegionSheet(api: api, initial: selection),
     );
     if (!mounted || picked == null) return;
     await liveEvents?.cancel();
@@ -578,13 +736,11 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
     if (mounted) setState(() => revision++);
   }
 
-  void more() => showModalBottomSheet<void>(
-    context: context,
-    useSafeArea: true,
-    builder: (context) => SafeArea(
-      top: false,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+  void more() => showBeaconSheet<void>(
+    context,
+    builder: (context) => BeaconSheet(
+      title: tr('More'),
+      child: BeaconSheetRows(
         children: [
           for (final name in [
             'Observers',
@@ -616,7 +772,6 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
                 setState(() => tab = name);
               },
             ),
-          const SizedBox(height: 12),
         ],
       ),
     ),
@@ -632,11 +787,22 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
             events: live.events,
           )
         : tab == 'Map'
-        ? MapScreen(api: api, region: region, onOpen: open, events: live.events)
+        ? MapScreen(
+            api: api,
+            region: region,
+            onOpen: open,
+            events: live.events,
+            flowEvents: live.resolvedEvents,
+          )
         : tab == 'Analytics'
         ? AnalyticsScreen(api: api, region: region, onOpen: open)
         : tab == 'Atlas'
-        ? AtlasScreen(api: api, preferences: widget.preferences, onOpen: open)
+        ? AtlasScreen(
+            api: api,
+            preferences: widget.preferences,
+            store: atlas,
+            onOpen: open,
+          )
         : DirectoryScreen(
             kind: tab.toLowerCase(),
             api: api,
@@ -673,8 +839,11 @@ class _BeaconHomeState extends State<BeaconHome> with WidgetsBindingObserver {
                     colorFilter: ColorFilter.mode(primary, BlendMode.srcIn),
                   ),
                   const SizedBox(width: 6),
+                  // Fixed size like the logo, so a large system font can't
+                  // squeeze the region selector out of a portrait header.
                   const Text(
                     'BEACON',
+                    textScaler: TextScaler.noScaling,
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
@@ -1062,28 +1231,22 @@ class _RegionSheetState extends State<RegionSheet> {
       fontWeight: FontWeight.w600,
       color: palette.primary,
     );
-    return SizedBox(
-      height: MediaQuery.sizeOf(context).height * 0.75,
+    return BeaconSheet(
+      title: tr('Region'),
+      actions: [
+        TextButton(onPressed: loading ? null : done, child: Text(tr('Done'))),
+      ],
+      maxHeight: .75,
+      fill: true,
       child: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-            child: Row(
-              children: [
-                Text(
-                  tr('Region'),
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const Spacer(),
-                TextButton(
-                  onPressed: loading ? null : done,
-                  child: Text(tr('Done')),
-                ),
-              ],
+            padding: const EdgeInsets.fromLTRB(
+              BeaconSheet.gutter,
+              8,
+              BeaconSheet.gutter,
+              0,
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
             child: TextField(
               decoration: InputDecoration(
                 hintText: tr('Search region or area code…'),

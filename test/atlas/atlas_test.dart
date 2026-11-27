@@ -61,7 +61,76 @@ Map<String, dynamic> activityOf([Map<String, dynamic> extra = const {}]) => {
 };
 
 void main() {
+  SavedAtlas fullAtlas(String name) => SavedAtlas(
+    range: AtlasRange.threeDays,
+    pins: [
+      for (var i = 0; i < atlasLimitMax; i++)
+        AtlasPin.node(
+          id: nodeId,
+          publicKey: i.toRadixString(16).padLeft(64, '0'),
+          name: name,
+          observerId: observerId,
+          tiles: const ['snr', 'battery', 'queue', 'errors'],
+          telemetryTiles: const ['temperature', 'packets', 'signal', 'errors'],
+          view: AtlasView.telemetry,
+        ),
+    ],
+  );
+
   group('saved Atlas', () {
+    test(
+      'restores and appends the full configured Atlas without data loss',
+      () {
+        for (final name in ['N' * 160, '\u0000' * 160]) {
+          final saved = fullAtlas(name);
+          final raw = saved.encode();
+          expect(raw.length, greaterThan(32000));
+          expect(utf8.encode(raw).length, lessThan(atlasFileMaxBytes));
+          expect(parseAtlas(raw).toJson(), saved.toJson());
+          final before = saved.copyWith(pins: saved.pins.take(99).toList());
+          expect(before.appended(saved.pins.last).toJson(), saved.toJson());
+        }
+      },
+    );
+
+    test('the range round trips; an unknown one is a day', () {
+      for (final range in AtlasRange.values) {
+        final raw = SavedAtlas(range: range).encode();
+        expect(jsonDecode(raw)['range'], range.id);
+        expect(parseAtlas(raw).range, range);
+      }
+      expect(AtlasRange.week.id, '7d');
+      expect(AtlasRange.week.duration, '168h');
+      for (final bad in ['30d', '7D', 7, null]) {
+        final raw = jsonEncode({'version': 2, 'range': bad, 'pins': []});
+        expect(parseAtlas(raw).range, AtlasRange.day);
+      }
+    });
+
+    test('a saved week shows as three days only once the server says no', () {
+      expect(effectiveRange(AtlasRange.week, true), AtlasRange.week);
+      expect(effectiveRange(AtlasRange.week, false), AtlasRange.threeDays);
+      // Still loading: nothing is downgraded.
+      expect(effectiveRange(AtlasRange.week, null), AtlasRange.week);
+      for (final flag in [true, false, null]) {
+        expect(effectiveRange(AtlasRange.day, flag), AtlasRange.day);
+        expect(
+          effectiveRange(AtlasRange.threeDays, flag),
+          AtlasRange.threeDays,
+        );
+      }
+    });
+
+    test('still rejects persisted Atlas text over the bounded file budget', () {
+      final raw = jsonEncode({
+        'version': 2,
+        'pins': [nodePin],
+      });
+      final bounded = raw.padRight(atlasFileMaxBytes);
+      expect(parseAtlas(bounded).pins, hasLength(1));
+      expect(parseAtlas('$bounded ').pins, isEmpty);
+    });
+
     test(
       'restores ordered identities, normalizes keys, removes duplicates',
       () {
@@ -116,7 +185,8 @@ void main() {
           ],
         }),
       );
-      expect(result.pins, hasLength(atlasLimit));
+      // Loading keeps up to the highest cap; the screen enforces the server's.
+      expect(result.pins, hasLength(20));
       expect(result.range, AtlasRange.day);
     });
 
@@ -154,9 +224,9 @@ void main() {
         parse([
           observer(1),
           observer(1),
-          for (var i = 0; i < 14; i++) observer(i + 2),
+          for (var i = 0; i < atlasLimitMax + 5; i++) observer(i + 2),
         ]),
-        hasLength(atlasLimit),
+        hasLength(atlasLimitMax),
       );
     });
 
@@ -406,9 +476,34 @@ void main() {
         List.filled(72, 0),
       );
     });
+
+    test('a week is 168 hourly slots, newest last', () {
+      final slots = HourSlots(AtlasRange.week, tick);
+      expect(slots.hours, 168);
+      expect(slots.bin(tick), 167);
+      expect(slots.inWindow(tick - 167 * hourMs), isTrue);
+      expect(slots.inWindow(tick - 168 * hourMs), isFalse);
+      final sample = summarizeActivity(activityOf(), AtlasRange.week, tick);
+      expect(sample.counts, List.filled(168, 0));
+      expect(sample.snrHourly, hasLength(168));
+      expect(sample.present, hasLength(168));
+    });
   });
 
   group('Atlas export file', () {
+    test('round-trips 100 fully configured cards including escaped names', () {
+      for (final name in ['N' * 160, '\u0000' * 160]) {
+        final saved = fullAtlas(name);
+        final text = atlasFile(saved);
+        expect(utf8.encode(text).length, lessThan(atlasFileMaxBytes));
+        final read = readAtlasFile(text, limit: atlasLimitMax)!;
+        expect(read.skipped, 0);
+        expect(read.atlas.toJson(), saved.toJson());
+        expect(readAtlasFile(text)!.atlas.pins, hasLength(atlasLimitFallback));
+        expect(readAtlasFile('$text${' ' * atlasFileMaxBytes}'), isNull);
+      }
+    });
+
     final saved = parseAtlas(
       jsonEncode({
         'version': 2,

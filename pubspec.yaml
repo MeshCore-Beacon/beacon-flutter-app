@@ -3,7 +3,7 @@ description: "Native iOS and Android client for Beacon, the real-time MeshCore p
 # An app, not a package: never publish to pub.dev.
 publish_to: 'none'
 
-version: 2.2.0+2
+version: 2.3.0+2
 
 environment:
   sdk: ^3.13.4
@@ -18,11 +18,26 @@ dependencies:
   http: ^1.6.0
   shared_preferences: ^2.5.6
   maplibre_gl: ^0.28.0
-  fl_chart: ^1.3.0
+  fl_chart: ^1.3.1
   flutter_svg: ^2.3.2
   url_launcher: ^6.3.3
   package_info_plus: ^10.2.2
-  file_picker: ^13.3.3
+  file_picker: ^13.4.0
+  flutter_secure_storage: ^11.2.0
+  app_links: ^7.2.2
+  crypto: ^3.0.8
+  firebase_core: ^4.15.1
+  firebase_messaging: ^16.7.1
+  cryptography: ^2.9.0
+  flutter_local_notifications: ^22.3.3
+
+# Vendored without their iOS plugins so the iOS build carries no Firebase;
+# see third_party/README.md.
+dependency_overrides:
+  firebase_core:
+    path: third_party/firebase_core
+  firebase_messaging:
+    path: third_party/firebase_messaging
 
 dev_dependencies:
   flutter_test:

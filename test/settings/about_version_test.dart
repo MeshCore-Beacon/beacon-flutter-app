@@ -1,5 +1,6 @@
 import 'package:beacon/core/preferences.dart';
 import 'package:beacon/features/settings/settings_page.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -48,5 +49,30 @@ void main() {
       await aboutSubtitle(tester, () async => throw StateError('no info')),
       'Native MeshCore packet analyzer',
     );
+  });
+
+  Future<bool> showsKofi(WidgetTester tester, TargetPlatform platform) async {
+    debugDefaultTargetPlatformOverride = platform;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await Preferences.load();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SettingsPage(preferences: prefs, appVersion: () async => '1.0.0'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('Licenses'), 200);
+    final found = find.text('Support on Ko-fi').evaluate().isNotEmpty;
+    debugDefaultTargetPlatformOverride = null;
+    return found;
+  }
+
+  testWidgets('Ko-fi link shows on Android', (tester) async {
+    expect(await showsKofi(tester, TargetPlatform.android), isTrue);
+  });
+
+  testWidgets('Ko-fi link stays off iOS', (tester) async {
+    expect(await showsKofi(tester, TargetPlatform.iOS), isFalse);
   });
 }

@@ -4,10 +4,11 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../../core/api.dart';
+import '../../core/filter_sheet.dart';
 import '../../core/json.dart';
+import '../../core/sheet.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
-import 'filter_dropdown.dart';
 import 'packet_expansion.dart';
 import 'packet_model.dart';
 
@@ -291,98 +292,79 @@ class _PacketScreenState extends State<PacketScreen> {
       } catch (_) {}
     }
     if (!mounted) return;
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
+    await showBeaconSheet<void>(
+      context,
       builder: (context) => StatefulBuilder(
-        builder: (context, update) => SafeArea(
-          top: false,
-          child: SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        tr('Filters'),
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                      const Spacer(),
-                      TextButton(
-                        onPressed: () {
-                          update(() {
-                            types = {};
-                            routes = {};
-                            selectedScopes = {};
-                            selectedObservers = {};
-                            search.clear();
-                            mode = 'Hash';
-                          });
-                          searchDebounce?.cancel();
-                          hashPrefix = null;
-                          filtersChanged();
-                        },
-                        child: Text(tr('Clear all')),
-                      ),
-                    ],
-                  ),
-                  FilterDropdown<int>(
-                    label: 'Payload type',
-                    options: payloadNames,
-                    selected: types,
-                    onChanged: (value) {
-                      update(() => types = value);
-                      filtersChanged();
-                    },
-                  ),
-                  FilterDropdown<int>(
-                    label: 'Route type',
-                    options: const {
-                      0: 'TRANSPORT_FLOOD',
-                      1: 'FLOOD',
-                      2: 'DIRECT',
-                      3: 'TRANSPORT_DIRECT',
-                    },
-                    selected: routes,
-                    onChanged: (value) {
-                      update(() => routes = value);
-                      filtersChanged();
-                    },
-                  ),
-                  FilterDropdown<String>(
-                    label: 'Observers',
-                    options: Map.fromEntries(
-                      observerNames.entries.toList()
-                        ..sort((a, b) => a.value.compareTo(b.value)),
-                    ),
-                    selected: selectedObservers,
-                    onChanged: (value) {
-                      update(() => selectedObservers = value);
-                      setState(() {});
-                    },
-                  ),
-                  if (scopes.isNotEmpty)
-                    FilterDropdown<String>(
-                      label: 'Scope',
-                      options: {for (final name in scopes) name: name},
-                      selected: selectedScopes,
-                      onChanged: (value) {
-                        update(() => selectedScopes = value);
-                        filtersChanged();
-                      },
-                    ),
-                  const SizedBox(height: 20),
-                  FilledButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: Text(tr('Done')),
-                  ),
-                ],
+        builder: (context, update) => BeaconSheet(
+          title: tr('Filters'),
+          maxHeight: .9,
+          child: FilterSheetBody(
+            primaryLabel: 'Done',
+            onClear: () {
+              update(() {
+                types = {};
+                routes = {};
+                selectedScopes = {};
+                selectedObservers = {};
+                search.clear();
+                mode = 'Hash';
+              });
+              searchDebounce?.cancel();
+              hashPrefix = null;
+              filtersChanged();
+            },
+            onPrimary: () => Navigator.pop(context),
+            fields: [
+              FilterField<int>(
+                label: 'Payload type',
+                multi: true,
+                options: payloadNames,
+                selected: types,
+                onChanged: (value) {
+                  update(() => types = value);
+                  filtersChanged();
+                },
               ),
-            ),
+              FilterField<int>(
+                label: 'Route type',
+                multi: true,
+                options: const {
+                  0: 'TRANSPORT_FLOOD',
+                  1: 'FLOOD',
+                  2: 'DIRECT',
+                  3: 'TRANSPORT_DIRECT',
+                },
+                selected: routes,
+                onChanged: (value) {
+                  update(() => routes = value);
+                  filtersChanged();
+                },
+              ),
+              FilterField<String>(
+                label: 'Observers',
+                multi: true,
+                options: Map.fromEntries(
+                  observerNames.entries.toList()
+                    ..sort((a, b) => a.value.compareTo(b.value)),
+                ),
+                selected: selectedObservers,
+                onChanged: (value) {
+                  update(() => selectedObservers = value);
+                  setState(() {});
+                },
+              ),
+              if (scopes.isNotEmpty)
+                FilterField<String>(
+                  label: 'Scope',
+                  multi: true,
+                  options: {for (final name in scopes) name: name},
+                  selected: selectedScopes,
+                  onChanged: (value) {
+                    update(() => selectedScopes = value);
+                    filtersChanged();
+                  },
+                ),
+            ],
           ),
         ),
       ),

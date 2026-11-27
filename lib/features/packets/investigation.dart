@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../core/json.dart';
 import '../../core/strings.dart';
+import '../../core/theme.dart';
+import '../directory/directory_widgets.dart'
+    show sectionDecoration, sectionTitle;
 import '../map/map_data.dart';
 import '../map/packet_path_screen.dart';
 import 'path_hop.dart';
@@ -87,26 +90,42 @@ class _PacketInvestigationState extends State<PacketInvestigation> {
         .map((p) => textOf(p['key']))
         .toSet();
     final trace = number(object(widget.detail['header'])['payloadType']) == 9;
+    final colors = BeaconColors.of(context);
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 7),
+      clipBehavior: Clip.antiAlias,
+      decoration: sectionDecoration(colors),
+      child: Material(
+        type: MaterialType.transparency,
+        child: _tile(context, colors, groups, observerCount, mapped, trace),
+      ),
+    );
+  }
+
+  Widget _tile(
+    BuildContext context,
+    BeaconColors colors,
+    List<ReportGroup> groups,
+    int observerCount,
+    Set<String> mapped,
+    bool trace,
+  ) {
     return ExpansionTile(
       key: const ValueKey('packet-investigation'),
-      tilePadding: const EdgeInsets.symmetric(horizontal: 14),
+      tilePadding: const EdgeInsets.symmetric(horizontal: 12),
       controlAffinity: ListTileControlAffinity.leading,
       shape: const Border(),
       collapsedShape: const Border(),
       expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
       initiallyExpanded: widget.initiallyExpanded,
-      title: Text(
-        tr('Observations').toUpperCase(),
-        style: const TextStyle(
-          fontFamily: 'JetBrainsMono',
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 1.1,
-        ),
-      ),
+      title: sectionTitle('Observations', colors),
       subtitle: Text(
         trKey('investigation.heardBy', count: observerCount),
-        style: const TextStyle(fontFamily: 'JetBrainsMono', fontSize: 11),
+        style: TextStyle(
+          fontFamily: 'JetBrainsMono',
+          fontSize: 11,
+          color: colors.muted,
+        ),
       ),
       children: [
         if (groups.isEmpty) Text(tr('No observations retained.')),
@@ -115,7 +134,7 @@ class _PacketInvestigationState extends State<PacketInvestigation> {
               group.reports.any((r) => textOf(r['id']) == widget.selectedId))
             ExpansionTile(
               key: ValueKey(group.key),
-              tilePadding: const EdgeInsets.symmetric(horizontal: 14),
+              tilePadding: const EdgeInsets.symmetric(horizontal: 12),
               dense: true,
               minTileHeight: 40,
               controlAffinity: ListTileControlAffinity.leading,
@@ -163,7 +182,7 @@ class _PacketInvestigationState extends State<PacketInvestigation> {
             ),
         if (groups.length > shown)
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
             child: Align(
               alignment: Alignment.centerLeft,
               child: OutlinedButton(
@@ -193,7 +212,7 @@ class _PacketInvestigationState extends State<PacketInvestigation> {
     return Container(
       key: ValueKey('report-${o['id']}'),
       width: double.infinity,
-      margin: const EdgeInsets.symmetric(vertical: 4),
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
         border: Border.all(
           color: selected
@@ -219,8 +238,9 @@ class _PacketInvestigationState extends State<PacketInvestigation> {
                 children: [
                   Text(age(o['heardAt'])),
                   Text(textOf(o['iata'])),
-                  Text('RSSI ${textOf(o['rssi'], '?')} dBm'),
-                  Text('SNR ${textOf(o['snr'], '?')} dB'),
+                  // No reading is a dash; 0 is a real reading.
+                  Text('RSSI ${o['rssi'] == null ? '-' : '${o['rssi']} dBm'}'),
+                  Text('SNR ${o['snr'] == null ? '-' : '${o['snr']} dB'}'),
                   Text(
                     trKey(
                       'routes.hops',

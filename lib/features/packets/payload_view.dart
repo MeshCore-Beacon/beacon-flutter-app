@@ -3,8 +3,10 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../../core/json.dart';
+import '../../core/sheet.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
+import 'packet_model.dart';
 import 'path_hop.dart';
 
 class PacketByteRange {
@@ -25,13 +27,12 @@ Map<String, PacketByteRange> computeFieldRanges(Json detail, Json observation) {
   final payload = object(detail['parsedPayload']);
   final transport = object(detail['transportCodes']);
   final rawPayload = textOf(detail['rawPayload']);
+  final pathBytes = observationWirePath(observation).length ~/ 2;
   final totalBytes =
       rawPayload.length ~/ 2 +
       1 +
       (transport.isEmpty ? 0 : 4) +
-      (observation.isEmpty
-          ? 0
-          : 1 + textOf(observation['pathBytes']).length ~/ 2);
+      (observation.isEmpty ? 0 : 1 + pathBytes);
   final ranges = <String, PacketByteRange>{
     'header': const PacketByteRange(0, 1),
   };
@@ -43,7 +44,6 @@ Map<String, PacketByteRange> computeFieldRanges(Json detail, Json observation) {
   if (observation.isNotEmpty) {
     ranges['pathLength'] = PacketByteRange(offset, offset + 1);
     offset++;
-    final pathBytes = textOf(observation['pathBytes']).length ~/ 2;
     if (pathBytes > 0) {
       ranges['pathData'] = PacketByteRange(offset, offset + pathBytes);
     }
@@ -132,6 +132,48 @@ Map<String, PacketByteRange> computeFieldRanges(Json detail, Json observation) {
     }
   }
   return ranges;
+}
+
+/// The colour of a frame field: its raw bytes and its decoded rows share it.
+Color packetFieldColor(BuildContext context, String? field) {
+  final scheme = Theme.of(context).colorScheme;
+  final palette = BeaconColors.of(context);
+  return switch (field) {
+    'header' ||
+    'pathData' ||
+    'signature' ||
+    'sourceHash' ||
+    'tracePath' => scheme.secondary,
+    'pathLength' ||
+    'channelHash' ||
+    'advertTimestamp' ||
+    'destinationHash' ||
+    'traceTag' => scheme.primary,
+    'transport' || 'cipherMac' || 'flags' || 'checksum' => palette.warning,
+    'publicKey' ||
+    'location' ||
+    'senderPublicKey' ||
+    'authCode' => palette.success,
+    'ciphertext' => scheme.error,
+    _ => scheme.onSurface.withValues(alpha: .7),
+  };
+}
+
+/// Marks decoded rows with the colour of the raw bytes they come from.
+class PacketFieldMark extends StatelessWidget {
+  const PacketFieldMark({super.key, required this.color, required this.child});
+  final Color color;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    margin: const EdgeInsets.symmetric(vertical: 5),
+    padding: const EdgeInsets.fromLTRB(8, 3, 0, 3),
+    decoration: BoxDecoration(
+      border: Border(left: BorderSide(color: color, width: 2)),
+    ),
+    child: child,
+  );
 }
 
 /// Typed packet payload details, including encrypted envelopes and endpoint links.
@@ -233,8 +275,9 @@ class PacketPayloadView extends StatelessWidget {
               : colors.onSurfaceVariant,
         ),
     ];
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+    final flagsColor = packetFieldColor(context, 'flags');
+    return PacketFieldMark(
+      color: flagsColor,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -243,7 +286,7 @@ class PacketPayloadView extends StatelessWidget {
             style: TextStyle(
               fontFamily: 'JetBrainsMono',
               fontSize: 11,
-              color: colors.onSurfaceVariant,
+              color: flagsColor,
             ),
           ),
           const SizedBox(height: 6),
@@ -342,19 +385,7 @@ class PacketPayloadView extends StatelessWidget {
   }
 
   void _showFullValue(BuildContext context, String title, String value) {
-    showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: SingleChildScrollView(child: SelectableText(value)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(tr('Close')),
-          ),
-        ],
-      ),
-    );
+    showValueSheet(context, title: title, value: value);
   }
 
   Widget _group(Json payload) {
@@ -396,8 +427,13 @@ class PacketPayloadView extends StatelessWidget {
     final destination = object(observation['resolvedDestination']);
     final decrypted = object(payload['decrypted']);
     return _fields([
-      _endpoint(tr('From'), payload['sourceHash'], source),
-      _endpoint(tr('To'), payload['destinationHash'], destination),
+      _endpoint(tr('From'), payload['sourceHash'], source, 'sourceHash'),
+      _endpoint(
+        tr('To'),
+        payload['destinationHash'],
+        destination,
+        'destinationHash',
+      ),
       _field('MAC', payload['cipherMac']),
       _field(tr('Ciphertext'), _hexValue(payload['ciphertext'])),
       if (payload['ciphertextLength'] != null)
@@ -464,6 +500,7 @@ class PacketPayloadView extends StatelessWidget {
           ? '0x${number(payload['destination'])!.toInt().toRadixString(16).padLeft(2, '0')}'
           : payload['destination'],
       object(observation['resolvedDestination']),
+      'destinationHash',
     ),
     _field('Ephemeral public key', payload['ephemeralPubKey']),
   ]);
@@ -486,26 +523,33 @@ class PacketPayloadView extends StatelessWidget {
       ),
       _field('Flags', payload['flags']),
       if (hashes.isNotEmpty)
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(tr('Trace path')),
-              Wrap(
-                spacing: 4,
-                children: [
-                  for (var i = 0; i < hashes.length; i++) ...[
-                    if (i > 0) const Text('→'),
-                    _resolvedHash(
-                      textOf(hashes[i]),
-                      i < route.length ? route[i] : const {},
-                      snr: i < snrs.length ? snrs[i] : null,
-                    ),
+        Builder(
+          builder: (context) => PacketFieldMark(
+            color: packetFieldColor(context, 'tracePath'),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  tr('Trace path'),
+                  style: TextStyle(
+                    color: packetFieldColor(context, 'tracePath'),
+                  ),
+                ),
+                Wrap(
+                  spacing: 4,
+                  children: [
+                    for (var i = 0; i < hashes.length; i++) ...[
+                      if (i > 0) const Text('→'),
+                      _resolvedHash(
+                        textOf(hashes[i]),
+                        i < route.length ? route[i] : const {},
+                        snr: i < snrs.length ? snrs[i] : null,
+                      ),
+                    ],
                   ],
-                ],
-              ),
-            ],
+                ),
+              ],
+            ),
           ),
         ),
     ]);
@@ -521,18 +565,27 @@ class PacketPayloadView extends StatelessWidget {
     ]);
   }
 
-  Widget _endpoint(String label, dynamic hash, Json resolved) {
+  Widget _endpoint(String label, dynamic hash, Json resolved, String field) {
     if (hash == null) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Wrap(
-        spacing: 4,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          Text('$label '),
-          PathHopChip(hash: _hashLabel(hash), hop: resolved, onOpen: onOpen),
-        ],
-      ),
+    return Builder(
+      builder: (context) {
+        final color = packetFieldColor(context, field);
+        return PacketFieldMark(
+          color: color,
+          child: Wrap(
+            spacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text('$label ', style: TextStyle(color: color)),
+              PathHopChip(
+                hash: _hashLabel(hash),
+                hop: resolved,
+                onOpen: onOpen,
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -583,35 +636,27 @@ class PacketPayloadView extends StatelessWidget {
   }) => Builder(
     builder: (fieldContext) {
       final palette = BeaconColors.of(fieldContext);
-      final accent =
-          {
-            tr('Public key'),
-            tr('Location'),
-            tr('Ephemeral public key'),
-          }.contains(label)
-          ? palette.success
-          : {tr('Signature'), tr('From'), tr('Trace path')}.contains(label)
-          ? palette.secondary
-          : {
-              tr('Timestamp'),
-              tr('Channel'),
-              tr('To'),
-              tr('Trace tag'),
-            }.contains(label)
-          ? palette.primary
-          : {tr('Checksum'), tr('Flags'), 'MAC'}.contains(label)
-          ? palette.warning
-          : label == tr('Ciphertext')
-          ? palette.danger
-          : palette.muted;
-      return Container(
-        margin: const EdgeInsets.symmetric(vertical: 5),
-        padding: const EdgeInsets.fromLTRB(8, 3, 0, 3),
-        decoration: BoxDecoration(
-          border: Border(
-            left: BorderSide(color: accent.withValues(alpha: .5), width: 2),
-          ),
-        ),
+      // The frame field each row decodes; rows without one are derived.
+      final field = {
+        tr('Public key'): 'publicKey',
+        tr('Location'): 'location',
+        tr('Ephemeral public key'): 'senderPublicKey',
+        tr('Auth code'): 'authCode',
+        tr('Signature'): 'signature',
+        tr('Trace path'): 'tracePath',
+        tr('Timestamp'): 'advertTimestamp',
+        tr('Channel'): 'channelHash',
+        tr('Trace tag'): 'traceTag',
+        tr('Checksum'): 'checksum',
+        tr('Flags'): 'flags',
+        'MAC': 'cipherMac',
+        tr('Ciphertext'): 'ciphertext',
+      }[label];
+      final accent = field == null
+          ? palette.muted
+          : packetFieldColor(fieldContext, field);
+      return PacketFieldMark(
+        color: field == null ? accent.withValues(alpha: .5) : accent,
         child: Wrap(
           spacing: 5,
           crossAxisAlignment: WrapCrossAlignment.center,
@@ -619,7 +664,7 @@ class PacketPayloadView extends StatelessWidget {
             Text(
               label,
               style: TextStyle(
-                color: palette.muted,
+                color: accent,
                 fontFamily: 'JetBrainsMono',
                 fontSize: 12,
               ),

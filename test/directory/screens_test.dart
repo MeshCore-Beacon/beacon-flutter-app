@@ -2,7 +2,10 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:beacon/core/api.dart';
+import 'package:beacon/core/filter_sheet.dart';
 import 'package:beacon/features/directory/directory.dart';
+import 'package:beacon/features/directory/node_chips.dart';
+import 'package:beacon/features/map/map_markers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -403,6 +406,9 @@ void main() {
     await tester.tap(find.byTooltip('Filters'));
     await tester.pumpAndSettle();
     final scope = find.byKey(const ValueKey('scope:null'));
+    expect(find.byType(FilterField<String>), findsWidgets);
+    expect(find.byType(DropdownButtonFormField<String>), findsNothing);
+    expect(find.byType(MenuAnchor), findsNothing);
     await tester.ensureVisible(scope);
     await tester.tap(scope);
     await tester.pumpAndSettle();
@@ -678,7 +684,7 @@ void main() {
   });
 
   testWidgets(
-    'channel renders messages chronologically despite descending API ids',
+    'channel keeps an older future-dated message before newer receipts',
     (tester) async {
       final api = ApiClient(
         Uri.parse('https://test.invalid'),
@@ -700,7 +706,7 @@ void main() {
                           'senderName': 'Old sender',
                           'content': 'Old message',
                           'packetHash': 'old',
-                          'sentAt': 1000,
+                          'sentAt': 9999999999999,
                         },
                       ],
                       'hasMore': false,
@@ -982,6 +988,300 @@ void main() {
       expect(filters.contains('false'), isTrue);
       expect(find.text('dd'), findsOneWidget);
       expect(find.text('Public'), findsOneWidget);
+    },
+  );
+  testWidgets(
+    'poller rows show the poller icon and the filter goes to the server',
+    (tester) async {
+      final events = StreamController<Map<String, dynamic>>.broadcast();
+      final requests = <Uri>[];
+      final api = ApiClient(
+        Uri.parse('https://test.invalid'),
+        client: MockClient((r) async {
+          requests.add(r.url);
+          if (r.url.path.endsWith('/scopes')) return http.Response('[]', 200);
+          return http.Response(
+            jsonEncode({
+              'items': [
+                {
+                  'id': 'p',
+                  'name': 'Polled',
+                  'isObserver': true,
+                  'isPoller': true,
+                },
+                {'id': 'o', 'name': 'Watcher', 'isObserver': true},
+                {'id': 'n', 'name': 'Plain'},
+              ],
+              'hasMore': false,
+            }),
+            200,
+          );
+        }),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: DirectoryScreen(
+              kind: 'nodes',
+              api: api,
+              region: const {},
+              events: events.stream,
+              onOpen: (_, _) {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('chip-poller')), findsOneWidget);
+      expect(find.byKey(const ValueKey('chip-observer')), findsNWidgets(2));
+
+      // A live update that flips a loaded node adds the icon without a reload.
+      final before = requests.length;
+      events.add({
+        'type': 'event',
+        'event': 'nodeUpdate',
+        'data': {'nodeId': 'n', 'isPoller': true},
+      });
+      await tester.pump();
+      await tester.pump();
+      expect(find.byKey(const ValueKey('chip-poller')), findsNWidgets(2));
+      expect(requests.length, before);
+
+      await tester.tap(find.byTooltip('Filters'));
+      await tester.pumpAndSettle();
+      final poller = find.byKey(const ValueKey('poller:null'));
+      await tester.ensureVisible(poller);
+      await tester.tap(poller);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Yes').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Apply'));
+      await tester.pumpAndSettle();
+      expect(requests.last.queryParameters['poller'], 'true');
+
+      // With the filter on, a row that stops polling can leave the list.
+      final reloads = requests.length;
+      events.add({
+        'type': 'event',
+        'event': 'nodeUpdate',
+        'data': {'nodeId': 'p', 'isPoller': false},
+      });
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(requests.skip(reloads).single.queryParameters['poller'], 'true');
+      await tester.pumpWidget(const SizedBox());
+      await events.close();
+    },
+  );
+  testWidgets(
+    'pollers filter hides rows an old server returns and follows live flips',
+    (tester) async {
+      final events = StreamController<Map<String, dynamic>>.broadcast();
+      final api = ApiClient(
+        Uri.parse('https://test.invalid'),
+        client: MockClient((r) async {
+          if (r.url.path.endsWith('/scopes')) return http.Response('[]', 200);
+          // Ignores the poller param, like a server without it.
+          return http.Response(
+            jsonEncode({
+              'items': [
+                {'id': 'p', 'name': 'Polled', 'isPoller': true},
+                {'id': 'n', 'name': 'Plain'},
+              ],
+              'hasMore': false,
+            }),
+            200,
+          );
+        }),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: DirectoryScreen(
+              kind: 'nodes',
+              api: api,
+              region: const {},
+              events: events.stream,
+              onOpen: (_, _) {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Plain'), findsOneWidget);
+      await tester.tap(find.byTooltip('Filters'));
+      await tester.pumpAndSettle();
+      final poller = find.byKey(const ValueKey('poller:null'));
+      await tester.ensureVisible(poller);
+      await tester.tap(poller);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Yes').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Apply'));
+      await tester.pumpAndSettle();
+      expect(find.text('Polled'), findsOneWidget);
+      expect(find.text('Plain'), findsNothing);
+
+      events.add({
+        'type': 'event',
+        'event': 'nodeUpdate',
+        'data': {'nodeId': 'p', 'isPoller': false},
+      });
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Polled'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+      await events.close();
+    },
+  );
+  testWidgets(
+    'poller filter offers Any, Yes and No and a No list follows live flips',
+    (tester) async {
+      final events = StreamController<Map<String, dynamic>>.broadcast();
+      final requests = <Uri>[];
+      final api = ApiClient(
+        Uri.parse('https://test.invalid'),
+        client: MockClient((r) async {
+          requests.add(r.url);
+          if (r.url.path.endsWith('/scopes')) return http.Response('[]', 200);
+          // Ignores the poller param, like a server without it.
+          return http.Response(
+            jsonEncode({
+              'items': [
+                {'id': 'p', 'name': 'Polled', 'isPoller': true},
+                {'id': 'n', 'name': 'Plain'},
+              ],
+              'hasMore': false,
+            }),
+            200,
+          );
+        }),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: DirectoryScreen(
+              kind: 'nodes',
+              api: api,
+              region: const {},
+              events: events.stream,
+              onOpen: (_, _) {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Filters'));
+      await tester.pumpAndSettle();
+      final poller = find.byKey(const ValueKey('poller:null'));
+      await tester.ensureVisible(poller);
+      expect(
+        find.descendant(of: poller, matching: find.text('Poller')),
+        findsOneWidget,
+      );
+      await tester.tap(poller);
+      await tester.pumpAndSettle();
+      expect(find.text('Any'), findsWidgets);
+      expect(find.text('Yes'), findsWidgets);
+      expect(find.text('No'), findsWidgets);
+      await tester.tap(find.text('No').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Apply'));
+      await tester.pumpAndSettle();
+      expect(requests.last.queryParameters['poller'], 'false');
+      expect(find.text('Plain'), findsOneWidget);
+      expect(find.text('Polled'), findsNothing);
+
+      events.add({
+        'type': 'event',
+        'event': 'nodeUpdate',
+        'data': {'nodeId': 'n', 'isPoller': true},
+      });
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Plain'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+      await events.close();
+    },
+  );
+  testWidgets(
+    'list rows draw type chips in marker colours and role glyph chips',
+    (tester) async {
+      final api = ApiClient(
+        Uri.parse('https://test.invalid'),
+        client: MockClient((r) async {
+          if (r.url.path.endsWith('/scopes')) return http.Response('[]', 200);
+          return http.Response(
+            jsonEncode({
+              'items': [
+                {'id': 'a', 'name': 'Aa', 'nodeTypeName': 'companion'},
+                {
+                  'id': 'b',
+                  'name': 'Bb',
+                  'nodeTypeName': 'repeater',
+                  'isPoller': true,
+                  'isObserver': true,
+                },
+                {'id': 'c', 'name': 'Cc', 'nodeTypeName': 'room_server'},
+                {
+                  'id': 'd',
+                  'name': 'Dd',
+                  'nodeTypeName': 'sensor',
+                  'isObserver': true,
+                  'possiblyForeign': true,
+                },
+                {'id': 'e', 'name': 'Ee', 'nodeTypeName': 'gateway'},
+              ],
+              'hasMore': false,
+            }),
+            200,
+          );
+        }),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: DirectoryScreen(
+              kind: 'nodes',
+              api: api,
+              region: const {},
+              onOpen: (_, _) {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      Color colorOf(String type) => tester
+          .widget<NodeChip>(find.byKey(ValueKey('chip-type-$type')))
+          .color;
+      for (final type in nodeColors.keys) {
+        expect(colorOf(type), nodeTypeColor(type), reason: type);
+      }
+      // Unknown type is grey, not one of the marker colours.
+      final grey = colorOf('gateway');
+      expect(nodeColors.keys.map(nodeTypeColor), isNot(contains(grey)));
+      // One poller row (poller then observer glyph), one observer-only row.
+      expect(find.byKey(const ValueKey('chip-poller')), findsOneWidget);
+      expect(find.byKey(const ValueKey('chip-observer')), findsNWidgets(2));
+      final row = find.ancestor(
+        of: find.byKey(const ValueKey('chip-poller')),
+        matching: find.byType(Row),
+      );
+      final poller = tester.getTopLeft(
+        find.byKey(const ValueKey('chip-poller')),
+      );
+      final observer = tester.getTopLeft(
+        find.descendant(
+          of: row.first,
+          matching: find.byKey(const ValueKey('chip-observer')),
+        ),
+      );
+      expect(poller.dx, lessThan(observer.dx));
+      expect(
+        find.byKey(const ValueKey('chip-caution-Possibly foreign')),
+        findsOneWidget,
+      );
     },
   );
 }

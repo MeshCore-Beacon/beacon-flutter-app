@@ -62,4 +62,19 @@ void main() {
       }
     },
   );
+  test('poller markers use the amber pulse pip and not the observer eye', () {
+    for (final style in ['glitch', 'wireframe']) {
+      for (final type in ['companion', 'repeater', 'room_server', 'sensor']) {
+        final svg = markerSvgs['$style-$type-poller'];
+        expect(svg, isNotNull, reason: '$style-$type');
+        expect(svg, contains('#ffb454'));
+        expect(svg, isNot(contains('#c79bff')));
+        expect(
+          svg,
+          contains('M 43 50.5 H 46.5 L 48.7 45 L 52.1 56 L 54.3 50.5 H 58'),
+        );
+        expect(svg, isNot(contains('M 44.2 50.5 C')));
+      }
+    }
+  });
 }

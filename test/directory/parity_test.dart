@@ -8,6 +8,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'folds.dart';
+
 void main() {
   testWidgets(
     'node detail copies its public key and opens the exact observation',
@@ -64,6 +66,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await openFolds(tester);
 
       expect(find.text('public-key-value'), findsOneWidget);
       await tester.tap(find.byTooltip('Copy public key'));
@@ -143,6 +146,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await openFolds(tester);
     expect(urls, contains('/api/v1/nodes/a%2Fb/neighbors'));
     final message = find.text('neighbors down');
     await tester.scrollUntilVisible(
@@ -156,5 +160,103 @@ void main() {
     expect(neighborCalls, 2);
     expect(message, findsNothing);
     expect(find.text('Neighbor two'), findsOneWidget);
+  });
+  testWidgets('node detail shows the POLLER badge only for pollers', (
+    tester,
+  ) async {
+    Future<void> pump(Map<String, dynamic> node) async {
+      final api = ApiClient(
+        Uri.parse('https://test.invalid'),
+        client: MockClient((r) async {
+          final path = r.url.path;
+          final body = path.endsWith('/observations')
+              ? {'items': [], 'hasMore': false}
+              : path.endsWith('/neighbors')
+              ? []
+              : node;
+          return http.Response(jsonEncode(body), 200);
+        }),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: EntityDetailScreen(
+            kind: 'node',
+            id: 'node-1',
+            api: api,
+            region: const {},
+            onOpen: (_, _) {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await pump({'id': 'node-1', 'nodeTypeName': 'repeater', 'isPoller': true});
+    expect(find.text('POLLER'), findsOneWidget);
+    await pump({'id': 'node-1', 'nodeTypeName': 'repeater'});
+    expect(find.text('POLLER'), findsNothing);
+  });
+  testWidgets('node panel chips run type, poller, observer, scope, caution', (
+    tester,
+  ) async {
+    Future<void> pump(Map<String, dynamic> node) async {
+      final api = ApiClient(
+        Uri.parse('https://test.invalid'),
+        client: MockClient((r) async {
+          final path = r.url.path;
+          final body = path.endsWith('/observations')
+              ? {'items': [], 'hasMore': false}
+              : path.endsWith('/neighbors')
+              ? []
+              : node;
+          return http.Response(jsonEncode(body), 200);
+        }),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: EntityDetailScreen(
+            kind: 'node',
+            id: 'node-1',
+            api: api,
+            region: const {},
+            onOpen: (_, _) {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await pump({
+      'id': 'node-1',
+      'nodeTypeName': 'sensor',
+      'isPoller': true,
+      'isObserver': true,
+      'defaultScope': '#yow',
+      'possiblyForeign': true,
+    });
+    final order = [
+      'chip-type-sensor',
+      'chip-poller',
+      'chip-observer',
+      'chip-scope',
+      'chip-caution-Possibly foreign',
+    ];
+    final xs = [
+      for (final k in order) tester.getTopLeft(find.byKey(ValueKey(k))),
+    ];
+    for (var i = 1; i < xs.length; i++) {
+      // Chips wrap, so order by row then column.
+      final before = xs[i - 1], after = xs[i];
+      expect(
+        after.dy > before.dy || (after.dy == before.dy && after.dx > before.dx),
+        isTrue,
+        reason: order[i],
+      );
+    }
+    await pump({'id': 'node-1', 'nodeTypeName': 'repeater'});
+    expect(find.byKey(const ValueKey('chip-poller')), findsNothing);
+    expect(find.byKey(const ValueKey('chip-observer')), findsNothing);
+    await pump({'id': 'node-1', 'nodeTypeName': 'gateway'});
+    expect(find.byKey(const ValueKey('chip-type-gateway')), findsOneWidget);
   });
 }

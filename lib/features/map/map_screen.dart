@@ -8,7 +8,9 @@ import 'package:maplibre_gl/maplibre_gl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/api.dart';
+import '../../core/features.dart';
 import '../../core/json.dart';
+import '../../core/sheet.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
 import 'map_data.dart';
@@ -16,6 +18,7 @@ import 'map_markers.dart';
 import 'map_projection.dart';
 import 'map_repository.dart';
 import 'map_sync.dart';
+import 'map_telemetry.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({
@@ -25,8 +28,14 @@ class MapScreen extends StatefulWidget {
     required this.onOpen,
     this.selectedNodeId,
     this.events,
+    this.flowClock,
+    this.flowEvents,
   });
+
+  /// Optional elapsed clock for deterministic flow lifecycle tests.
+  final Stopwatch? flowClock;
   final Stream<Json>? events;
+  final Stream<Json>? flowEvents;
   final ApiClient api;
   final Map<String, dynamic> region;
   final void Function(String kind, String id) onOpen;
@@ -36,23 +45,38 @@ class MapScreen extends StatefulWidget {
 }
 
 class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
+  static const _flowInterval = Duration(milliseconds: 50);
   StreamSubscription<Json>? _events;
-  Timer? _flowTimer;
+  StreamSubscription<Json>? _flowEvents;
+  Timer? _flowTimer, _telemetryTimer, _ageTimer;
+  ServerFeatures _features = const ServerFeatures.off();
+  Map<String, TelemetryLabel> _labels = const {};
+  List<Map<String, dynamic>> _readings = const [];
+  bool _resumed =
+      WidgetsBinding.instance.lifecycleState == null ||
+      WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+  bool _visible = true;
   bool _flow = false;
+  bool get _flowAllowed => _flow && _resumed && _visible;
   final _flows = <Map<String, dynamic>>[];
+  late final _flowClock = widget.flowClock ?? Stopwatch();
   List<Map<String, dynamic>> _nodes = [],
       _neighbors = [],
       _airports = [],
       _borders = [];
   String _style = 'dark', _type = '', _mode = 'selected';
+  bool _pollersOnly = false;
   String? _selected, _error, _mapError;
   int? _visibleCount;
   bool _loading = true,
       _settings = false,
       _cluster = true,
       _showBorders = false,
-      _terrain = false;
+      _terrain = false,
+      _telemetry = false;
   int _generation = 0;
+  int _telemetryGeneration = 0;
+  bool _telemetryBusy = false, _telemetryMissed = false;
   final _canvas = GlobalKey<_NativeMapState>();
   final _layers = MapLayers();
   @override
@@ -62,6 +86,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     _listen();
     _selected = widget.selectedNodeId;
     _restore();
+    _loadFeatures();
     _load();
   }
 
@@ -72,12 +97,26 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       _settings = p.getBool('beacon-map-settings-open') ?? false;
       _style = p.getString('beacon-map-style') ?? 'dark';
       _type = p.getString('beacon-map-node-type') ?? '';
+      _pollersOnly = p.getBool('beacon-map-pollers-only') ?? false;
       _cluster = p.getBool('beacon-map-clustering') ?? true;
       _mode = p.getString('beacon-map-neighbors') ?? 'selected';
       _showBorders = p.getBool('beacon-map-borders') ?? false;
       _terrain = p.getBool('beacon-map-terrain') ?? false;
+      _telemetry = p.getString('beacon-map-telemetry') == 'on';
     });
     if (_showBorders) unawaited(_loadBorders());
+    _syncTelemetry();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final visible = TickerMode.valuesOf(context).enabled;
+    if (_visible == visible) return;
+    _visible = visible;
+    if (!visible) _clearFlow();
+    _syncTelemetry();
+    _listenFlow();
   }
 
   Future<void> _save() async {
@@ -85,19 +124,26 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     await p.setBool('beacon-map-settings-open', _settings);
     await p.setString('beacon-map-style', _style);
     await p.setString('beacon-map-node-type', _type);
+    await p.setBool('beacon-map-pollers-only', _pollersOnly);
     await p.setBool('beacon-map-clustering', _cluster);
     await p.setString('beacon-map-neighbors', _mode);
     await p.setBool('beacon-map-borders', _showBorders);
     await p.setBool('beacon-map-terrain', _terrain);
+    await p.setString('beacon-map-telemetry', _telemetry ? 'on' : 'off');
   }
 
   @override
   void didUpdateWidget(covariant MapScreen old) {
     super.didUpdateWidget(old);
-    if (old.events != widget.events) _listen();
+    if (old.events != widget.events) {
+      _listen();
+    } else if (old.flowEvents != widget.flowEvents) {
+      _listenFlow();
+    }
     if (old.api != widget.api ||
         jsonEncode(old.region) != jsonEncode(widget.region)) {
       _selected = widget.selectedNodeId;
+      if (old.api != widget.api) _loadFeatures();
       _load(replace: true);
     } else if (old.selectedNodeId != widget.selectedNodeId) {
       _select(widget.selectedNodeId);
@@ -127,26 +173,35 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
           }
         });
       }
-      if (_flow && event['event'] == 'packetObservation') {
-        final ns = flowNodes(object(d['observation']));
-        if (ns.length < 2) return;
-        while (_flows.length >= 120) {
-          _flows.removeAt(0);
-        }
-        _flows.add({
-          'nodes': ns,
-          'start': DateTime.now().millisecondsSinceEpoch,
-        });
-        _flowTimer ??= Timer.periodic(
-          const Duration(milliseconds: 50),
-          (_) => _tick(),
-        );
-      }
+      if (widget.flowEvents == null) _onFlow(event);
     });
+    _listenFlow();
+  }
+
+  void _listenFlow() {
+    _flowEvents?.cancel();
+    _flowEvents = null;
+    if (!_flowAllowed) return;
+    _flowEvents = widget.flowEvents?.listen(_onFlow);
+  }
+
+  void _onFlow(Json event) {
+    if (!mounted || !_flowAllowed || _codes?.isEmpty == true) return;
+    final d = object(event['data']);
+    if (event['event'] == 'packetObservation') {
+      final ns = flowNodes(object(d['observation']));
+      if (ns.length < 2) return;
+      while (_flows.length >= 120) {
+        _flows.removeAt(0);
+      }
+      _flowClock.start();
+      _flows.add({'nodes': ns, 'start': _flowClock.elapsedMilliseconds});
+      _flowTimer ??= Timer.periodic(_flowInterval, (_) => _tick());
+    }
   }
 
   void _tick() {
-    final now = DateTime.now().millisecondsSinceEpoch;
+    final now = _flowClock.elapsedMilliseconds;
     _flows.removeWhere(
       (f) =>
           now - (number(f['start']) ?? 0) >
@@ -156,6 +211,9 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     if (_flows.isEmpty) {
       _flowTimer?.cancel();
       _flowTimer = null;
+      _flowClock
+        ..stop()
+        ..reset();
     }
   }
 
@@ -163,16 +221,24 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     _flows.clear();
     _flowTimer?.cancel();
     _flowTimer = null;
+    _flowClock
+      ..stop()
+      ..reset();
     _canvas.currentState?.flow(flowFrame([], 0));
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
+    _resumed = state == AppLifecycleState.resumed;
+    if (_resumed) {
+      // _load refetches the telemetry, so the sync only restarts the timers.
       _load();
+      _syncTelemetry(fetch: false);
     } else {
       _clearFlow();
+      _stopTelemetryTimers();
     }
+    _listenFlow();
   }
 
   bool _current(int gen) => mounted && gen == _generation;
@@ -187,13 +253,14 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         _neighbors = [];
         _borders = [];
         _airports = [];
+        _labels = const {};
+        _readings = const [];
       }
       _loading = true;
       _error = null;
     });
     // An explicitly empty region must not silently broaden to every region.
-    final iatas = widget.region['iatas'];
-    if (iatas is List && iatas.isEmpty || iatas == '') {
+    if (_emptyRegion) {
       setState(() => _loading = false);
       return;
     }
@@ -216,11 +283,17 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       _frame();
       if (_selected != null) unawaited(_select(_selected));
       if (_showBorders) unawaited(_loadBorders());
+      unawaited(_loadTelemetry(userAction: true));
     } catch (e) {
       if (_current(gen)) setState(() => _error = e.toString());
     } finally {
       if (_current(gen)) setState(() => _loading = false);
     }
+  }
+
+  bool get _emptyRegion {
+    final iatas = widget.region['iatas'];
+    return iatas is List && iatas.isEmpty || iatas == '';
   }
 
   List<String>? get _codes {
@@ -245,6 +318,132 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       if (_current(gen)) setState(() => _borders = output);
     } catch (e) {
       if (_current(gen)) setState(() => _error = '${tr('Area borders')}: $e');
+    }
+  }
+
+  bool get _telemetryOn =>
+      _telemetry && _features.mapTelemetry && _features.polling;
+
+  Future<void> _loadFeatures() async {
+    final api = widget.api;
+    final f = await api.features();
+    if (!mounted || api != widget.api) return;
+    setState(() => _features = f);
+    _syncTelemetry();
+  }
+
+  void _stopTelemetryTimers() {
+    _telemetryGeneration++;
+    _telemetryBusy = false;
+    _telemetryTimer?.cancel();
+    _telemetryTimer = null;
+    _ageTimer?.cancel();
+    _ageTimer = null;
+  }
+
+  void _startTelemetryTimer() {
+    _telemetryTimer?.cancel();
+    _telemetryTimer = Timer.periodic(
+      const Duration(minutes: 5),
+      (_) => unawaited(_loadTelemetry()),
+    );
+  }
+
+  /// Refetch and age labels only while enabled, resumed and visible.
+  void _syncTelemetry({bool fetch = true}) {
+    if (!_telemetryOn) {
+      _stopTelemetryTimers();
+      _telemetryMissed = false;
+      _readings = const [];
+      if (_labels.isNotEmpty) setState(() => _labels = const {});
+      return;
+    }
+    if (!_resumed) {
+      _stopTelemetryTimers();
+      return;
+    }
+    final started = _telemetryTimer == null;
+    // The refetch timer keeps running under a cover; its ticks read nothing and one is made up on return.
+    if (started) _startTelemetryTimer();
+    if (!_visible) {
+      _ageTimer?.cancel();
+      _ageTimer = null;
+      if (_telemetryBusy || (started && fetch)) {
+        _telemetryGeneration++;
+        _telemetryBusy = false;
+        _telemetryMissed = true;
+      }
+      return;
+    }
+    _ageTimer ??= Timer.periodic(
+      const Duration(minutes: 1),
+      (_) => _rebuildLabels(),
+    );
+    _rebuildLabels();
+    if (started) {
+      // A map load in progress does the first read when it finishes.
+      if (fetch && !_loading) unawaited(_loadTelemetry(userAction: true));
+    } else if (_telemetryMissed) {
+      _startTelemetryTimer();
+      unawaited(_loadTelemetry());
+    }
+  }
+
+  /// Ages and dimming move with the clock, so rebuild from the last readings.
+  void _rebuildLabels() {
+    if (!mounted || !_telemetryOn || !_resumed || !_visible) return;
+    final next = keepLabels(
+      _labels,
+      telemetryLabels(
+        _readings,
+        _features.temperatureUnit,
+        DateTime.now().millisecondsSinceEpoch,
+      ),
+    );
+    if (!identical(next, _labels)) setState(() => _labels = next);
+  }
+
+  /// Only a load the user caused (toggle, region) shows an error; a timer refetch keeps the labels.
+  Future<void> _loadTelemetry({bool userAction = false}) async {
+    if (!_telemetryOn || !_resumed) return;
+    if (!_visible) {
+      _telemetryMissed = true;
+      return;
+    }
+    _telemetryMissed = false;
+    if (_emptyRegion) {
+      _readings = const [];
+      if (_labels.isNotEmpty) setState(() => _labels = const {});
+      return;
+    }
+    final gen = _generation;
+    final request = ++_telemetryGeneration;
+    _telemetryBusy = true;
+    bool current() =>
+        _current(gen) &&
+        request == _telemetryGeneration &&
+        _telemetryOn &&
+        _resumed &&
+        _visible;
+    try {
+      final items = rows(
+        object(
+          await widget.api.get(
+            '/nodes/telemetry/latest',
+            widget.region,
+            current,
+          ),
+        )['items'],
+      );
+      if (!current()) return;
+      _readings = items;
+      _rebuildLabels();
+    } catch (e) {
+      if (userAction && current()) {
+        setState(() => _error = '${tr('Telemetry')}: $e');
+      }
+    } finally {
+      if (request == _telemetryGeneration) _telemetryBusy = false;
     }
   }
 
@@ -301,10 +500,12 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       zoom: camera.zoom,
       style: _style,
       nodeType: _type,
+      pollersOnly: _pollersOnly,
       cluster: _cluster,
       neighbors: _mode,
       borders: _showBorders,
       flow: _flow,
+      telemetry: _telemetryOn,
     );
     await Clipboard.setData(ClipboardData(text: link.toString()));
     if (mounted) {
@@ -365,12 +566,14 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     final layers = _layers.build(
       nodes: _nodes,
       type: _type,
+      pollersOnly: _pollersOnly,
       flow: _flow,
       mode: mode,
       selected: _selected,
       selectedNode: selected,
       neighbors: _neighbors,
       borders: _showBorders ? _borders : const [],
+      labels: _telemetryOn ? _labels : const {},
     );
     return Stack(
       children: [
@@ -477,6 +680,12 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                               _type,
                               (v) => _type = v,
                             ),
+                            _choices(
+                              trKey('map.pollersOnly'),
+                              {'on': trKey('map.on'), 'off': trKey('map.off')},
+                              _pollersOnly ? 'on' : 'off',
+                              (v) => _pollersOnly = v == 'on',
+                            ),
                             // Live shows every node unclustered but keeps the saved choice.
                             _choices(
                               'Clustering',
@@ -535,6 +744,16 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                               _terrain ? 'on' : 'off',
                               (v) => _terrain = v == 'on',
                             ),
+                            if (_features.mapTelemetry && _features.polling)
+                              _choices(
+                                'Telemetry',
+                                {'on': 'On', 'off': 'Off'},
+                                _telemetry ? 'on' : 'off',
+                                (v) {
+                                  _telemetry = v == 'on';
+                                  _syncTelemetry();
+                                },
+                              ),
                             TextButton.icon(
                               onPressed: _copyLink,
                               icon: const Icon(Icons.link, size: 16),
@@ -566,6 +785,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                 () {
                   setState(() => _flow = !_flow);
                   if (!_flow) _clearFlow();
+                  _listenFlow();
                 },
               ),
             ],
@@ -690,17 +910,28 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     _generation++;
     WidgetsBinding.instance.removeObserver(this);
     _events?.cancel();
+    _flowEvents?.cancel();
     _flowTimer?.cancel();
+    _telemetryTimer?.cancel();
+    _ageTimer?.cancel();
+    _flowClock.stop();
     super.dispose();
   }
 }
 
-const _nodeIcon = [
+@visibleForTesting
+const nodeIconExpression = [
   'concat',
   'node-',
   ['get', 'nodeTypeName'],
   [
     'case',
+    [
+      '==',
+      ['get', 'isPoller'],
+      true,
+    ],
+    '-poller',
     [
       '==',
       ['get', 'isObserver'],
@@ -1048,7 +1279,7 @@ class _NativeMapState extends State<NativeMap> {
       );
       final markerStyle = widget.style == 'dark' ? 'glitch' : 'wireframe';
       for (final type in nodeTypes) {
-        for (final suffix in ['', '-observer']) {
+        for (final suffix in ['', '-observer', '-poller']) {
           final key = '$markerStyle-$type$suffix';
           await c.addImage(
             'node-$type$suffix',
@@ -1088,7 +1319,7 @@ class _NativeMapState extends State<NativeMap> {
         'beacon-nodes',
         'beacon-points',
         const SymbolLayerProperties(
-          iconImage: _nodeIcon,
+          iconImage: nodeIconExpression,
           iconSize: 0.41,
           iconAllowOverlap: true,
           iconIgnorePlacement: true,
@@ -1122,6 +1353,44 @@ class _NativeMapState extends State<NativeMap> {
         ],
         enableInteraction: false,
       );
+      // Latest battery and temperature, dimmed when the reading is old. Below
+      // the names so they place first and this line yields when crowded.
+      await c.addSymbolLayer(
+        'beacon-nodes',
+        'beacon-telemetry',
+        const SymbolLayerProperties(
+          textField: ['get', 'telemetry'],
+          textFont: ['Noto Sans Regular'],
+          textSize: 10,
+          textColor: '#fafafa',
+          textHaloColor: '#09090b',
+          textHaloWidth: 1.5,
+          textOffset: [0, 3.2],
+          textPadding: 0,
+          textAnchor: 'top',
+          textOpacity: [
+            'case',
+            [
+              'boolean',
+              ['get', 'telemetryOld'],
+              false,
+            ],
+            0.45,
+            1,
+          ],
+        ),
+        belowLayerId: 'beacon-labels',
+        minzoom: 8,
+        filter: [
+          'all',
+          [
+            '!',
+            ['has', 'point_count'],
+          ],
+          ['has', 'telemetry'],
+        ],
+        enableInteraction: false,
+      );
       // A node selected during Live keeps its full marker, whatever its type.
       await c.addCircleLayer(
         'beacon-live-nodes',
@@ -1134,7 +1403,7 @@ class _NativeMapState extends State<NativeMap> {
         'beacon-live-nodes',
         'beacon-live-selected-marker',
         const SymbolLayerProperties(
-          iconImage: _nodeIcon,
+          iconImage: nodeIconExpression,
           iconSize: 0.41,
           iconAllowOverlap: true,
           iconIgnorePlacement: true,
@@ -1362,11 +1631,11 @@ class _NativeMapState extends State<NativeMap> {
             offset: 0,
           );
           if (!mounted || epoch != _epoch) return;
-          await showModalBottomSheet<void>(
-            context: context,
-            builder: (context) => SafeArea(
-              child: ListView(
-                shrinkWrap: true,
+          await showBeaconSheet<void>(
+            context,
+            builder: (context) => BeaconSheet(
+              title: tr('Nodes'),
+              child: BeaconSheetRows(
                 children: leaves.map((f) {
                   final p = object(f['properties']);
                   return ListTile(

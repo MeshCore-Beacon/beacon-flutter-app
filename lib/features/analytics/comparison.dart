@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../../core/api.dart';
 import '../../core/json.dart';
+import '../../core/sheet.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
 import 'charts.dart';
@@ -108,18 +109,14 @@ class _ComparisonPanelState extends State<ComparisonPanel> {
                 padding: const EdgeInsets.only(bottom: 8),
                 child: OutlinedButton.icon(
                   onPressed: () async {
-                    final result =
-                        await showModalBottomSheet<Map<String, dynamic>>(
-                          context: context,
-                          isScrollControlled: true,
-                          builder: (c) => Material(
-                            child: _ObserverChooser(
-                              api: widget.api,
-                              region: widget.region,
-                              exclude: first ? b : a,
-                            ),
-                          ),
-                        );
+                    final result = await showBeaconSheet<Map<String, dynamic>>(
+                      context,
+                      builder: (c) => _ObserverChooser(
+                        api: widget.api,
+                        region: widget.region,
+                        exclude: first ? b : a,
+                      ),
+                    );
                     if (result == null || !mounted) return;
                     setState(() {
                       if (first) {
@@ -290,79 +287,79 @@ class _ObserverChooserState extends State<_ObserverChooser> {
   }
 
   @override
-  Widget build(BuildContext context) => SafeArea(
+  Widget build(BuildContext context) => BeaconSheet(
+    title: trKey('observerCompare.chooseObserver'),
+    maxHeight: .75,
+    fill: true,
     child: Padding(
-      padding: EdgeInsets.fromLTRB(
-        16,
-        12,
-        16,
-        MediaQuery.viewInsetsOf(context).bottom,
+      padding: const EdgeInsets.fromLTRB(
+        BeaconSheet.gutter,
+        8,
+        BeaconSheet.gutter,
+        0,
       ),
-      child: SizedBox(
-        height: MediaQuery.sizeOf(context).height * .6,
-        child: Column(
-          children: [
-            TextField(
-              autofocus: true,
-              decoration: InputDecoration(
-                labelText: trKey('observerCompare.chooseObserver'),
-                prefixIcon: const Icon(Icons.search),
-              ),
-              onChanged: (value) {
-                debounce?.cancel();
-                debounce = Timer(const Duration(milliseconds: 250), () {
-                  if (mounted) setState(() => query = value.trim());
-                });
-              },
+      child: Column(
+        children: [
+          TextField(
+            autofocus: true,
+            decoration: InputDecoration(
+              hintText: tr('Search'),
+              prefixIcon: const Icon(Icons.search, size: 18),
             ),
-            const SizedBox(height: 12),
-            Expanded(
-              child: widget.region.containsKey('region')
-                  ? Center(child: Text(tr('No matches')))
-                  : StatsQuery(
-                      api: widget.api,
-                      path: '/observers',
-                      params: {
-                        ...widget.region,
-                        'limit': 50,
-                        if (query.isNotEmpty) 'name': query,
-                      },
-                      builder: (d) {
-                        final items = rows(d)
-                            .where((o) => textOf(o['id']) != widget.exclude)
-                            .toList();
-                        if (items.isEmpty) {
-                          return Center(child: Text(tr('No matches')));
-                        }
-                        return ListView.builder(
-                          itemCount: items.length,
-                          itemBuilder: (context, i) => ListTile(
-                            dense: true,
-                            title: Text(
-                              textOf(
-                                items[i]['displayName'],
-                                shortKey(items[i]['id']),
-                              ),
-                              style: const TextStyle(
-                                fontFamily: 'JetBrainsMono',
-                                fontSize: 12,
-                              ),
+            onChanged: (value) {
+              debounce?.cancel();
+              debounce = Timer(const Duration(milliseconds: 250), () {
+                if (mounted) setState(() => query = value.trim());
+              });
+            },
+          ),
+          const SizedBox(height: 12),
+          Expanded(
+            child: widget.region.containsKey('region')
+                ? Center(child: Text(tr('No matches')))
+                : StatsQuery(
+                    api: widget.api,
+                    path: '/observers',
+                    params: {
+                      ...widget.region,
+                      'limit': 50,
+                      if (query.isNotEmpty) 'name': query,
+                    },
+                    builder: (d) {
+                      final items = rows(d)
+                          .where((o) => textOf(o['id']) != widget.exclude)
+                          .toList();
+                      if (items.isEmpty) {
+                        return Center(child: Text(tr('No matches')));
+                      }
+                      return ListView.builder(
+                        itemCount: items.length,
+                        itemBuilder: (context, i) => ListTile(
+                          dense: true,
+                          title: Text(
+                            textOf(
+                              items[i]['displayName'],
+                              shortKey(items[i]['id']),
                             ),
-                            trailing: Text(
-                              textOf(items[i]['iata']),
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: BeaconColors.of(context).muted,
-                              ),
+                            style: const TextStyle(
+                              fontFamily: 'JetBrainsMono',
+                              fontSize: 12,
                             ),
-                            onTap: () => Navigator.pop(context, items[i]),
                           ),
-                        );
-                      },
-                    ),
-            ),
-          ],
-        ),
+                          trailing: Text(
+                            textOf(items[i]['iata']),
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: BeaconColors.of(context).muted,
+                            ),
+                          ),
+                          onTap: () => Navigator.pop(context, items[i]),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
       ),
     ),
   );

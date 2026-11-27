@@ -6,10 +6,14 @@ import '../../core/api.dart';
 import '../../core/json.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
+import '../../core/units.dart';
 import '../analytics/charts.dart';
+import '../directory/node_telemetry.dart';
 import 'atlas.dart';
+import 'atlas_graph.dart';
 import 'atlas_widgets.dart';
 import 'observer_sample.dart';
+import 'telemetry_sample.dart';
 
 const atlasRefresh = Duration(minutes: 1);
 
@@ -82,6 +86,8 @@ class AtlasQuery<T> extends ChangeNotifier {
   }
 }
 
+const _telemetryTileCount = 4;
+
 const _tileLabel = {
   'airtime': 'atlas.airtime',
   'battery': 'atlas.battery',
@@ -116,8 +122,12 @@ class AtlasCard extends StatefulWidget {
     required this.onResolved,
     required this.onUpgrade,
     required this.onTilesChange,
+    required this.onTelemetryTilesChange,
     required this.onOpen,
     this.handle,
+    this.onAlerts,
+    this.alertsOn = 0,
+    this.alertsFiring = 0,
   });
   final ApiClient api;
   final AtlasPin pin;
@@ -131,11 +141,18 @@ class AtlasCard extends StatefulWidget {
   final VoidCallback onRemove;
   final void Function(String id, String? observerId) onResolved;
   final void Function(Json node, String observerId) onUpgrade;
-  final ValueChanged<List<String>> onTilesChange;
+  final ValueChanged<List<String>> onTilesChange, onTelemetryTilesChange;
   final void Function(String kind, String id) onOpen;
 
   /// Wraps the grip so the page can start a reorder from it.
   final Widget Function(Widget grip)? handle;
+
+  /// Opens this radio's alerts, given the name the card shows. Null on a
+  /// server without alerts, which hides the bell.
+  final void Function(String name)? onAlerts;
+
+  /// This radio's enabled rules, and how many of those are firing.
+  final int alertsOn, alertsFiring;
 
   @override
   State<AtlasCard> createState() => _AtlasCardState();
@@ -146,6 +163,8 @@ class _AtlasCardState extends State<AtlasCard> {
   final _keys = <String, String>{};
   final _body = GlobalKey();
   double? _held;
+  String _tempUnit = 'c';
+  bool _atlasTelemetry = false;
 
   AtlasPin get pin => widget.pin;
   Json? get node => _queries['node']?.data as Json?;
@@ -161,6 +180,13 @@ class _AtlasCardState extends State<AtlasCard> {
   @override
   void initState() {
     super.initState();
+    widget.api.features().then((f) {
+      if (!mounted) return;
+      setState(() {
+        _tempUnit = f.temperatureUnit;
+        _atlasTelemetry = f.atlasTelemetry;
+      });
+    });
     _sync();
   }
 
@@ -260,6 +286,56 @@ class _AtlasCardState extends State<AtlasCard> {
         pollUnlessMissing,
       );
     }
+    // Only a repeater or room server on a polling server is asked; others read
+    // none. The tab shows when Beacon has readings for it or is polling it.
+    final polled = isPolledNodeType(textOf(node?['nodeTypeName']));
+    _use<Json>(
+      'tab',
+      polled && nodeId != null ? nodeId : null,
+      active,
+      () async {
+        if (!(await api.features()).polling) return {'tab': false};
+        Future<Json?> soft(Future<Json> call) =>
+            call.then<Json?>((v) => v).catchError((Object _) => null);
+        final (readings, poller) = await (
+          soft(
+            read('/nodes/$nodeId/telemetry', {
+              'range': '720h',
+              'interval': '24h',
+            }),
+          ),
+          soft(read('/nodes/$nodeId/polling')),
+        ).wait;
+        return {
+          'tab': hasTelemetryTab(
+            typeName: 'repeater',
+            polling: true,
+            readings: readings,
+            poller: poller,
+          ),
+          'polling': poller ?? <String, dynamic>{},
+        };
+      },
+      pollUnlessMissing,
+    );
+    // The readings load only while the Telemetry view is open or pinned.
+    final tab = _queries['tab']?.data as Json?;
+    _use<Json>(
+      'telemetry',
+      polled && nodeId != null ? '$nodeId/${widget.range.id}' : null,
+      active && widget.view == AtlasView.telemetry && tab?['tab'] != false,
+      () async {
+        final ask = telemetryRequest(
+          widget.range,
+          (await api.features()).atlasTelemetry,
+        );
+        return read('/nodes/$nodeId/telemetry', {
+          'range': ask.range,
+          'interval': ask.interval,
+        });
+      },
+      pollUnlessMissing,
+    );
     final observerKey = pin.isNode ? null : _text(observer?['publicKey']);
     _use<Json?>(
       'upgrade',
@@ -313,13 +389,23 @@ class _AtlasCardState extends State<AtlasCard> {
       widget.now,
     );
     final id = observerId;
-    final view = widget.view;
+    final tabState = _queries['tab']?.data as Json?;
+    final telemetryTab = tabState?['tab'] as bool?;
+    // A pinned Telemetry view waits for the check; if it fails the card falls back.
+    final showTelemetry =
+        pin.isNode &&
+        (telemetryTab == true ||
+            (telemetryTab == null && widget.view == AtlasView.telemetry));
+    final view = widget.view == AtlasView.telemetry && !showTelemetry
+        ? AtlasView.analytics
+        : widget.view;
     final views = !pin.isNode
         ? const [AtlasView.observer]
         : [
             AtlasView.analytics,
             AtlasView.heard,
             if (id != null) AtlasView.observer,
+            if (showTelemetry) AtlasView.telemetry,
           ];
     final home = pin.homeView;
     final status = observer == null
@@ -333,7 +419,26 @@ class _AtlasCardState extends State<AtlasCard> {
     final name =
         _text(pin.isNode ? (node?['name']) : (observer?['displayName'])) ??
         _text(pin.name);
+    final shown =
+        name ??
+        formatHex(pin.isNode ? textOf(node?['id'], pin.id!) : pin.observerId!);
     final canOpen = !pin.isNode || node != null;
+    final slots = HourSlots(widget.range, widget.now);
+    // A tile with nothing to draw offers no graph.
+    VoidCallback? openGraph(String metric, Color color, AtlasGraph graph) =>
+        graph.isEmpty
+        ? null
+        : () => showAtlasGraph(
+            context,
+            name: shown,
+            metric: metric,
+            range: widget.range,
+            now: widget.now,
+            graph: graph,
+            color: color,
+          );
+    String graphLabel(String metric) =>
+        trKey('atlasGraph.open').replaceAll('{{metric}}', metric);
     // One line always: a dot carries the status and the name gives way first.
     final (dotColor, dotLabel) = pin.isNode
         ? switch (node?['stale']) {
@@ -374,12 +479,7 @@ class _AtlasCardState extends State<AtlasCard> {
                         ? widget.onOpen('node', textOf(node!['id']))
                         : widget.onOpen('observer', pin.observerId!),
               child: Text(
-                name ??
-                    formatHex(
-                      pin.isNode
-                          ? textOf(node?['id'], pin.id!)
-                          : pin.observerId!,
-                    ),
+                shown,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -403,27 +503,54 @@ class _AtlasCardState extends State<AtlasCard> {
       icon: GripIcon.new,
       label: at('dragToReorder'),
     );
+    final bellLabel = widget.alertsFiring > 0
+        ? trKey('atlasAlerts.bellFiring', count: widget.alertsFiring)
+        : widget.alertsOn > 0
+        ? trKey('atlasAlerts.bellOn', count: widget.alertsOn)
+        : trKey('atlasAlerts.bell');
+    final buttons = <Widget>[
+      if (widget.onAlerts case final onAlerts?)
+        AtlasIconButton(
+          key: ValueKey('atlas-bell-${pin.key}'),
+          icon: (color) => BellIcon(color, filled: widget.alertsOn > 0),
+          label: bellLabel,
+          color: widget.alertsFiring > 0 ? c.danger : null,
+          tinted: widget.alertsOn > 0,
+          onPressed: () => onAlerts(shown),
+        ),
+      if (views.length > 1)
+        AtlasIconButton(
+          icon: (color) => PinIcon(color, filled: view == home),
+          label: at('pinView'),
+          tooltip: at(view == home ? 'viewPinned' : 'pinViewHelp'),
+          pressed: view == home,
+          onPressed: view == home ? () {} : () => widget.onPinView(view),
+        ),
+      AtlasIconButton(
+        icon: CrossIcon.new,
+        label: at('remove'),
+        muted: true,
+        onPressed: widget.onRemove,
+      ),
+      widget.handle?.call(grip) ?? grip,
+    ];
+    // The boxes stay 28 by 26 with 4 between. Each takes touches 48 high and
+    // out to the middle of the gap; the ends reach into the space beside them.
     final actions = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (views.length > 1) ...[
-          AtlasIconButton(
-            icon: (color) => PinIcon(color, filled: view == home),
-            label: at('pinView'),
-            tooltip: at(view == home ? 'viewPinned' : 'pinViewHelp'),
-            pressed: view == home,
-            onPressed: view == home ? () {} : () => widget.onPinView(view),
+        for (final (i, button) in buttons.indexed) ...[
+          if (i > 0) const SizedBox(width: 4),
+          AtlasHitSlop(
+            slop: EdgeInsets.fromLTRB(
+              i == 0 ? 4 : 2,
+              12,
+              i == buttons.length - 1 ? 10 : 2,
+              10,
+            ),
+            child: button,
           ),
-          const SizedBox(width: 4),
         ],
-        AtlasIconButton(
-          icon: CrossIcon.new,
-          label: at('remove'),
-          muted: true,
-          onPressed: widget.onRemove,
-        ),
-        const SizedBox(width: 4),
-        widget.handle?.call(grip) ?? grip,
       ],
     );
 
@@ -449,11 +576,12 @@ class _AtlasCardState extends State<AtlasCard> {
             onChanged: _changeView,
             options: {
               for (final option in views)
-                option: at(switch (option) {
-                  AtlasView.analytics => 'viewAnalytics',
-                  AtlasView.heard => 'viewHeard',
-                  AtlasView.observer => 'viewObserver',
-                }),
+                option: switch (option) {
+                  AtlasView.analytics => at('viewAnalytics'),
+                  AtlasView.heard => at('viewHeard'),
+                  AtlasView.observer => at('viewObserver'),
+                  AtlasView.telemetry => trKey('atlasTelemetry.tab'),
+                },
             },
           ),
         ),
@@ -480,15 +608,27 @@ class _AtlasCardState extends State<AtlasCard> {
         'neighbors',
         args: {'count': number(node['knownNeighborCount'])?.toInt() ?? 0},
       );
+      final heardFresh =
+          lastSeen > 0 && widget.now - lastSeen <= widget.range.hours * 3600000;
+      final hopsAndNeighbors = [
+        if (sample.hops != null)
+          trKey('atlasFooter.hops')
+              .replaceAll('{{value}}', average(sample.hops)),
+        trKey(
+          'atlasFooter.neighbors',
+          count: number(node['knownNeighborCount'])?.toInt() ?? 0,
+        ),
+      ].join(' · ');
       final unsupported = isNotFound(activity?.error);
       final window = sample.partial
           ? at('observerPartialCoverage')
-          : at('ranges.${widget.range.id}');
+          : atlasRangeLabel(widget.range);
       AtlasStatTile tile(
         String label,
         String value,
         int accent, {
         List<double?>? spark,
+        String Function(double)? format,
         List<bool>? presence,
         String? sublabel,
         bool markPeak = false,
@@ -500,6 +640,14 @@ class _AtlasCardState extends State<AtlasCard> {
         markPeak: markPeak,
         presence: presence,
         sublabel: sublabel,
+        onGraph: spark == null || format == null
+            ? null
+            : openGraph(
+                tr(label),
+                series[accent],
+                AtlasGraph(slotPoints(spark, slots), format),
+              ),
+        graphLabel: graphLabel(tr(label)),
       );
       body.add(
         Column(
@@ -513,6 +661,7 @@ class _AtlasCardState extends State<AtlasCard> {
                 sample.total == null ? _dash : formatCount(sample.total),
                 0,
                 spark: sample.counts,
+                format: formatCount,
                 markPeak: true,
                 sublabel: window,
               ),
@@ -521,12 +670,14 @@ class _AtlasCardState extends State<AtlasCard> {
                 average(sample.snr, 'dB'),
                 2,
                 spark: sample.snrHourly,
+                format: (v) => average(v, 'dB'),
               ),
               tile(
                 'Mean RSSI',
                 average(sample.rssi, 'dBm'),
                 1,
                 spark: sample.rssiHourly,
+                format: (v) => average(v, 'dBm'),
               ),
               tile(
                 'Active hours',
@@ -537,17 +688,18 @@ class _AtlasCardState extends State<AtlasCard> {
             ]),
             const SizedBox(height: 12),
             _Footer(
+              dot: lastSeen > 0 ? _dot(c, heardFresh) : null,
               left: lastSeen > 0
-                  ? '${at('lastSeen')} ${ago(lastSeen, widget.now)}'
+                  ? '${trKey('atlasFooter.heard')} · ${ago(lastSeen, widget.now)}'
                   : null,
-              right: '$meanHops · $neighbors',
+              right: hopsAndNeighbors,
               loading: activity?.loading ?? false,
               failed: activity?.error != null && !unsupported,
               tip: [
                 ?dotLabel,
                 if (lastSeen > 0)
                   '${at('lastSeen')} ${formatAbsolute(lastSeen)}',
-                meanHops,
+                if (sample.hops != null) meanHops,
                 neighbors,
                 if (unsupported) at('activityUnsupported'),
                 at('sampleHelp'),
@@ -706,7 +858,7 @@ class _AtlasCardState extends State<AtlasCard> {
       };
       final window = obs.partial
           ? at('observerPartialCoverage')
-          : at('ranges.${widget.range.id}');
+          : atlasRangeLabel(widget.range);
       Widget observerTile(String tile, int slot) {
         // Today's stand-in for a radio with no battery, unless the card already has an uptime tile.
         final shown =
@@ -718,6 +870,7 @@ class _AtlasCardState extends State<AtlasCard> {
         AtlasStatTile stat(
           String value, {
           List<double?>? spark,
+          String Function(double)? format,
           bool markPeak = false,
           bool interpolateGaps = false,
           String? sublabel,
@@ -741,6 +894,14 @@ class _AtlasCardState extends State<AtlasCard> {
           interpolateGaps: interpolateGaps,
           sublabel: sublabel,
           visual: visual,
+          onGraph: spark == null || format == null
+              ? null
+              : openGraph(
+                  trKey(_tileLabel[shown]!),
+                  series[_slotAccent[slot]],
+                  AtlasGraph(slotPoints(spark, slots), format),
+                ),
+          graphLabel: graphLabel(trKey(_tileLabel[shown]!)),
         );
         String count(double? value) =>
             value == null ? _dash : formatCount(value);
@@ -748,6 +909,7 @@ class _AtlasCardState extends State<AtlasCard> {
           'airtime' => stat(
             obs.airtime == null ? _dash : percent(obs.airtime!),
             spark: obs.airtimeHourly,
+            format: percent,
             markPeak: true,
             interpolateGaps: true,
             sublabel: switch (obs.airtimeSource) {
@@ -760,11 +922,13 @@ class _AtlasCardState extends State<AtlasCard> {
           'battery' => stat(
             obs.battery == null ? _dash : formatBattery(obs.battery!),
             spark: obs.batteryHourly,
+            format: formatBattery,
             interpolateGaps: true,
           ),
           'uptime' => stat(
             obs.uptime == null ? _dash : formatUptime(obs.uptime!),
             spark: obs.uptimeHourly,
+            format: formatUptime,
           ),
           'types' => stat(
             count(obs.heard),
@@ -774,22 +938,38 @@ class _AtlasCardState extends State<AtlasCard> {
           'packets' => stat(
             count(obs.heard),
             spark: obs.counts,
+            format: formatCount,
             markPeak: true,
             sublabel: window,
           ),
-          'snr' => stat(average(obs.snr, 'dB'), spark: obs.snrHourly),
-          'rssi' => stat(average(obs.rssi, 'dBm'), spark: obs.rssiHourly),
+          'snr' => stat(
+            average(obs.snr, 'dB'),
+            spark: obs.snrHourly,
+            format: (v) => average(v, 'dB'),
+          ),
+          'rssi' => stat(
+            average(obs.rssi, 'dBm'),
+            spark: obs.rssiHourly,
+            format: (v) => average(v, 'dBm'),
+          ),
           'noise' => stat(
             obs.noise == null ? _dash : '${obs.noise!.round()} dBm',
             spark: obs.noiseHourly,
+            format: (v) => '${v.round()} dBm',
             interpolateGaps: true,
           ),
           'queue' => stat(
             count(obs.queue?.roundToDouble()),
             spark: obs.queueHourly,
+            format: (v) => formatCount(v.roundToDouble()),
             interpolateGaps: true,
           ),
-          _ => stat(count(obs.errors), spark: obs.errorsHourly, markPeak: true),
+          _ => stat(
+            count(obs.errors),
+            spark: obs.errorsHourly,
+            format: formatCount,
+            markPeak: true,
+          ),
         };
       }
 
@@ -827,9 +1007,7 @@ class _AtlasCardState extends State<AtlasCard> {
             _Footer(
               dot: status == null || status.isEmpty
                   ? null
-                  : status == 'online'
-                  ? c.success
-                  : c.dim.withValues(alpha: .3),
+                  : _dot(c, status == 'online'),
               left: statusLabel == null && lastStatus == null
                   ? null
                   : [
@@ -853,6 +1031,168 @@ class _AtlasCardState extends State<AtlasCard> {
                   '${at('uptime')} ${formatUptime(obs.uptime!)}',
                 if (unsupported) at('observerUnsupported'),
                 at('observerHelp'),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (view == AtlasView.telemetry && node != null) {
+      final feed = _queries['telemetry'];
+      final sample = summarizeTelemetry(
+        feed?.data as Json?,
+        widget.range,
+        widget.now,
+      );
+      final tiles = pin.telemetryTiles ?? defaultTelemetryTiles;
+      final free = {
+        for (final tile in telemetryTileIds)
+          if (!tiles.contains(tile) &&
+              (tile != 'temperature' || sample.hasTemperature))
+            tile: trKey('atlasTelemetry.$tile'),
+      };
+      String rate(double v) =>
+          '${v < 10 ? v.toStringAsFixed(1) : formatCount(v.roundToDouble())}/h';
+      // Readings sit a bucket apart: six hours on the trimmed week, else one.
+      final bucket =
+          telemetryRequest(widget.range, _atlasTelemetry).interval == '6h'
+          ? 6 * hourMs
+          : hourMs;
+      Widget telemetryTile(String tile, int slot) {
+        final values = sample.values[tile]!;
+        final latest = values.lastOrNull;
+        String? sub, tip;
+        var peak = false, counter = false;
+        // The tile and its graph write a value the same way.
+        final String Function(double) format;
+        switch (tile) {
+          case 'battery':
+            format = formatBattery;
+          case 'noise':
+            format = (v) => '${v.round()} dBm';
+          case 'uptime':
+            format = shortUptime;
+            if (latest != null) {
+              tip = formatUptime(latest);
+              if (sample.rebooted) sub = trKey('atlasTelemetry.restarted');
+            }
+          case 'airtime':
+            peak = counter = true;
+            format = percent;
+            if (latest != null) {
+              sub =
+                  'TX ${percent(sample.airtimeTx!)} · RX ${percent(sample.airtimeRx!)}';
+            }
+          case 'temperature':
+            format = (v) => formatTemp(v, _tempUnit);
+          case 'packets':
+            peak = counter = true;
+            format = rate;
+            if (latest != null) {
+              if (sample.sent != null) {
+                sub = trKey('atlasTelemetry.sentPerHour')
+                    .replaceAll('{{value}}', rate(sample.sent!));
+              }
+            }
+          case 'signal':
+            format = (v) => average(v, 'dB');
+            if (latest != null && sample.rssi != null) {
+              sub = '${sample.rssi!.round()} dBm';
+            }
+          default:
+            peak = counter = true;
+            format = rate;
+        }
+        final value = latest == null ? null : format(latest);
+        final dots = values.length < dotsBelow;
+        final metric = trKey('atlasTelemetry.$tile');
+        return AtlasStatTile(
+          key: ValueKey('telemetry-$tile'),
+          label: TilePicker(
+            label: trKey('atlasTelemetry.$tile'),
+            options: free,
+            onPick: (next) => widget.onTelemetryTilesChange([
+              for (final (i, old) in tiles.indexed) i == slot ? next : old,
+            ]),
+            onReset: pin.telemetryTiles == null
+                ? null
+                : () => widget.onTelemetryTilesChange(defaultTelemetryTiles),
+          ),
+          value: value ?? _dash,
+          valueTooltip: tip,
+          accent: series[_slotAccent[slot]],
+          spark: value == null ? null : values,
+          markPeak: peak && !dots,
+          dots: dots,
+          wrapSublabel: true,
+          onGraph: openGraph(
+            metric,
+            series[_slotAccent[slot]],
+            AtlasGraph(
+              readingPoints(sample.times[tile]!, values, bucket),
+              format,
+            ),
+          ),
+          graphLabel: graphLabel(metric),
+          sublabel: value != null
+              ? sub
+              : trKey(
+                  counter && sample.readings > 0
+                      ? 'atlasTelemetry.needsPair'
+                      : 'atlasTelemetry.noReadings',
+                ),
+        );
+      }
+
+      final polling = object(tabState?['polling']);
+      final pollerName = textOf(object(polling['poller'])['name']);
+      final latestAt =
+          number(polling['latestReadingAt'])?.toInt() ?? sample.latestAt;
+      final pollLine = polling.isEmpty
+          ? null
+          : polling['poller'] is Map
+          ? (pollerName.isEmpty
+                ? trKey('atlasTelemetry.polled')
+                : trKey('atlasTelemetry.polledBy')
+                      .replaceAll('{{name}}', pollerName))
+          : trKey('atlasTelemetry.notPolled');
+      final polledNow = polling['poller'] is Map;
+      final String? lead = polling.isEmpty
+          ? (latestAt == null
+                ? null
+                : '${trKey('atlasTelemetry.lastReading')} · ${ago(latestAt, widget.now)}')
+          : polledNow
+          ? [
+              trKey('atlasFooter.polled'),
+              if (latestAt != null) ago(latestAt, widget.now),
+            ].join(' · ')
+          : trKey('atlasFooter.notPolled');
+      body.add(
+        Column(
+          key: _body,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _TileGrid([
+              for (var slot = 0; slot < _telemetryTileCount; slot++)
+                telemetryTile(tiles[slot], slot),
+            ]),
+            const SizedBox(height: 12),
+            _Footer(
+              dot: polling.isEmpty ? null : _dot(c, polledNow),
+              left: lead,
+              right: polledNow && pollerName.isNotEmpty
+                  ? trKey('atlasFooter.byPoller')
+                        .replaceAll('{{name}}', pollerName)
+                  : '',
+              loading: feed?.loading ?? false,
+              failed: feed?.error != null && !isNotFound(feed?.error),
+              tip: [
+                ?pollLine,
+                if (latestAt != null)
+                  '${trKey('atlasTelemetry.lastReading')} ${formatAbsolute(latestAt)}',
+                trKey('atlasTelemetry.help'),
               ],
             ),
           ],
@@ -944,6 +1284,7 @@ class _Footer extends StatelessWidget {
               children: [
                 if (dot != null) ...[
                   Container(
+                    key: const ValueKey('atlas-footer-dot'),
                     width: 6,
                     height: 6,
                     decoration: BoxDecoration(
@@ -1012,3 +1353,7 @@ class _FooterLayout extends MultiChildLayoutDelegate {
   @override
   bool shouldRelayout(_FooterLayout old) => old.height != height;
 }
+
+/// A footer dot: lit while the fact it leads with is fresh.
+Color _dot(BeaconColors c, bool fresh) =>
+    fresh ? c.success : c.dim.withValues(alpha: .3);

@@ -5,11 +5,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/api.dart';
+import '../../core/filter_sheet.dart';
 import '../../core/json.dart';
+import '../../core/sheet.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
 import '../analytics/charts.dart' show countLabel;
 import 'directory_widgets.dart';
+import 'node_chips.dart';
 import 'paging.dart';
 
 /// Display text for a filter option value.
@@ -183,6 +186,9 @@ class _DirectoryScreenState extends State<DirectoryScreen>
           (search.text.trim().isNotEmpty &&
               data.containsKey('name') &&
               data['name'] != current['name']) ||
+          (const {'true', 'false'}.contains(filters['poller']) &&
+              data.containsKey('isPoller') &&
+              (data['isPoller'] == true) != (filters['poller'] == 'true')) ||
           (textOf(filters['scope']).isNotEmpty &&
               data.containsKey('defaultScope') &&
               data['defaultScope'] != filters['scope']) ||
@@ -198,6 +204,7 @@ class _DirectoryScreenState extends State<DirectoryScreen>
         'radio',
         'iatas',
         'isObserver',
+        'isPoller',
       ]) {
         if (data.containsKey(key)) {
           if (data[key] == null &&
@@ -837,6 +844,12 @@ class _DirectoryScreenState extends State<DirectoryScreen>
   List<Json> get visible {
     if (widget.kind == 'observers') return items;
     final result = items.where((r) {
+      // An older server ignores the poller param, so hold the line here.
+      if (widget.kind == 'nodes' &&
+          const {'true', 'false'}.contains(filters['poller']) &&
+          (r['isPoller'] == true) != (filters['poller'] == 'true')) {
+        return false;
+      }
       final scope = filters['scope'];
       if (scope?.isNotEmpty == true && widget.kind != 'traces') {
         if (widget.kind == 'observers' &&
@@ -905,131 +918,87 @@ class _DirectoryScreenState extends State<DirectoryScreen>
     String title,
     List<String> values,
     StateSetter update,
-  ) => Padding(
-    padding: const EdgeInsets.only(bottom: 14),
-    child: DropdownButtonFormField<String>(
-      key: ValueKey('$key:${filters[key]}'),
-      initialValue: filters[key] ?? '',
-      isExpanded: true,
-      decoration: InputDecoration(labelText: tr(title)),
-      items: [
-        DropdownMenuItem(value: '', child: Text(trKey('nodeFilters.any'))),
-        ...{
-          ...values,
-          if (textOf(filters[key]).isNotEmpty) filters[key]!,
-        }.map((v) => DropdownMenuItem(value: v, child: Text(optionLabel(v)))),
-      ],
-      onChanged: (v) => update(() => filters[key] = v ?? ''),
-    ),
+  ) => FilterField<String>(
+    key: ValueKey('$key:${filters[key]}'),
+    label: title,
+    options: {
+      for (final v in {
+        ...values,
+        if (textOf(filters[key]).isNotEmpty) filters[key]!,
+      })
+        v: optionLabel(v),
+    },
+    selected: textOf(filters[key]).isEmpty ? {} : {filters[key]!},
+    onChanged: (picked) =>
+        update(() => filters[key] = picked.isEmpty ? '' : picked.first),
   );
   Future<void> showFilters() async {
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
+    await showBeaconSheet<void>(
+      context,
       builder: (context) => StatefulBuilder(
-        builder: (context, update) => SafeArea(
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(
-              20,
-              20,
-              20,
-              MediaQuery.viewInsetsOf(context).bottom + 20,
-            ),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.tune,
-                        color: Theme.of(context).colorScheme.primary,
-                        size: 18,
-                      ),
-                      const SizedBox(width: 8),
-                      const DirectoryText(
-                        'Filters',
-                        style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  if (widget.kind == 'nodes') ...[
-                    select('typeName', 'Node type', [
-                      'companion',
-                      'repeater',
-                      'room_server',
-                      'sensor',
-                    ], update),
-                    select('supportsMultibytePaths', 'Multibyte paths', [
-                      'true',
-                      'false',
-                    ], update),
-                    select('supportsMultibyteTraces', 'Multibyte traces', [
-                      'true',
-                      'false',
-                    ], update),
-                  ],
-                  if (widget.kind == 'observers') ...[
-                    select('status', 'Status', ['online', 'offline'], update),
-                    select('type', 'Observer type', types, update),
-                    select('broker', 'Broker', brokers, update),
-                  ],
-                  if (widget.kind == 'channels') ...[
-                    select('keyKnown', 'Known key', ['true', 'false'], update),
-                    select('hashtag', 'Hashtag channel', [
-                      'true',
-                      'false',
-                    ], update),
-                  ],
-                  if (widget.kind == 'traces')
-                    select('type', 'Type', ['TRACE', 'PING'], update),
-                  if (widget.kind == 'routes') ...[
-                    TextFormField(
-                      key: const ValueKey('routes-iata-filter'),
-                      initialValue: filters['iata'],
-                      decoration: InputDecoration(labelText: tr('IATA')),
-                      // IATA codes are uppercase on the server; match as typed.
-                      textCapitalization: TextCapitalization.characters,
-                      inputFormatters: [
-                        TextInputFormatter.withFunction(
-                          (_, value) =>
-                              value.copyWith(text: value.text.toUpperCase()),
-                        ),
-                      ],
-                      onChanged: (v) => filters['iata'] = v.toUpperCase(),
-                    ),
-                    select(
-                      'hopCount',
-                      'Hops',
-                      List.generate(16, (i) => '${i + 1}'),
-                      update,
+        builder: (context, update) => BeaconSheet(
+          title: tr('Filters'),
+          maxHeight: .9,
+          child: FilterSheetBody(
+            onClear: () => update(filters.clear),
+            onPrimary: () => Navigator.pop(context),
+            fields: [
+              if (widget.kind == 'nodes') ...[
+                select('typeName', 'Node type', [
+                  'companion',
+                  'repeater',
+                  'room_server',
+                  'sensor',
+                ], update),
+                select('supportsMultibytePaths', 'Multibyte paths', [
+                  'true',
+                  'false',
+                ], update),
+                select('supportsMultibyteTraces', 'Multibyte traces', [
+                  'true',
+                  'false',
+                ], update),
+                select('poller', trKey('nodeFilters.poller'), [
+                  'true',
+                  'false',
+                ], update),
+              ],
+              if (widget.kind == 'observers') ...[
+                select('status', 'Status', ['online', 'offline'], update),
+                select('type', 'Observer type', types, update),
+                select('broker', 'Broker', brokers, update),
+              ],
+              if (widget.kind == 'channels') ...[
+                select('keyKnown', 'Known key', ['true', 'false'], update),
+                select('hashtag', 'Hashtag channel', ['true', 'false'], update),
+              ],
+              if (widget.kind == 'traces')
+                select('type', 'Type', ['TRACE', 'PING'], update),
+              if (widget.kind == 'routes') ...[
+                TextFormField(
+                  key: const ValueKey('routes-iata-filter'),
+                  initialValue: filters['iata'],
+                  decoration: InputDecoration(labelText: tr('IATA')),
+                  // IATA codes are uppercase on the server; match as typed.
+                  textCapitalization: TextCapitalization.characters,
+                  inputFormatters: [
+                    TextInputFormatter.withFunction(
+                      (_, value) =>
+                          value.copyWith(text: value.text.toUpperCase()),
                     ),
                   ],
-                  if (['nodes', 'observers', 'traces'].contains(widget.kind))
-                    select('scope', trKey('nodeFilters.scope'), scopes, update),
-                  Row(
-                    children: [
-                      TextButton(
-                        onPressed: () {
-                          update(filters.clear);
-                        },
-                        child: const DirectoryText('Clear all'),
-                      ),
-                      const Spacer(),
-                      FilledButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const DirectoryText('Apply'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
+                  onChanged: (v) => filters['iata'] = v.toUpperCase(),
+                ),
+                select(
+                  'hopCount',
+                  'Hops',
+                  List.generate(16, (i) => '${i + 1}'),
+                  update,
+                ),
+              ],
+              if (['nodes', 'observers', 'traces'].contains(widget.kind))
+                select('scope', trKey('nodeFilters.scope'), scopes, update),
+            ],
           ),
         ),
       ),
@@ -1328,14 +1297,19 @@ class _DirectoryScreenState extends State<DirectoryScreen>
               line(age(r['lastSeen']), color: muted),
               const SizedBox(width: 8),
             ],
-            if (r['isObserver'] == true)
-              const Padding(
-                padding: EdgeInsets.only(right: 4),
-                child: Icon(Icons.sensors, size: 13),
-              ),
-            badge(
-              textOf(r['nodeTypeName']),
-              color: BeaconColors.of(context).secondary,
+            if (r['isPoller'] == true) ...[
+              pollerChip(iconOnly: true),
+              const SizedBox(width: 4),
+            ],
+            if (r['isObserver'] == true || r['isPoller'] == true) ...[
+              observerChip(iconOnly: true),
+              const SizedBox(width: 4),
+            ],
+            nodeTypeChip(
+              context,
+              r['nodeTypeName'],
+              textOf(r['nodeTypeName'], tr('Unknown')).toUpperCase(),
+              BeaconColors.of(context).muted,
             ),
           ],
         ),
@@ -1355,7 +1329,7 @@ class _DirectoryScreenState extends State<DirectoryScreen>
         if (r['possiblyForeign'] == true)
           Padding(
             padding: const EdgeInsets.only(top: 5),
-            child: badge('Possibly foreign', color: Colors.orange),
+            child: cautionChip(tr('Possibly foreign')),
           ),
         if (rows(r['iatas']).isNotEmpty)
           Padding(

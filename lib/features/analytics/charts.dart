@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
@@ -131,36 +132,94 @@ class StatsQuery extends StatefulWidget {
   State<StatsQuery> createState() => _StatsQueryState();
 }
 
-class _StatsQueryState extends State<StatsQuery> {
-  late Future<dynamic> future;
+class _StatsQueryState extends State<StatsQuery> with WidgetsBindingObserver {
+  Future<dynamic>? future;
   Timer? timer;
   int generation = 0;
   int? lastStatus;
+  bool visible = true, busy = false;
+  // A read owed to the view: the first one, a missed poll or changed parameters.
+  bool refreshPending = true, freshPending = false;
+  bool resumed =
+      WidgetsBinding.instance.lifecycleState == null ||
+      WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+  bool get active => visible && resumed;
   @override
   void initState() {
     super.initState();
-    load();
+    WidgetsBinding.instance.addObserver(this);
     if (widget.pollInterval != null) {
       timer = Timer.periodic(widget.pollInterval!, (_) {
-        if (mounted &&
-            lastStatus != 404 &&
-            WidgetsBinding.instance.lifecycleState ==
-                AppLifecycleState.resumed) {
+        if (!mounted || lastStatus == 404) return;
+        if (active) {
           setState(() => load(fresh: true));
+        } else {
+          refreshPending = freshPending = true;
         }
       });
     }
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final next = TickerMode.valuesOf(context).enabled;
+    if (visible == next && !(next && refreshPending)) return;
+    visible = next;
+    if (next) {
+      resume();
+    } else {
+      suspend();
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!mounted) return;
+    final next = state == AppLifecycleState.resumed;
+    // A brief inactive spell (a system sheet, the app switcher) lets a read in flight finish.
+    if (!next && state != AppLifecycleState.inactive && busy) {
+      setState(suspend);
+    }
+    if (resumed == next) return;
+    resumed = next;
+    if (next) setState(resume);
+  }
+
+  /// Drops a read in flight so no retry runs unseen; it is owed on return.
+  void suspend() {
+    if (!busy) return;
+    generation++;
+    busy = false;
+    future = null;
+    refreshPending = true;
+  }
+
+  void resume() {
+    if (active && refreshPending) load(fresh: freshPending);
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     generation++;
     timer?.cancel();
     super.dispose();
   }
 
   void load({bool fresh = false}) {
+    if (!active) {
+      // The old answer has the wrong shape for the new parameters.
+      generation++;
+      busy = false;
+      future = null;
+      refreshPending = true;
+      freshPending = freshPending || fresh;
+      return;
+    }
+    refreshPending = freshPending = false;
     final token = ++generation;
+    busy = true;
     future =
         (fresh ? widget.api.get : widget.api.getCached)(
           widget.path,
@@ -168,12 +227,16 @@ class _StatsQueryState extends State<StatsQuery> {
           () => mounted && token == generation,
         ).then(
           (value) {
-            if (token == generation) lastStatus = null;
+            if (token == generation) {
+              lastStatus = null;
+              busy = false;
+            }
             return value;
           },
           onError: (Object error) {
             if (token == generation) {
               lastStatus = error is ApiException ? error.status : null;
+              busy = false;
             }
             throw error;
           },
@@ -227,6 +290,23 @@ class _StatsQueryState extends State<StatsQuery> {
   );
 }
 
+/// The reading before and after each gap, as two-point runs for a bridging line.
+List<FlSpot> gapBridges(List<FlSpot> spots) {
+  final out = <FlSpot>[];
+  FlSpot? last;
+  var gap = false;
+  for (final spot in spots) {
+    if (spot.isNull()) {
+      gap = last != null;
+      continue;
+    }
+    if (gap) out.addAll([last!, spot, FlSpot.nullSpot]);
+    last = spot;
+    gap = false;
+  }
+  return out;
+}
+
 class TimeChart extends StatefulWidget {
   const TimeChart({
     super.key,
@@ -235,20 +315,76 @@ class TimeChart extends StatefulWidget {
     this.timeAxis = true,
     this.stacked = false,
     this.showSingleSeriesToggle = true,
+    this.showDots = false,
+    this.bridgeGaps = false,
+    this.fill = true,
+    this.height = 200,
+    this.colors,
+    this.format,
+    this.minX,
+    this.maxX,
+    this.zoom = false,
   });
   final Map<String, List<ChartPoint>> series;
   final String unit;
   final bool timeAxis;
   final bool stacked;
   final bool showSingleSeriesToggle;
+
+  /// Mark every point, so a point between gaps is not invisible.
+  final bool showDots;
+
+  /// Join the readings either side of a gap with a faint dashed line.
+  final bool bridgeGaps;
+
+  /// Shade under a lone series.
+  final bool fill;
+  final double height;
+
+  /// Series colours in order, instead of the analytics palette.
+  final List<Color>? colors;
+
+  /// Writes a value on the axis and in the tooltip, unit included.
+  final String Function(double value)? format;
+
+  /// The time window to show, when it is wider than the points.
+  final double? minX, maxX;
+
+  /// Pinch and pan along the time axis. A plain drag then pans, so the tooltip
+  /// follows a tap or a short hold and drag.
+  final bool zoom;
   @override
   State<TimeChart> createState() => _TimeChartState();
 }
 
 class _TimeChartState extends State<TimeChart> {
   final hidden = <String>{};
+  static const _maxZoom = 8.0;
+  late final _transform = TransformationController()..addListener(_zoomed);
+  double _scale = 1;
+
+  // The ticks follow the visible span, so a zoomed chart keeps its labels.
+  void _zoomed() {
+    final scale = _transform.value.getMaxScaleOnAxis();
+    if (scale != _scale && mounted) setState(() => _scale = scale);
+  }
+
+  @override
+  void dispose() {
+    _transform.dispose();
+    super.dispose();
+  }
+
+  Color _color(BuildContext context, int index) {
+    final colors = widget.colors;
+    return colors == null
+        ? _seriesColor(context, index)
+        : colors[index % colors.length];
+  }
+
   @override
   Widget build(BuildContext context) {
+    final label = widget.format ?? countLabel;
     final entries = widget.series.entries.toList();
     final all = entries
         .expand((e) => e.value)
@@ -261,11 +397,16 @@ class _TimeChartState extends State<TimeChart> {
       );
     }
     final active = entries.where((e) => !hidden.contains(e.key)).toList();
-    final xValues = all.map((point) => point.x).toList();
+    final xValues = [
+      ...all.map((point) => point.x),
+      ?widget.minX,
+      ?widget.maxX,
+    ];
     final xSpan = xValues.isEmpty
         ? 0.0
-        : xValues.reduce((a, b) => a > b ? a : b) -
-              xValues.reduce((a, b) => a < b ? a : b);
+        : (xValues.reduce((a, b) => a > b ? a : b) -
+                  xValues.reduce((a, b) => a < b ? a : b)) /
+              _scale;
     const tickSteps = [
       1000.0,
       5000.0,
@@ -313,7 +454,27 @@ class _TimeChartState extends State<TimeChart> {
               ),
         ],
     ];
+    // Headroom, so a dot on the highest or lowest reading is not cut in half.
+    double? minY, maxY;
+    if (widget.showDots && !widget.stacked) {
+      final ys = [
+        for (final e in active)
+          for (final p in e.value) ?p.y,
+      ];
+      if (ys.isNotEmpty) {
+        final low = ys.reduce(math.min), high = ys.reduce(math.max);
+        final pad =
+            (high - low == 0 ? math.max(low.abs(), 1) : high - low) * .08;
+        minY = low >= 0 ? math.max(0, low - pad) : low - pad;
+        maxY = high + pad;
+      }
+    }
+    final bridges = [
+      if (widget.bridgeGaps && !widget.stacked)
+        for (var i = 0; i < active.length; i++) (i, gapBridges(plotted[i])),
+    ].where((b) => b.$2.isNotEmpty).toList();
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         if (entries.length > 1 || widget.showSingleSeriesToggle)
           Wrap(
@@ -324,10 +485,7 @@ class _TimeChartState extends State<TimeChart> {
                   visualDensity: VisualDensity.compact,
                   label: Text(
                     tr(entries[i].key),
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: _seriesColor(context, i),
-                    ),
+                    style: TextStyle(fontSize: 10, color: _color(context, i)),
                   ),
                   selected: !hidden.contains(entries[i].key),
                   onSelected: (v) => setState(
@@ -340,24 +498,56 @@ class _TimeChartState extends State<TimeChart> {
           ),
         const SizedBox(height: 12),
         SizedBox(
-          height: 200,
+          height: widget.height,
           child: LineChart(
+            transformationConfig: widget.zoom
+                ? FlTransformationConfig(
+                    scaleAxis: FlScaleAxis.horizontal,
+                    maxScale: _maxZoom,
+                    transformationController: _transform,
+                  )
+                : const FlTransformationConfig(),
             LineChartData(
+              minX: widget.minX,
+              maxX: widget.maxX,
+              minY: minY,
+              maxY: maxY,
               lineBarsData: [
                 for (var i = 0; i < active.length; i++)
                   LineChartBarData(
                     spots: plotted[i],
-                    color: _seriesColor(context, entries.indexOf(active[i])),
+                    color: _color(context, entries.indexOf(active[i])),
                     barWidth: 1.7,
                     isCurved: false,
-                    dotData: FlDotData(show: all.length <= 2),
+                    dotData: FlDotData(
+                      show: widget.showDots || all.length <= 2,
+                      getDotPainter: (spot, _, bar, _) => FlDotCirclePainter(
+                        radius: widget.showDots ? 2 : 4,
+                        color: bar.color!,
+                        strokeWidth: 0,
+                      ),
+                    ),
                     belowBarData: BarAreaData(
-                      show: active.length == 1 || (widget.stacked && i == 0),
-                      color: _seriesColor(
+                      show:
+                          (widget.fill && active.length == 1) ||
+                          (widget.stacked && i == 0),
+                      color: _color(
                         context,
                         entries.indexOf(active[i]),
                       ).withValues(alpha: widget.stacked ? .4 : .13),
                     ),
+                  ),
+                // After the series, so a touched bar's index still names one.
+                for (final (i, spots) in bridges)
+                  LineChartBarData(
+                    spots: spots,
+                    color: _color(
+                      context,
+                      entries.indexOf(active[i]),
+                    ).withValues(alpha: .6),
+                    barWidth: 1,
+                    dashArray: const [3, 3],
+                    dotData: const FlDotData(show: false),
                   ),
               ],
               betweenBarsData: widget.stacked
@@ -366,7 +556,7 @@ class _TimeChartState extends State<TimeChart> {
                         BetweenBarsData(
                           fromIndex: i - 1,
                           toIndex: i,
-                          color: _seriesColor(
+                          color: _color(
                             context,
                             entries.indexOf(active[i]),
                           ).withValues(alpha: .4),
@@ -391,11 +581,13 @@ class _TimeChartState extends State<TimeChart> {
                 leftTitles: AxisTitles(
                   sideTitles: SideTitles(
                     showTitles: true,
-                    reservedSize: 42,
+                    reservedSize: widget.format == null ? 42 : 56,
                     minIncluded: false,
                     maxIncluded: false,
                     getTitlesWidget: (v, m) => Text(
-                      countLabel(v),
+                      label(v),
+                      maxLines: 1,
+                      softWrap: false,
                       style: TextStyle(
                         fontSize: 9,
                         color: BeaconColors.of(context).dim,
@@ -437,11 +629,42 @@ class _TimeChartState extends State<TimeChart> {
                 ),
               ),
               lineTouchData: LineTouchData(
+                longPressDuration: widget.zoom
+                    ? const Duration(milliseconds: 150)
+                    : null,
+                // A thin solid cursor: dashes are kept for gaps.
+                getTouchedSpotIndicator: !widget.showDots
+                    ? defaultTouchedIndicators
+                    : (bar, indexes) => [
+                        for (final _ in indexes)
+                          bar.dashArray != null
+                              ? null
+                              : TouchedSpotIndicatorData(
+                                  FlLine(
+                                    color: BeaconColors.of(context).muted,
+                                    strokeWidth: 1,
+                                  ),
+                                  FlDotData(
+                                    getDotPainter: (_, _, _, _) =>
+                                        FlDotCirclePainter(
+                                          radius: 4,
+                                          color: bar.color!,
+                                          strokeWidth: 2,
+                                          strokeColor: BeaconColors.of(context)
+                                              .surface,
+                                        ),
+                                  ),
+                                ),
+                      ],
                 touchTooltipData: LineTouchTooltipData(
+                  fitInsideHorizontally: widget.zoom,
+                  fitInsideVertically: widget.zoom,
                   getTooltipItems: (spots) => spots.map((s) {
+                    // A bridge repeats its series' readings.
+                    if (s.barIndex >= active.length) return null;
                     final d = epoch(s.x, isUtc: true);
                     return LineTooltipItem(
-                      '${widget.timeAxis && d != null ? '${d.toIso8601String().substring(5, 16)} UTC\n' : ''}${tr(active[s.barIndex].key)}: ${countLabel(widget.stacked ? active[s.barIndex].value.firstWhere((p) => p.x == s.x).y : s.y)}${widget.unit}',
+                      '${widget.timeAxis && d != null ? '${d.toIso8601String().substring(5, 16)} UTC\n' : ''}${tr(active[s.barIndex].key)}: ${widget.format?.call(s.y) ?? '${countLabel(widget.stacked ? active[s.barIndex].value.firstWhere((p) => p.x == s.x).y : s.y)}${widget.unit}'}',
                       TextStyle(
                         fontSize: 11,
                         color: BeaconColors.of(context).bright,

@@ -1,0 +1,652 @@
+{
+  "about": "Made from beacon-server's alerts.Sentence, NoticePayload and SealNotice. Shared by the Dart and Swift tests.",
+  "sentences": [
+    {
+      "kind": "gone_quiet",
+      "name": "Ridge Rptr",
+      "value": 1,
+      "detail": "",
+      "tempUnit": "c",
+      "want": "Ridge Rptr has not been heard for 1 hour."
+    },
+    {
+      "kind": "gone_quiet",
+      "name": "Ridge Rptr",
+      "value": 1,
+      "detail": "",
+      "tempUnit": "f",
+      "want": "Ridge Rptr has not been heard for 1 hour."
+    },
+    {
+      "kind": "gone_quiet",
+      "name": "Ridge Rptr",
+      "value": 3,
+      "detail": "",
+      "tempUnit": "c",
+      "want": "Ridge Rptr has not been heard for 3 hours."
+    },
+    {
+      "kind": "gone_quiet",
+      "name": "Ridge Rptr",
+      "value": 3,
+      "detail": "",
+      "tempUnit": "f",
+      "want": "Ridge Rptr has not been heard for 3 hours."
+    },
+    {
+      "kind": "gone_quiet",
+      "name": "Ridge Rptr",
+      "value": 48,
+      "detail": "",
+      "tempUnit": "c",
+      "want": "Ridge Rptr has not been heard for 48 hours."
+    },
+    {
+      "kind": "gone_quiet",
+      "name": "Ridge Rptr",
+      "value": 48,
+      "detail": "",
+      "tempUnit": "f",
+      "want": "Ridge Rptr has not been heard for 48 hours."
+    },
+    {
+      "kind": "back_online",
+      "name": "Ridge Rptr",
+      "value": null,
+      "detail": "",
+      "tempUnit": "c",
+      "want": "Ridge Rptr is back online."
+    },
+    {
+      "kind": "back_online",
+      "name": "Ridge Rptr",
+      "value": null,
+      "detail": "",
+      "tempUnit": "f",
+      "want": "Ridge Rptr is back online."
+    },
+    {
+      "kind": "clock",
+      "name": "Hilltop",
+      "value": 300,
+      "detail": "",
+      "tempUnit": "c",
+      "want": "Hilltop clock is off by 5 minutes."
+    },
+    {
+      "kind": "clock",
+      "name": "Hilltop",
+      "value": 300,
+      "detail": "",
+      "tempUnit": "f",
+      "want": "Hilltop clock is off by 5 minutes."
+    },
+    {
+      "kind": "clock",
+      "name": "Hilltop",
+      "value": 3600,
+      "detail": "",
+      "tempUnit": "c",
+      "want": "Hilltop clock is off by 1 hour."
+    },
+    {
+      "kind": "clock",
+      "name": "Hilltop",
+      "value": 3600,
+      "detail": "",
+      "tempUnit": "f",
+      "want": "Hilltop clock is off by 1 hour."
+    },
+    {
+      "kind": "clock",
+      "name": "Hilltop",
+      "value": 86400,
+      "detail": "",
+      "tempUnit": "c",
+      "want": "Hilltop clock is off by 1 day."
+    },
+    {
+      "kind": "clock",
+      "name": "Hilltop",
+      "value": 86400,
+      "detail": "",
+      "tempUnit": "f",
+      "want": "Hilltop clock is off by 1 day."
+    },
+    {
+      "kind": "clock",
+      "name": "Hilltop",
+      "value": 172800,
+      "detail": "",
+      "tempUnit": "c",
+      "want": "Hilltop clock is off by 2 days."
+    },
+    {
+      "kind": "clock",
+      "name": "Hilltop",
+      "value": 172800,
+      "detail": "",
+      "tempUnit": "f",
+      "want": "Hilltop clock is off by 2 days."
+    },
+    {
+      "kind": "clock",
+      "name": "Hilltop",
+      "value": 90,
+      "detail": "",
+      "tempUnit": "c",
+      "want": "Hilltop clock is off by 1 minute."
+    },
+    {
+      "kind": "clock",
+      "name": "Hilltop",
+      "value": 90,
+      "detail": "",
+      "tempUnit": "f",
+      "want": "Hilltop clock is off by 1 minute."
+    },
+    {
+      "kind": "clock",
+      "name": "Hilltop",
+      "value": 59,
+      "detail": "",
+      "tempUnit": "c",
+      "want": "Hilltop clock is off by 0 minutes."
+    },
+    {
+      "kind": "clock",
+      "name": "Hilltop",
+      "value": 59,
+      "detail": "",
+      "tempUnit": "f",
+      "want": "Hilltop clock is off by 0 minutes."
+    },
+    {
+      "kind": "clock",
+      "name": "Hilltop",
+      "value": 7200,
+      "detail": "",
+      "tempUnit": "c",
+      "want": "Hilltop clock is off by 2 hours."
+    },
+    {
+      "kind": "clock",
+      "name": "Hilltop",
+      "value": 7200,
+      "detail": "",
+      "tempUnit": "f",
+      "want": "Hilltop clock is off by 2 hours."
+    },
+    {
+      "kind": "clock",
+      "name": "Hilltop",
+      "value": 5400,
+      "detail": "",
+      "tempUnit": "c",
+      "want": "Hilltop clock is off by 1 hour."
+    },
+    {
+      "kind": "clock",
+      "name": "Hilltop",
+      "value": 5400,
+      "detail": "",
+      "tempUnit": "f",
+      "want": "Hilltop clock is off by 1 hour."
+    },
+    {
+      "kind": "clock",
+      "name": "Hilltop",
+      "value": -900,
+      "detail": "",
+      "tempUnit": "c",
+      "want": "Hilltop clock is off by -15 minutes."
+    },
+    {
+      "kind": "clock",
+      "name": "Hilltop",
+      "value": -900,
+      "detail": "",
+      "tempUnit": "f",
+      "want": "Hilltop clock is off by -15 minutes."
+    },
+    {
+      "kind": "battery_low",
+      "name": "Ridge Rptr",
+      "value": 3412,
+      "detail": "",
+      "tempUnit": "c",
+      "want": "Ridge Rptr battery is low: 3.41 V."
+    },
+    {
+      "kind": "battery_low",
+      "name": "Ridge Rptr",
+      "value": 3412,
+      "detail": "",
+      "tempUnit": "f",
+      "want": "Ridge Rptr battery is low: 3.41 V."
+    },
+    {
+      "kind": "battery_low",
+      "name": "Ridge Rptr",
+      "value": 3500,
+      "detail": "",
+      "tempUnit": "c",
+      "want": "Ridge Rptr battery is low: 3.50 V."
+    },
+    {
+      "kind": "battery_low",
+      "name": "Ridge Rptr",
+      "value": 3500,
+      "detail": "",
+      "tempUnit": "f",
+      "want": "Ridge Rptr battery is low: 3.50 V."
+    },
+    {
+      "kind": "battery_low",
+      "name": "Ridge Rptr",
+      "value": 2995,
+      "detail": "",
+      "tempUnit": "c",
+      "want": "Ridge Rptr battery is low: 3.00 V."
+    },
+    {
+      "kind": "battery_low",
+      "name": "Ridge Rptr",
+      "value": 2995,
+      "detail": "",
+      "tempUnit": "f",
+      "want": "Ridge Rptr battery is low: 3.00 V."
+    },
+    {
+      "kind": "battery_low",
+      "name": "Ridge Rptr",
+      "value": 3415,
+      "detail": "",
+      "tempUnit": "c",
+      "want": "Ridge Rptr battery is low: 3.42 V."
+    },
+    {
+      "kind": "battery_low",
+      "name": "Ridge Rptr",
+      "value": 3415,
+      "detail": "",
+      "tempUnit": "f",
+      "want": "Ridge Rptr battery is low: 3.42 V."
+    },
+    {
+      "kind": "battery_falling",
+      "name": "Ridge Rptr",
+      "value": 250,
+      "detail": "",
+      "tempUnit": "c",
+      "want": "Ridge Rptr battery is falling by about 0.25 V a day."
+    },
+    {
+      "kind": "battery_falling",
+      "name": "Ridge Rptr",
+      "value": 250,
+      "detail": "",
+      "tempUnit": "f",
+      "want": "Ridge Rptr battery is falling by about 0.25 V a day."
+    },
+    {
+      "kind": "battery_falling",
+      "name": "Ridge Rptr",
+      "value": 100,
+      "detail": "",
+      "tempUnit": "c",
+      "want": "Ridge Rptr battery is falling by about 0.10 V a day."
+    },
+    {
+      "kind": "battery_falling",
+      "name": "Ridge Rptr",
+      "value": 100,
+      "detail": "",
+      "tempUnit": "f",
+      "want": "Ridge Rptr battery is falling by about 0.10 V a day."
+    },
+    {
+      "kind": "rebooted",
+      "name": "100% Hill %s %d",
+      "value": null,
+      "detail": "",
+      "tempUnit": "c",
+      "want": "100% Hill %s %d rebooted."
+    },
+    {
+      "kind": "rebooted",
+      "name": "100% Hill %s %d",
+      "value": null,
+      "detail": "",
+      "tempUnit": "f",
+      "want": "100% Hill %s %d rebooted."
+    },
+    {
+      "kind": "temperature",
+      "name": "Shed",
+      "value": 355,
+      "detail": "",
+      "tempUnit": "c",
+      "want": "Shed temperature is 35.5 C, outside your limits."
+    },
+    {
+      "kind": "temperature",
+      "name": "Shed",
+      "value": 355,
+      "detail": "",
+      "tempUnit": "f",
+      "want": "Shed temperature is 95.9 F, outside your limits."
+    },
+    {
+      "kind": "temperature",
+      "name": "Shed",
+      "value": -25,
+      "detail": "",
+      "tempUnit": "c",
+      "want": "Shed temperature is -2.5 C, outside your limits."
+    },
+    {
+      "kind": "temperature",
+      "name": "Shed",
+      "value": -25,
+      "detail": "",
+      "tempUnit": "f",
+      "want": "Shed temperature is 27.5 F, outside your limits."
+    },
+    {
+      "kind": "temperature",
+      "name": "Shed",
+      "value": -400,
+      "detail": "",
+      "tempUnit": "c",
+      "want": "Shed temperature is -40.0 C, outside your limits."
+    },
+    {
+      "kind": "temperature",
+      "name": "Shed",
+      "value": -400,
+      "detail": "",
+      "tempUnit": "f",
+      "want": "Shed temperature is -40.0 F, outside your limits."
+    },
+    {
+      "kind": "temperature",
+      "name": "Shed",
+      "value": 0,
+      "detail": "",
+      "tempUnit": "c",
+      "want": "Shed temperature is 0.0 C, outside your limits."
+    },
+    {
+      "kind": "temperature",
+      "name": "Shed",
+      "value": 0,
+      "detail": "",
+      "tempUnit": "f",
+      "want": "Shed temperature is 32.0 F, outside your limits."
+    },
+    {
+      "kind": "temperature",
+      "name": "Shed",
+      "value": -178,
+      "detail": "",
+      "tempUnit": "c",
+      "want": "Shed temperature is -17.8 C, outside your limits."
+    },
+    {
+      "kind": "temperature",
+      "name": "Shed",
+      "value": -178,
+      "detail": "",
+      "tempUnit": "f",
+      "want": "Shed temperature is -0.0 F, outside your limits."
+    },
+    {
+      "kind": "temperature",
+      "name": "Shed",
+      "value": 1500,
+      "detail": "",
+      "tempUnit": "c",
+      "want": "Shed temperature is 150.0 C, outside your limits."
+    },
+    {
+      "kind": "temperature",
+      "name": "Shed",
+      "value": 1500,
+      "detail": "",
+      "tempUnit": "f",
+      "want": "Shed temperature is 302.0 F, outside your limits."
+    },
+    {
+      "kind": "temperature",
+      "name": "Shed",
+      "value": 1,
+      "detail": "",
+      "tempUnit": "c",
+      "want": "Shed temperature is 0.1 C, outside your limits."
+    },
+    {
+      "kind": "temperature",
+      "name": "Shed",
+      "value": 1,
+      "detail": "",
+      "tempUnit": "f",
+      "want": "Shed temperature is 32.2 F, outside your limits."
+    },
+    {
+      "kind": "temperature",
+      "name": "Shed",
+      "value": -500,
+      "detail": "",
+      "tempUnit": "c",
+      "want": "Shed temperature is -50.0 C, outside your limits."
+    },
+    {
+      "kind": "temperature",
+      "name": "Shed",
+      "value": -500,
+      "detail": "",
+      "tempUnit": "f",
+      "want": "Shed temperature is -58.0 F, outside your limits."
+    },
+    {
+      "kind": "noise_high",
+      "name": "Tower 🛰️",
+      "value": -80,
+      "detail": "",
+      "tempUnit": "c",
+      "want": "Tower 🛰️ noise floor is high: -80 dBm."
+    },
+    {
+      "kind": "noise_high",
+      "name": "Tower 🛰️",
+      "value": -80,
+      "detail": "",
+      "tempUnit": "f",
+      "want": "Tower 🛰️ noise floor is high: -80 dBm."
+    },
+    {
+      "kind": "noise_high",
+      "name": "Tower 🛰️",
+      "value": -130,
+      "detail": "",
+      "tempUnit": "c",
+      "want": "Tower 🛰️ noise floor is high: -130 dBm."
+    },
+    {
+      "kind": "noise_high",
+      "name": "Tower 🛰️",
+      "value": -130,
+      "detail": "",
+      "tempUnit": "f",
+      "want": "Tower 🛰️ noise floor is high: -130 dBm."
+    },
+    {
+      "kind": "observer_offline",
+      "name": "Obs Ottawa",
+      "value": 1,
+      "detail": "",
+      "tempUnit": "c",
+      "want": "Obs Ottawa has not reported for 1 minute."
+    },
+    {
+      "kind": "observer_offline",
+      "name": "Obs Ottawa",
+      "value": 1,
+      "detail": "",
+      "tempUnit": "f",
+      "want": "Obs Ottawa has not reported for 1 minute."
+    },
+    {
+      "kind": "observer_offline",
+      "name": "Obs Ottawa",
+      "value": 30,
+      "detail": "",
+      "tempUnit": "c",
+      "want": "Obs Ottawa has not reported for 30 minutes."
+    },
+    {
+      "kind": "observer_offline",
+      "name": "Obs Ottawa",
+      "value": 30,
+      "detail": "",
+      "tempUnit": "f",
+      "want": "Obs Ottawa has not reported for 30 minutes."
+    },
+    {
+      "kind": "observer_offline",
+      "name": "Obs Ottawa",
+      "value": 360,
+      "detail": "",
+      "tempUnit": "c",
+      "want": "Obs Ottawa has not reported for 360 minutes."
+    },
+    {
+      "kind": "observer_offline",
+      "name": "Obs Ottawa",
+      "value": 360,
+      "detail": "",
+      "tempUnit": "f",
+      "want": "Obs Ottawa has not reported for 360 minutes."
+    },
+    {
+      "kind": "request_attention",
+      "name": "Ridge Rptr",
+      "value": null,
+      "detail": "login_failed",
+      "tempUnit": "c",
+      "want": "Telemetry request for Ridge Rptr: the repeater did not accept the guest password."
+    },
+    {
+      "kind": "request_attention",
+      "name": "Ridge Rptr",
+      "value": null,
+      "detail": "login_failed",
+      "tempUnit": "f",
+      "want": "Telemetry request for Ridge Rptr: the repeater did not accept the guest password."
+    },
+    {
+      "kind": "request_attention",
+      "name": "Ridge Rptr",
+      "value": null,
+      "detail": "admin_stopped",
+      "tempUnit": "c",
+      "want": "Telemetry request for Ridge Rptr: the password gave admin access and was deleted. Enter a guest password."
+    },
+    {
+      "kind": "request_attention",
+      "name": "Ridge Rptr",
+      "value": null,
+      "detail": "admin_stopped",
+      "tempUnit": "f",
+      "want": "Telemetry request for Ridge Rptr: the password gave admin access and was deleted. Enter a guest password."
+    },
+    {
+      "kind": "request_attention",
+      "name": "Ridge Rptr",
+      "value": null,
+      "detail": "disabled",
+      "tempUnit": "c",
+      "want": "Telemetry request for Ridge Rptr was turned off: no observer has heard the repeater for days."
+    },
+    {
+      "kind": "request_attention",
+      "name": "Ridge Rptr",
+      "value": null,
+      "detail": "disabled",
+      "tempUnit": "f",
+      "want": "Telemetry request for Ridge Rptr was turned off: no observer has heard the repeater for days."
+    },
+    {
+      "kind": "request_attention",
+      "name": "Ridge Rptr",
+      "value": null,
+      "detail": "",
+      "tempUnit": "c",
+      "want": "Telemetry request for Ridge Rptr needs your attention."
+    },
+    {
+      "kind": "request_attention",
+      "name": "Ridge Rptr",
+      "value": null,
+      "detail": "",
+      "tempUnit": "f",
+      "want": "Telemetry request for Ridge Rptr needs your attention."
+    },
+    {
+      "kind": "request_attention",
+      "name": "Ridge Rptr",
+      "value": null,
+      "detail": "something_new",
+      "tempUnit": "c",
+      "want": "Telemetry request for Ridge Rptr needs your attention."
+    },
+    {
+      "kind": "request_attention",
+      "name": "Ridge Rptr",
+      "value": null,
+      "detail": "something_new",
+      "tempUnit": "f",
+      "want": "Telemetry request for Ridge Rptr needs your attention."
+    },
+    {
+      "kind": "battery_low",
+      "name": "Abcdefghijklmnopqrstuvwxyz0123456789ABCD",
+      "value": 3600,
+      "detail": "",
+      "tempUnit": "c",
+      "want": "Abcdefghijklmnopqrstuvwxyz0123456789ABCD battery is low: 3.60 V."
+    },
+    {
+      "kind": "battery_low",
+      "name": "Abcdefghijklmnopqrstuvwxyz0123456789ABCD",
+      "value": 3600,
+      "detail": "",
+      "tempUnit": "f",
+      "want": "Abcdefghijklmnopqrstuvwxyz0123456789ABCD battery is low: 3.60 V."
+    }
+  ],
+  "sealed": [
+    {
+      "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+      "pushId": "inst_7f3k2m9qxa",
+      "ct": "eNMTPTaRF+8BJRVArhTXENnNTL5nSVBrUFeMd0bSxPDDDGyhd49hCQSGg4SYDV9K7jz2pKGX9Iv2KZ0w949u9PqmrsmEZzMwXfOPJnzxVMeWRa69kA5vCodUvaxsdSlTGlq9lgqh6zmrytzm4sCov8jVVxeSwLvX0altO2P7kuj/Tdp+0h6DwoKvkYYXpSAixL3rJlbNOe7eq1/D4DDdqTSseWd/RnQQPyYGR073g6vcMud4HsNMIC7bC53BH0fCYHKZDR5xNFXmv25lKO4t5vFbg/+IYVWQP9pr7TZWIkShpaQNQ3U8BQLteoyjcKhYGjGfWxCcSJOxZsBoXuRMR1wR3A==",
+      "plaintext": "{\"v\":1,\"kind\":\"battery_low\",\"name\":\"Ridge Rptr\",\"value\":3412,\"detail\":\"\",\"targetKind\":\"node\",\"publicKey\":\"aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899\",\"id\":\"11111111-2222-3333-4444-555555555555\",\"tempUnit\":\"c\"}",
+      "want": "Ridge Rptr battery is low: 3.41 V."
+    },
+    {
+      "key": "jzocVeDSe5lGqgHzxNXm9wgZKjtMXW5/gJGis8TV5vc=",
+      "pushId": "inst_ottawa01",
+      "ct": "AH7PyOGwxn1aUsotp18RGq4LFs+FXUkVLspbY9+imYwInJ7m+32xpoQb7CO14lvD1nR5bGaqBAbjImSK90/Tq4/ePLO/Fg2uwIkBRAlxnp6lXsvMmyQkSfm2fyGsL3I3n7obqYGBjw3H70RmtrsD5hCWfj6WTA7yqycZoMbMMXW5gA/6gCNVEJXt8InACWgaXuG2/gpQzJKZ5OEk9f7Y8E9bAp49+fV9ZULsj70r7djGBuMd7LNV0X4kPcBZq7jZqRnTO9oPkjxbXay63h9xTDetPP3MECFGBStw88ZZkLKxtA==",
+      "plaintext": "{\"v\":1,\"kind\":\"temperature\",\"name\":\"Obs Ottawa\",\"value\":355,\"detail\":\"\",\"targetKind\":\"observer\",\"publicKey\":\"aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899\",\"id\":\"\",\"tempUnit\":\"f\"}",
+      "want": "Obs Ottawa temperature is 95.9 F, outside your limits."
+    },
+    {
+      "key": "jzocVeDSe5lGqgHzxNXm9wgZKjtMXW5/gJGis8TV5vc=",
+      "pushId": "inst_ottawa01",
+      "ct": "hm1oxzthkj9jvz/PoN1Hr9FZeJkLCDSmMy5dq21YBTttDCJEWyBQp2YKsoS4ZYCZvAK1UZL3Cqq/hAUf/DkdA5vQzfz8iGzyGmtqXkPdaW+VlC4Zh6lplzbWnibU9jw7o4I11ddydymNumwsVOhfMENFLmmxiYcAjXmjXvLzuHkvUXDTeN4JHTBWxWcY/Ujz6IiZoRkjyVjRw8zaZg2dQiY++/QMBMmKv4ZeNPUrXhRshp629zEUuYM5XYxxn8fe3MjzRtbEp+/qY7P0s9Q6siT6/W7En0Y2Vw9c6Y06vdl99CuV9VmWY0WBhNRO",
+      "plaintext": "{\"v\":1,\"kind\":\"request_attention\",\"name\":\"Ridge\",\"value\":null,\"detail\":\"admin_stopped\",\"targetKind\":\"node\",\"publicKey\":\"aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899\",\"id\":\"\",\"tempUnit\":\"c\"}",
+      "want": "Telemetry request for Ridge: the password gave admin access and was deleted. Enter a guest password."
+    }
+  ]
+}

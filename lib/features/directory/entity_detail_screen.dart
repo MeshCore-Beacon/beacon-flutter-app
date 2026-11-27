@@ -4,14 +4,20 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/account.dart';
 import '../../core/api.dart';
 import '../../core/json.dart';
+import '../../core/sheet.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
 import '../analytics/charts.dart';
 import '../analytics/observer_charts.dart';
+import '../atlas/atlas.dart' show resolveObserverNode;
+import '../atlas/atlas_widgets.dart' show AtlasSegmented;
 import 'directory_widgets.dart';
 import 'meshmapper_section.dart';
+import 'node_chips.dart';
+import 'node_telemetry.dart';
 import 'observation_row.dart';
 import 'observer_info.dart';
 import 'paging.dart';
@@ -25,12 +31,16 @@ class EntityDetailScreen extends StatefulWidget {
     required this.region,
     required this.onOpen,
     this.events,
+    this.account,
   });
   final String kind, id;
   final ApiClient api;
   final Json region;
   final void Function(String, String) onOpen;
   final Stream<Json>? events;
+
+  /// The signed-in user on this server, for "Request telemetry".
+  final AccountState? account;
   @override
   State<EntityDetailScreen> createState() => _EntityDetailScreenState();
 }
@@ -51,7 +61,27 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
   String range = '24h', scope = '';
   List<String> scopes = [];
   StreamSubscription<Json>? subscription;
-  Timer? refreshTimer;
+  Timer? refreshTimer, observerTimer;
+
+  /// Set when an observer opened here turned out to be a node's radio.
+  String? nodeId;
+  String get entityKind => nodeId != null ? 'node' : widget.kind;
+  String get entityId => nodeId ?? widget.id;
+
+  /// The observer a node screen shows in its Observer view.
+  String? get linkedObserverId {
+    if (entityKind != 'node') return null;
+    final id = textOf(detail?['observerId']);
+    return id.isEmpty ? null : id;
+  }
+
+  String view = 'node';
+  Json? observer;
+  List<Json> adverts = [];
+  Json advertsCursor = {};
+  Object? observerError, advertsError;
+  bool observerStarted = false, observerLoading = false, loadingAdverts = false;
+  int observerGeneration = 0, advertsGeneration = 0;
   @override
   void initState() {
     super.initState();
@@ -67,17 +97,33 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
         'node': 'nodeUpdate',
         'observer': 'observerStatus',
         'channel': 'channelMessage',
-      }[widget.kind];
-      if (event['type'] != 'refresh' && event['event'] != relevant) return;
+      }[entityKind];
       final data = object(event['data']);
+      final linked = linkedObserverId;
+      if (linked != null && event['event'] == 'observerStatus') {
+        if (textOf(data['observerId'] ?? data['id']) == linked) {
+          refreshObserver();
+        }
+        return;
+      }
+      if (event['type'] == 'refresh') refreshObserver();
+      if (event['type'] != 'refresh' && event['event'] != relevant) return;
       final id =
           data['channelId'] ??
           data['observerId'] ??
           data['nodeId'] ??
           data['id'];
-      if (id != null && textOf(id) != widget.id) return;
+      if (id != null && textOf(id) != entityId) return;
       refreshPending = true;
       flushRefresh();
+    });
+  }
+
+  void refreshObserver() {
+    if (!observerStarted) return;
+    observerTimer?.cancel();
+    observerTimer = Timer(const Duration(seconds: 1), () {
+      if (mounted) loadObserver(fresh: true, live: true);
     });
   }
 
@@ -93,7 +139,7 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
     refreshTimer = Timer(const Duration(seconds: 1), () {
       if (!mounted || loading || loadingHistory || detailInFlight) return;
       refreshPending = false;
-      widget.kind == 'channel'
+      entityKind == 'channel'
           ? loadHistory(live: true)
           : load(live: true, fresh: true);
     });
@@ -109,6 +155,8 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
       generation++;
       refreshPending = false;
       refreshTimer?.cancel();
+      resetObserver();
+      nodeId = null;
       history = [];
       neighbors = [];
       neighborsError = null;
@@ -120,7 +168,22 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) load(preserveHistory: true);
+    if (state == AppLifecycleState.resumed) {
+      load(preserveHistory: true);
+      refreshObserver();
+    }
+  }
+
+  void resetObserver() {
+    observerGeneration++;
+    advertsGeneration++;
+    observerTimer?.cancel();
+    view = 'node';
+    observer = null;
+    adverts = [];
+    advertsCursor = {};
+    observerError = advertsError = null;
+    observerStarted = observerLoading = loadingAdverts = false;
   }
 
   @override
@@ -128,6 +191,7 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
     generation++;
     subscription?.cancel();
     refreshTimer?.cancel();
+    observerTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     historyScroll.dispose();
     super.dispose();
@@ -145,22 +209,29 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
       error = null;
     });
     try {
-      final value = widget.kind == 'route'
-          ? object(jsonDecode(widget.id))
-          : object(
-              await retryingGet(
-                widget.api,
-                fresh: fresh,
-                isCurrent: () => mounted && g == generation,
-              )('/${widget.kind}s/${Uri.encodeComponent(widget.id)}'),
-            );
+      final get = retryingGet(
+        widget.api,
+        fresh: fresh,
+        isCurrent: () => mounted && g == generation,
+      );
+      Json value;
+      if (entityKind == 'route') {
+        value = object(jsonDecode(entityId));
+      } else if (widget.kind == 'observer' && nodeId == null && !live) {
+        value = await loadObserverOrNode(get, g);
+      } else {
+        value = object(
+          await get('/${entityKind}s/${Uri.encodeComponent(entityId)}'),
+        );
+      }
       if (!mounted || g != generation) return;
       setState(() {
         detail = value;
         loading = false;
       });
-      if (widget.kind == 'node') await loadNeighbors(g, fresh: fresh);
-      if (widget.kind == 'channel' && !emptyDirectoryRegion(widget.region)) {
+      if (view == 'observer' && !observerStarted) unawaited(loadObserver());
+      if (entityKind == 'node') await loadNeighbors(g, fresh: fresh);
+      if (entityKind == 'channel' && !emptyDirectoryRegion(widget.region)) {
         try {
           final s = await widget.api.get('/scopes', widget.region);
           if (mounted && g == generation) {
@@ -190,13 +261,130 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
     }
   }
 
+  /// An observer whose radio is also a node opens as that node, on its
+  /// Observer view; one with no node keeps the observer screen.
+  Future<Json> loadObserverOrNode(
+    Future<dynamic> Function(String, [Json]) get,
+    int g,
+  ) async {
+    final obs = object(
+      await get('/observers/${Uri.encodeComponent(widget.id)}'),
+    );
+    Json? node;
+    try {
+      node = await resolveObserverNode(widget.api, obs);
+    } catch (_) {}
+    final id = textOf(node?['id']);
+    if (id.isEmpty || !mounted || g != generation) return obs;
+    try {
+      final value = object(await get('/nodes/${Uri.encodeComponent(id)}'));
+      if (textOf(value['observerId']).isEmpty) value['observerId'] = widget.id;
+      nodeId = id;
+      observer = obs;
+      view = 'observer';
+      return value;
+    } catch (_) {
+      return obs;
+    }
+  }
+
+  Future<void> loadObserver({bool fresh = false, bool live = false}) async {
+    final id = linkedObserverId;
+    if (id == null) return;
+    observerStarted = true;
+    final og = ++observerGeneration;
+    bool current() => mounted && og == observerGeneration;
+    setState(() {
+      observerLoading = observer == null;
+      observerError = null;
+    });
+    try {
+      if (observer == null || fresh) {
+        final value = object(
+          await retryingGet(widget.api, fresh: fresh, isCurrent: current)(
+            '/observers/${Uri.encodeComponent(id)}',
+          ),
+        );
+        if (!current()) return;
+        setState(() => observer = value);
+      }
+      if (!current()) return;
+      setState(() => observerLoading = false);
+      await loadAdverts(fresh: fresh, live: live);
+    } catch (e) {
+      if (current()) {
+        setState(() {
+          observerError = e;
+          observerLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> loadAdverts({
+    bool more = false,
+    bool live = false,
+    bool fresh = false,
+  }) async {
+    final id = linkedObserverId;
+    if (id == null) return;
+    final ag = ++advertsGeneration;
+    if (emptyDirectoryRegion(widget.region)) {
+      setState(() {
+        adverts = [];
+        advertsCursor = {};
+        loadingAdverts = false;
+      });
+      return;
+    }
+    bool current() => mounted && ag == advertsGeneration;
+    setState(() {
+      loadingAdverts = true;
+      advertsError = null;
+    });
+    try {
+      final response =
+          await retryingGet(
+            widget.api,
+            fresh: more || live || fresh,
+            isCurrent: current,
+          )('/observers/${Uri.encodeComponent(id)}/adverts', {
+            'limit': 50,
+            if (more) ...advertsCursor,
+          });
+      if (!current()) return;
+      setState(() {
+        adverts = more || live
+            ? mergeDirectoryRows(adverts, rows(response), 'messages')
+            : rows(response);
+        if (!live) {
+          advertsCursor = nextDirectoryCursor('observer', response, 50);
+        }
+        loadingAdverts = false;
+      });
+    } catch (e) {
+      if (current()) {
+        setState(() {
+          advertsError = e;
+          loadingAdverts = false;
+        });
+      }
+    }
+  }
+
+  void setView(String next) {
+    if (next == view) return;
+    setState(() => view = next);
+    if (next == 'observer' && !observerStarted) loadObserver();
+  }
+
   Future<void> loadNeighbors(int g, {bool fresh = false}) async {
     try {
       final n = await retryingGet(
         widget.api,
         fresh: fresh,
         isCurrent: () => mounted && g == generation,
-      )('/nodes/${Uri.encodeComponent(widget.id)}/neighbors');
+      )('/nodes/${Uri.encodeComponent(entityId)}/neighbors');
       if (mounted && g == generation) {
         setState(() {
           neighbors = rows(n);
@@ -214,7 +402,7 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
     bool live = false,
     bool fresh = false,
   }) async {
-    if (widget.kind == 'trace') return;
+    if (entityKind == 'trace') return;
     if (emptyDirectoryRegion(widget.region)) {
       setState(() {
         history = [];
@@ -236,13 +424,13 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
       final d = detail ?? {};
       String path;
       Json params = {'limit': 50, if (more) ...cursor};
-      switch (widget.kind) {
+      switch (entityKind) {
         case 'node':
-          path = '/nodes/${Uri.encodeComponent(widget.id)}/observations';
+          path = '/nodes/${Uri.encodeComponent(entityId)}/observations';
         case 'observer':
-          path = '/observers/${Uri.encodeComponent(widget.id)}/adverts';
+          path = '/observers/${Uri.encodeComponent(entityId)}/adverts';
         case 'channel':
-          path = '/channels/${Uri.encodeComponent(widget.id)}/messages';
+          path = '/channels/${Uri.encodeComponent(entityId)}/messages';
           params = {
             ...params,
             ...widget.region,
@@ -268,7 +456,7 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
           return;
       }
       final response =
-          widget.kind == 'channel' && emptyDirectoryRegion(widget.region)
+          entityKind == 'channel' && emptyDirectoryRegion(widget.region)
           ? []
           : await retryingGet(
               widget.api,
@@ -281,13 +469,13 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
         history = more || live
             ? mergeDirectoryRows(history, rows(response), 'messages')
             : rows(response);
-        if (widget.kind == 'channel') {
+        if (entityKind == 'channel') {
+          // Server receipt order is stable even when a sender's clock is wrong.
           history.sort(
-            (a, b) =>
-                (number(a['sentAt']) ?? 0).compareTo(number(b['sentAt']) ?? 0),
+            (a, b) => (number(a['id']) ?? 0).compareTo(number(b['id']) ?? 0),
           );
         }
-        if (widget.kind == 'route') {
+        if (entityKind == 'route') {
           final responseMap = object(response);
           evidenceWindow = {
             'since': responseMap['windowStart'],
@@ -296,14 +484,14 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
         }
         if (!live) {
           cursor = nextDirectoryCursor(
-            widget.kind == 'channel' ? 'messages' : widget.kind,
+            entityKind == 'channel' ? 'messages' : entityKind,
             response,
             50,
           );
         }
         loadingHistory = false;
       });
-      if (widget.kind == 'channel') {
+      if (entityKind == 'channel') {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted || !historyScroll.hasClients) return;
           // A reversed list anchors existing messages when older rows are added.
@@ -418,16 +606,17 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
 
   Future<void> copyLink() async {
     final uri = widget.api.base;
-    final params = widget.kind == 'route'
+    final params = entityKind == 'route'
         ? {
             'tab': 'Routes',
             'route': textOf(detail?['pathKey']),
             'routeIata': textOf(detail?['iata']),
           }
         : {
-            'tab':
-                '${widget.kind[0].toUpperCase()}${widget.kind.substring(1)}s',
-            widget.kind: widget.id,
+            'tab': '${entityKind[0].toUpperCase()}${entityKind.substring(1)}s',
+            entityKind: entityId,
+            if (linkedObserverId != null && view == 'observer')
+              'view': 'observer',
           };
     await Clipboard.setData(
       ClipboardData(text: uri.replace(queryParameters: params).toString()),
@@ -445,12 +634,12 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
       appBar: AppBar(
         title: Text(
           d == null
-              ? tr('${widget.kind} detail')
-              : widget.kind == 'channel'
+              ? tr('$entityKind detail')
+              : entityKind == 'channel'
               ? channelName(d)
-              : widget.kind == 'trace'
+              : entityKind == 'trace'
               ? '${d['traceTag']}'
-              : widget.kind == 'route'
+              : entityKind == 'route'
               ? '${trKey('routeDetail.route')} · ${d['iata']}'
               : label(d),
           style: const TextStyle(fontSize: 16),
@@ -469,36 +658,86 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
           ? failure(error!, () => load(fresh: true))
           : d == null
           ? const Center(child: DirectoryText('Not found'))
-          : widget.kind == 'channel'
+          : entityKind == 'channel'
           ? channelBody(d)
           : RefreshIndicator(
-              onRefresh: () => load(fresh: true),
+              onRefresh: () => Future.wait([
+                load(fresh: true),
+                if (observerStarted) loadObserver(fresh: true),
+              ]),
               child: ListView(
                 controller: historyScroll,
                 padding: const EdgeInsets.all(16),
                 children: [
-                  ...switch (widget.kind) {
+                  ...switch (entityKind) {
                     'node' => nodeContent(d),
-                    'observer' => observerContent(d),
+                    'observer' => observerContent(d, entityId, history),
                     'trace' => traceContent(d),
                     'route' => routeContent(d),
                     _ => [],
                   },
-                  if (historyError != null)
-                    failure(historyError!, () => loadHistory(fresh: true)),
-                  if (loadingHistory)
-                    const LinearProgressIndicator(minHeight: 2),
-                  if (cursor.isNotEmpty && widget.kind != 'channel')
-                    OutlinedButton(
-                      onPressed: loadingHistory
-                          ? null
-                          : () => loadHistory(more: true),
-                      child: const DirectoryText('Load older'),
-                    ),
+                  if (showingObserver)
+                    ...observerViewFooter()
+                  else ...[
+                    if (historyError != null)
+                      failure(historyError!, () => loadHistory(fresh: true)),
+                    if (loadingHistory)
+                      const LinearProgressIndicator(minHeight: 2),
+                    if (cursor.isNotEmpty && entityKind != 'channel')
+                      OutlinedButton(
+                        onPressed: loadingHistory
+                            ? null
+                            : () => loadHistory(more: true),
+                        child: const DirectoryText('Load older'),
+                      ),
+                  ],
                 ],
               ),
             ),
     );
+  }
+
+  bool get showingObserver => linkedObserverId != null && view == 'observer';
+
+  List<Widget> observerViewFooter() => [
+    if (advertsError != null)
+      failure(advertsError!, () => loadAdverts(fresh: true)),
+    if (loadingAdverts) const LinearProgressIndicator(minHeight: 2),
+    if (advertsCursor.isNotEmpty)
+      OutlinedButton(
+        onPressed: loadingAdverts ? null : () => loadAdverts(more: true),
+        child: const DirectoryText('Load older'),
+      ),
+  ];
+
+  Widget viewSwitch() => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 7),
+    child: AtlasSegmented<String>(
+      stretch: true,
+      label: trKey('observerMerge.view'),
+      value: view,
+      onChanged: setView,
+      options: {
+        'node': trKey('observerMerge.node'),
+        'observer': trKey('observerMerge.observer'),
+      },
+    ),
+  );
+
+  List<Widget> linkedObserverContent(String id) {
+    final o = observer;
+    if (observerError != null) {
+      return [failure(observerError!, () => loadObserver(fresh: true))];
+    }
+    if (o == null || observerLoading) {
+      return [
+        const Padding(
+          padding: EdgeInsets.all(24),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      ];
+    }
+    return observerContent(o, id, adverts);
   }
 
   Widget nodeBadge(String value, Color color) => Container(
@@ -526,164 +765,137 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
     final colors = BeaconColors.of(context);
     final publicKey = textOf(d['publicKey']);
     final meshMapper = object(d['meshmapper']);
-    Widget capability(String title, dynamic value) => Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
+    Widget capability(String title, dynamic value) => factRow(
+      title,
+      nodeBadge(
+        tr(
+          value == true
+              ? 'Yes'
+              : value == false
+              ? 'No'
+              : 'Unknown',
+        ),
+        value == true ? colors.success : colors.muted,
+      ),
+      align: CrossAxisAlignment.center,
+    );
+    final observerId = linkedObserverId;
+    final identity = section('Identity', [
+      Wrap(
+        spacing: 6,
+        runSpacing: 6,
         children: [
-          Expanded(
-            child: Text(
-              tr(title),
-              style: TextStyle(fontSize: 11, color: colors.muted),
-            ),
+          nodeTypeChip(
+            context,
+            d['nodeTypeName'],
+            textOf(d['nodeTypeName'], tr('Unknown')).toUpperCase(),
+            colors.muted,
           ),
-          nodeBadge(
-            tr(
-              value == true
-                  ? 'Yes'
-                  : value == false
-                  ? 'No'
-                  : 'Unknown',
+          if (d['isPoller'] == true) pollerChip(),
+          // A poller is always an observer; isObserver or a linked radio also counts.
+          if (d['isPoller'] == true ||
+              d['isObserver'] == true ||
+              linkedObserverId != null)
+            observerChip(),
+          if (textOf(d['defaultScope']).isNotEmpty)
+            NodeChip(
+              key: const ValueKey('chip-scope'),
+              color: colors.secondary,
+              label: textOf(d['defaultScope']),
             ),
-            value == true ? colors.success : colors.muted,
-          ),
+          if (d['possiblyForeign'] == true) cautionChip(tr('Possibly foreign')),
+          if (meshMapper['carpeater'] == true)
+            Tooltip(
+              message: trKey('meshMapper.carpeaterHint'),
+              child: cautionChip(trKey('meshMapper.carpeater')),
+            ),
         ],
       ),
-    );
-    return [
-      section('Identity', [
-        Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: [
-            nodeBadge(
-              textOf(d['nodeTypeName'], tr('Unknown')).toUpperCase(),
-              switch (textOf(d['nodeTypeName']).toLowerCase()) {
-                'repeater' => colors.success,
-                'room server' || 'room_server' => colors.secondary,
-                'companion' => colors.primary,
-                'sensor' => colors.warning,
-                _ => colors.muted,
-              },
-            ),
-            if (textOf(d['defaultScope']).isNotEmpty)
-              nodeBadge(textOf(d['defaultScope']), colors.secondary),
-            if (d['possiblyForeign'] == true)
-              nodeBadge(tr('Possibly foreign'), colors.warning),
-            if (meshMapper['carpeater'] == true)
-              Tooltip(
-                message: trKey('meshMapper.carpeaterHint'),
-                child: nodeBadge(trKey('meshMapper.carpeater'), colors.warning),
-              ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: InkWell(
-                onTap: publicKey.isEmpty
-                    ? null
-                    : () => showDialog<void>(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                          title: Text(tr('Public key')),
-                          content: SelectableText(
-                            publicKey,
-                            style: const TextStyle(
-                              fontFamily: 'JetBrainsMono',
-                              fontSize: 12,
-                            ),
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context),
-                              child: Text(tr('Close')),
-                            ),
-                          ],
-                        ),
-                      ),
-                child: Text(
-                  publicKey.isEmpty ? tr('Unknown') : publicKey,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontFamily: 'JetBrainsMono',
-                    fontSize: 12,
-                    color: colors.primary,
-                  ),
+      const SizedBox(height: 8),
+      Row(
+        children: [
+          Expanded(
+            child: InkWell(
+              onTap: publicKey.isEmpty
+                  ? null
+                  : () => showValueSheet(
+                      context,
+                      title: tr('Public key'),
+                      value: publicKey,
+                    ),
+              child: Text(
+                publicKey.isEmpty ? tr('Unknown') : publicKey,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontFamily: 'JetBrainsMono',
+                  fontSize: 12,
+                  color: colors.primary,
                 ),
               ),
             ),
-            if (publicKey.isNotEmpty)
-              IconButton(
-                tooltip: tr('Copy public key'),
-                icon: const Icon(Icons.copy, size: 16),
-                onPressed: () async {
-                  await Clipboard.setData(ClipboardData(text: publicKey));
-                  if (mounted) {
-                    ScaffoldMessenger.of(context)
-                        .showSnackBar(SnackBar(content: Text(tr('Copied'))));
-                  }
-                },
-              ),
-          ],
-        ),
+          ),
+          if (publicKey.isNotEmpty)
+            IconButton(
+              tooltip: tr('Copy public key'),
+              icon: const Icon(Icons.copy, size: 16),
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: publicKey));
+                if (mounted) {
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(SnackBar(content: Text(tr('Copied'))));
+                }
+              },
+            ),
+        ],
+      ),
+      nodeTime('Last seen', d['lastSeen']),
+      Wrap(
+        spacing: 8,
+        runSpacing: 4,
+        children: [
+          if (d['lat'] != null)
+            OutlinedButton.icon(
+              onPressed: () => widget.onOpen('map', entityId),
+              icon: const Icon(Icons.map_outlined, size: 16),
+              label: Text(tr('Show on map')),
+            ),
+        ],
+      ),
+    ]);
+    if (observerId != null && view == 'observer') {
+      return [identity, viewSwitch(), ...linkedObserverContent(observerId)];
+    }
+    return [
+      identity,
+      if (observerId != null) viewSwitch(),
+      section(trKey('nodePanel.details'), [
+        if (d['lat'] != null && d['lng'] != null)
+          fact('Coordinates', '${d['lat']}, ${d['lng']}'),
         nodeTime('First seen', d['firstSeen']),
-        nodeTime('Last seen', d['lastSeen']),
         if (d['lastAdvertAt'] != null)
           nodeTime('Last advert', d['lastAdvertAt']),
         if (textOf(d['radio']).isNotEmpty) fact('Radio', d['radio']),
-        if (d['lat'] != null && d['lng'] != null)
-          fact('Coordinates', '${d['lat']}, ${d['lng']}'),
-        Wrap(
-          spacing: 8,
-          runSpacing: 4,
-          children: [
-            if (d['lat'] != null)
-              OutlinedButton.icon(
-                onPressed: () => widget.onOpen('map', widget.id),
-                icon: const Icon(Icons.map_outlined, size: 16),
-                label: Text(tr('Show on map')),
-              ),
-            if (d['observerId'] != null)
-              OutlinedButton.icon(
-                onPressed: () =>
-                    widget.onOpen('observer', textOf(d['observerId'])),
-                icon: const Icon(Icons.sensors, size: 16),
-                label: Text(tr('Observer details')),
-              ),
-          ],
-        ),
-      ]),
-      if (MeshMapperSection.hasContent(meshMapper))
-        MeshMapperSection(data: meshMapper),
-      section('Capabilities', [
         capability('Multibyte paths', d['supportsMultibytePaths']),
         capability('Multibyte traces', d['supportsMultibyteTraces']),
         if (d['minFirmwareVersion'] != null)
           fact('Minimum firmware', d['minFirmwareVersion']),
         if (d['clockDriftSeconds'] != null)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 5),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                Text(
-                  tr('Clock drift'),
-                  style: TextStyle(fontSize: 11, color: colors.muted),
-                ),
-                nodeBadge(
-                  '${d['clockDriftSeconds']} s${d['clockOutOfSync'] == true ? ' · ${tr('Out of sync')}' : ''}',
-                  d['clockOutOfSync'] == true ? colors.warning : colors.success,
-                ),
-              ],
+          factRow(
+            'Clock drift',
+            nodeBadge(
+              '${d['clockDriftSeconds']} s${d['clockOutOfSync'] == true ? ' · ${tr('Out of sync')}' : ''}',
+              d['clockOutOfSync'] == true ? colors.warning : colors.success,
             ),
+            align: CrossAxisAlignment.center,
           ),
-      ]),
-      if (rows(d['iatas']).isNotEmpty)
-        section('Heard in regions', [
+        if (rows(d['iatas']).isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            tr('Heard in regions'),
+            style: TextStyle(fontSize: 11, color: colors.muted),
+          ),
+          const SizedBox(height: 4),
           Wrap(
             spacing: 6,
             runSpacing: 6,
@@ -695,11 +907,25 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
                 ),
             ],
           ),
-        ]),
-      section(
-        trKey('nodeDetail.neighborsCount')
+        ],
+      ]),
+      if (MeshMapperSection.hasContent(meshMapper))
+        MeshMapperSection(data: meshMapper),
+      // Observers report their own readings, shown in the Observer view.
+      if (isPolledNodeType(textOf(d['nodeTypeName'])) && observerId == null)
+        NodeTelemetrySection(
+          key: ValueKey('telemetry:$entityId'),
+          api: widget.api,
+          nodeId: entityId,
+          publicKey: publicKey,
+          account: widget.account,
+          onOpen: widget.onOpen,
+        ),
+      FoldSection(
+        id: 'node-neighbors',
+        title: trKey('nodeDetail.neighborsCount')
             .replaceAll('{{count}}', '${neighbors.length}'),
-        [
+        children: [
           if (neighborsError != null)
             failure(
               neighborsError!,
@@ -748,21 +974,37 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
             ),
         ],
       ),
-      section('Observations', history.map(observation).toList()),
+      FoldSection(
+        id: 'node-packets',
+        title: trKey('nodePanel.packetsSent'),
+        info: [
+          trKey('nodePanel.packetsSentInfo'),
+          trKey('nodePanel.packetsSentExpire'),
+        ],
+        summary: history.isEmpty ? '' : age(history.first['heardAt']),
+        children: history.isEmpty
+            ? [
+                Text(
+                  trKey('nodePanel.noPacketsSent'),
+                  style: TextStyle(fontSize: 12, color: colors.muted),
+                ),
+              ]
+            : history.map(observation).toList(),
+      ),
     ];
   }
 
-  List<Widget> observerContent(Json d) => [
+  List<Widget> observerContent(Json d, String id, List<Json> heard) => [
     StatsQuery(
       api: widget.api,
-      path: '/observers/${Uri.encodeComponent(widget.id)}/activity',
+      path: '/observers/${Uri.encodeComponent(id)}/activity',
       params: observerActivityParams(range),
       pollInterval: const Duration(minutes: 1),
       builder: (activity) =>
           ObserverInfo(data: d, summary: object(object(activity)['summary'])),
       fallback: (_) => ObserverInfo(data: d),
     ),
-    link('Compare observers', 'analytics', 'compare:${widget.id}'),
+    link('Compare observers', 'analytics', 'compare:$id'),
     section('Activity & telemetry', [
       Text(tr('Window'), style: Theme.of(context).textTheme.bodySmall),
       const SizedBox(height: 6),
@@ -781,13 +1023,13 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
       ),
       const SizedBox(height: 12),
       ObserverCharts(
-        key: ValueKey('${widget.id}:$range'),
+        key: ValueKey('$id:$range'),
         api: widget.api,
-        observerId: widget.id,
+        observerId: id,
         range: range,
       ),
     ]),
-    section('Heard adverts', history.map(observation).toList()),
+    section('Heard adverts', heard.map(observation).toList()),
   ];
   Widget channelBody(Json d) => Column(
     children: [

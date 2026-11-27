@@ -283,7 +283,8 @@
       "noRecentPackets": "No recent packets",
       "observations_one": "{{formatted}} obs",
       "observations_other": "{{formatted}} obs",
-      "hops": "Hops"
+      "hops": "Hops",
+      "poller": "Poller"
     },
     "nodes": {
       "lastHeard": "last heard {{ago}}",
@@ -298,7 +299,8 @@
       "neighbors_one": "{{formatted}} neighbor",
       "neighbors_other": "{{formatted}} neighbors",
       "possiblyForeign": "Possibly foreign",
-      "possiblyForeignHint": "This node's position is outside this server's local area."
+      "possiblyForeignHint": "This node's position is outside this server's local area.",
+      "poller": "Poller"
     },
     "packetRow": {
       "noResolution": "No path resolution available",
@@ -617,7 +619,8 @@
       "neighborLinks": "Neighbor links",
       "packetPath": "Packet path",
       "noPath": "No unambiguous located path is available for this packet.",
-      "pathBreaks": "Lines break at ambiguous or unlocated hops."
+      "pathBreaks": "Lines break at ambiguous or unlocated hops.",
+      "pollersOnly": "Pollers only"
     },
     "nodeFilters": {
       "label": "Node filters",
@@ -630,7 +633,8 @@
       "no": "No",
       "fieldName": "Name",
       "fieldPubkey": "Public Key",
-      "all": "All"
+      "all": "All",
+      "poller": "Poller"
     },
     "packetAnalyzer": {
       "title": "Packet Analyzer",
@@ -956,6 +960,7 @@
       "manageServers": "Manage servers",
       "removeServer": "Remove server",
       "licenses": "Licenses",
+      "kofi": "Support on Ko-fi",
       "notBeacon": "This server does not appear to expose the Beacon API.",
       "invalidUrl": "Enter a complete http:// or https:// server URL without credentials, query or fragment.",
       "betaBuild": "Beta build",
@@ -1208,6 +1213,11 @@
       "savedCountShort": "{{count}}/{{limit}}",
       "localOnly": "Saved on this device",
       "storageFailed": "Storage is unavailable; changes last only for this session.",
+      "syncedToAccount": "Synced to your account",
+      "conflict": "Atlas was changed on another device. Showing the latest.",
+      "overflow_one": "{{count}} card from this device did not fit and was not added.",
+      "overflow_other": "{{count}} cards from this device did not fit and were not added.",
+      "syncFailed": "Could not save to your account. Your changes are kept on this device.",
       "limitReached": "All {{limit}} slots are in use. Remove a card to add another.",
       "refine": "Showing the first {{limit}} matches; refine the search for more.",
       "add": "Add",
@@ -1234,6 +1244,7 @@
       "openPacket": "Open packet",
       "fieldObserver": "Observer",
       "observerBadge": "Observer",
+      "pollerBadge": "Poller",
       "viewAnalytics": "Analytics",
       "viewHeard": "Heard by",
       "viewObserver": "Observer",
@@ -1265,6 +1276,380 @@
       "exported": "Atlas exported.",
       "exportFailed": "Could not save the file.",
       "settingsFor": "Cards saved for {{name}}"
+    },
+    "nodeTelemetry": {
+      "title": "Telemetry",
+      "range24h": "24 hours",
+      "range7d": "7 days",
+      "range30d": "30 days",
+      "battery": "Battery (V)",
+      "batterySeries": "Battery",
+      "temperature": "Temperature ({{unit}})",
+      "temperatureSeries": "Temperature",
+      "noiseFloor": "Noise floor (dBm)",
+      "noiseFloorSeries": "Noise floor",
+      "airtime": "Airtime TX and RX (% of time)",
+      "polledBy": "Polled by {{name}}",
+      "lastReading": "Last reading",
+      "standbys_one": "{{count}} standby observer",
+      "standbys_other": "{{count}} standby observers",
+      "waiting": "Waiting for the first reading from this node.",
+      "empty": "No readings in this range",
+      "failed": "Could not load readings."
+    },
+    "account": {
+      "heading": "Account on {{server}}",
+      "signedInAs": "Signed in as {{name}}",
+      "signedIn": "Signed in",
+      "signIn": "Sign in",
+      "signInNote": "Your browser opens so you can sign in, then returns you to the app.",
+      "signInPortal": "Sign in with MeshMapper",
+      "profile": "Profile",
+      "signOut": "Sign out",
+      "browserFailed": "Could not open the browser.",
+      "saveFailed": "Could not save the sign-in on this device.",
+      "callbackRejected": "That sign-in link was not expected or has expired. Start signing in again from this screen.",
+      "sectionAccount": "Account",
+      "sectionPassword": "Password",
+      "sectionPortal": "Sign-in",
+      "portalManaged": "Your sign-in is managed at the MeshMapper portal.",
+      "sectionDevices": "Devices",
+      "sectionDelete": "Delete account",
+      "displayName": "Display name",
+      "save": "Save",
+      "saved": "Saved.",
+      "email": "Email",
+      "verified": "Verified",
+      "pendingVerification": "Waiting for verification",
+      "pendingFor": "Waiting to verify {{email}}",
+      "newEmail": "New email address",
+      "currentPassword": "Current password",
+      "changeEmail": "Change email",
+      "emailSent": "Check {{email}} for a link to confirm it.",
+      "newPassword": "New password",
+      "changePassword": "Change password",
+      "passwordChanged": "Password changed. Your other devices were signed out.",
+      "showPassword": "Show password",
+      "hidePassword": "Hide password",
+      "browser": "Browser",
+      "app": "App",
+      "thisDevice": "This device",
+      "lastUsed": "Last used {{when}}",
+      "created": "Created {{when}}",
+      "endSession": "Sign out",
+      "endOthers": "Sign out everywhere else",
+      "othersEnded": "Signed out everywhere else.",
+      "devicesFailed": "Could not load your devices.",
+      "retry": "Retry",
+      "deleteExplain": "Deleting your account removes your profile and everything tied to it. This cannot be undone.",
+      "typeUsername": "Type {{username}} to confirm",
+      "deleteButton": "Delete my account",
+      "errors": {
+        "invalidCredentials": "That password is not right.",
+        "invalidInput": "Check what you entered and try again.",
+        "rateLimited": "Too many requests.",
+        "tooManyAttempts": "Too many attempts.",
+        "retryIn": "Try again in {{time}}.",
+        "seconds_one": "{{count}} second",
+        "seconds_other": "{{count}} seconds",
+        "minutes_one": "{{count}} minute",
+        "minutes_other": "{{count}} minutes",
+        "network": "Could not reach the server. Check your connection.",
+        "generic": "Something went wrong. Try again."
+      },
+      "portalManagedError": "Your sign-in is managed at the MeshMapper portal. Use it there.",
+      "wrongUsername": "That is not your username."
+    },
+    "telemetryRequests": {
+      "title": "Telemetry requests",
+      "request": "Request telemetry",
+      "explain": "Ask volunteer observers that can hear this repeater to read its stats. The readings then appear here.",
+      "passwordLabel": "Guest password (optional)",
+      "notice": "The guest password is shared with volunteer observers so they can ask this repeater for its stats. Never enter an admin password.",
+      "used": "{{used}} of {{limit}} requests used",
+      "count": "{{used}} of {{limit}}",
+      "limitReached": "You have used all your requests. Remove one in your profile to make room.",
+      "submit": "Request telemetry",
+      "requested": "You requested this repeater.",
+      "openProfile": "Open profile",
+      "loadFailed": "Could not load your requests.",
+      "retry": "Retry",
+      "requestedOk": "Requested.",
+      "empty": "No requests yet. Open a repeater and choose Request telemetry.",
+      "unknownRepeater": "Unknown repeater",
+      "polledBy": "Polled by {{name}}",
+      "lastReading": "Last reading {{when}}",
+      "noReading": "No readings yet",
+      "passwordSet": "Guest password set",
+      "passwordNone": "No guest password",
+      "adminStoppedHelp": "The password you entered was an admin password. Beacon deleted it. Only a guest password will start it again.",
+      "enterNewPassword": "Enter a new password",
+      "newPasswordRequired": "New guest password",
+      "changePassword": "Change password",
+      "newPassword": "New guest password (empty removes it)",
+      "save": "Save",
+      "cancel": "Cancel",
+      "saved": "Saved.",
+      "reenable": "Re-enable",
+      "remove": "Remove",
+      "confirmRemove": "Remove this request?",
+      "status": {
+        "waiting": "Waiting for an observer that can reach it",
+        "active": "Being polled",
+        "login_failed": "The repeater refused the password",
+        "admin_stopped": "Stopped: that password gave admin access and was deleted",
+        "disabled": "Paused: the repeater has not been heard recently"
+      },
+      "errors": {
+        "request_limit": "You have used all your requests.",
+        "already_requested": "You already requested this repeater.",
+        "not_a_repeater": "Only repeaters and room servers can be polled.",
+        "password_invalid": "The guest password must be 1 to 15 characters.",
+        "password_invalid_stopped": "This request needs a guest password of 1 to 15 characters. It cannot be restarted with a blank login.",
+        "no_password_blocked": "This repeater gives admin access without a password, so it cannot be polled this way",
+        "requests_disabled": "Telemetry requests are turned off on this server."
+      }
+    },
+    "alerts": {
+      "title": "Alerts",
+      "retry": "Retry",
+      "toEmail": "Alerts are sent to {{email}}",
+      "empty": "Alerts are set on radios in your Atlas. Add a radio there first.",
+      "requestAttention": "You are always told when one of your telemetry requests needs attention.",
+      "needsGoneQuiet": "Turn on {{name}} first.",
+      "summaryNone": "No alerts on",
+      "summaryOnCount_one": "{{count}} alert on",
+      "summaryOnCount_other": "{{count}} alerts on",
+      "summaryFiring_one": "Alerting: {{name}}",
+      "summaryFiring_other": "Alerting: {{count}} alerts",
+      "push": {
+        "notSetUp": "Push notifications are not set up in this build.",
+        "enable": "Turn on notifications",
+        "denied": "Notifications are turned off for Beacon. Allow them in your phone settings to get alerts.",
+        "failed": "Could not register this phone for alerts."
+      },
+      "kind": {
+        "gone_quiet": "Gone quiet",
+        "back_online": "Back online",
+        "battery_low": "Battery low",
+        "battery_falling": "Battery falling",
+        "rebooted": "Rebooted",
+        "temperature": "Temperature",
+        "noise_high": "Noise high",
+        "clock": "Clock drift",
+        "observer_offline": "Observer offline"
+      },
+      "input": {
+        "hours": "Hours",
+        "volts": "Volts",
+        "drop": "Drop per day",
+        "dbm": "dBm",
+        "drift": "Drift",
+        "minutes": "No report for",
+        "low": "Low ({{symbol}})",
+        "high": "High ({{symbol}})"
+      },
+      "drift": {
+        "300": "5 minutes",
+        "3600": "1 hour",
+        "86400": "1 day"
+      },
+      "state": {
+        "ok": "OK",
+        "firing": "Alerting since {{when}}",
+        "inactive": "No data right now",
+        "unknown": "Not checked yet"
+      },
+      "errors": {
+        "kind_unavailable": "This alert is not available for this radio.",
+        "invalid_threshold": "That is not an allowed value for this alert.",
+        "not_on_atlas": "This radio is no longer in your Atlas.",
+        "alerts_disabled": "Alerts are turned off on this server.",
+        "volts": "Enter a value between 2.50 and 5.00 volts.",
+        "dbm": "Enter a whole number between -130 and -50 dBm.",
+        "temperatureNone": "Enter a low or a high limit.",
+        "temperature": "Enter a temperature in degrees {{unit}}, such as {{example}}.",
+        "temperatureWhole": "Enter a whole number of degrees {{unit}}, such as {{example}}.",
+        "not_found": "That alert no longer exists.",
+        "app_session_required": "Only the Beacon app can register a phone for alerts.",
+        "temperatureRange": "Enter limits between {{min}} and {{max}} degrees {{unit}}.",
+        "temperatureWidth": "The high limit must be at least {{width}} degrees above the low limit."
+      },
+      "when": {
+        "gone_quiet": "When the radio has not been heard for this long.",
+        "back_online": "When the radio is heard again after it went quiet.",
+        "battery_low": "When the battery stays below this voltage.",
+        "battery_falling": "When the battery drops faster than this in a day.",
+        "rebooted": "When the radio restarts.",
+        "temperature": "When the temperature goes below the low limit or above the high limit.",
+        "noise_high": "When the noise floor stays above this level.",
+        "clock": "When the radio's clock is off by more than this.",
+        "observer_offline": "When the observer sends no status report for this long."
+      },
+      "voltsPerDay": "{{volts}} V per day",
+      "hours_one": "{{count}} hour",
+      "hours_other": "{{count}} hours",
+      "minutes_one": "{{count}} minute",
+      "minutes_other": "{{count}} minutes"
+    },
+    "serverText": {
+      "requestReason": {
+        "noObserver": "No observer can reach this repeater yet.",
+        "noSeat": "Every observer that can reach this repeater is already polling its maximum.",
+        "loginFailed": "The repeater did not accept this guest password. Enter a new one.",
+        "blankFailed": "The repeater did not accept a blank or hello login. Enter a guest password.",
+        "adminStopped": "The repeater gave admin access to this password, so Beacon deleted it. Enter a guest password, never an admin one.",
+        "blankBlocked": "This repeater gives admin access to a blank login, so Beacon will not poll it without a guest password.",
+        "offline_one": "Not heard by any observer for {{count}} day.",
+        "offline_other": "Not heard by any observer for {{count}} days."
+      },
+      "alertReason": {
+        "observerNoData": "This observer does not report {{what}}.",
+        "repeatersOnly": "Only repeaters report {{what}}.",
+        "notPolled": "Beacon is not polling this repeater. Request telemetry for it first.",
+        "noData": "This repeater does not report {{what}}.",
+        "observerNoClock": "Observers have no clock drift value.",
+        "clockRepeatersOnly": "Only repeaters and room servers report their clock.",
+        "needsGoneQuiet": "Turn on the gone-quiet alert for this radio first.",
+        "notApplicable": "This alert does not apply to this radio."
+      },
+      "alertWhat": {
+        "battery": "a battery level",
+        "uptime": "its uptime",
+        "temperature": "a temperature",
+        "noise": "a noise floor"
+      },
+      "errors": {
+        "busy": "The server is busy. Try again in a moment.",
+        "readOnly": "This server is read-only right now. Try again later.",
+        "requestNotFound": "That request no longer exists."
+      }
+    },
+    "passwordRule": {
+      "hint": "At least 12 characters.",
+      "tooLong": "That password is too long."
+    },
+    "accountUi": {
+      "introBase": "Sync your Atlas.",
+      "introTelemetry": "Sync your Atlas and request repeater telemetry.",
+      "introAlerts": "Sync your Atlas and get alerts.",
+      "introBoth": "Sync your Atlas, request repeater telemetry and get alerts.",
+      "waiting": "Waiting for your browser",
+      "waitingNote": "Finish signing in in your browser, then come back to this app.",
+      "cancel": "Cancel",
+      "profileNote": "Name, email, password and devices",
+      "signOutTitle": "Sign out?",
+      "signOutBody": "You will need to sign in again to use your account on this device.",
+      "endOthersTitle": "Sign out everywhere else?",
+      "endOthersBody": "Every other browser and app signed in to your account is signed out. This device stays signed in.",
+      "deleteTitle": "Delete your account?",
+      "nameHelper": "Up to 40 characters.",
+      "emailHelper": "We send a link to the new address to confirm it.",
+      "emailInvalid": "Enter a valid email address.",
+      "passwordHelper": "Needed to confirm it is you.",
+      "noDevices": "No devices to show.",
+      "deleteUsernameHelper": "Type your username exactly as shown."
+    },
+    "pollerState": {
+      "ok": "Being polled by {{name}}",
+      "pending": "Assigned to {{name}}. First poll is on its way.",
+      "notDirect": "Assigned to {{name}}, which cannot hear this repeater directly right now.",
+      "noReply": "{{name}} is asking, but the repeater is not answering.",
+      "notClaimed": "Assigned to {{name}}. Waiting for it to pick this up.",
+      "passwordProblem": "{{name}} reported a password problem. Checking."
+    },
+    "atlasTelemetry": {
+      "tab": "Telemetry",
+      "battery": "Battery",
+      "noise": "Noise floor",
+      "uptime": "Uptime",
+      "airtime": "Airtime",
+      "temperature": "Temperature",
+      "packets": "Packets",
+      "signal": "Signal",
+      "errors": "Errors",
+      "noReadings": "No readings in this window",
+      "needsPair": "Needs two status readings",
+      "restarted": "Restarted",
+      "sentPerHour": "sent {{value}}",
+      "polledBy": "Polled by {{name}}",
+      "polled": "Being polled",
+      "notPolled": "Not being polled right now",
+      "lastReading": "Last reading",
+      "help": "Readings Beacon polled from this repeater, over the selected window. Airtime is the share of time spent transmitting and receiving. Packets and errors are per hour. Signal is the last SNR and RSSI the repeater reported. With only a few readings the points are drawn as dots."
+    },
+    "atlasFooter": {
+      "heard": "Heard",
+      "hops": "{{value}} hops",
+      "neighbors_one": "{{count}} neighbor",
+      "neighbors_other": "{{count}} neighbors",
+      "polled": "Polled",
+      "notPolled": "Not polled",
+      "byPoller": "by {{name}}"
+    },
+    "nodePanel": {
+      "details": "Details",
+      "scopes_one": "{{count}} scope",
+      "scopes_other": "{{count}} scopes",
+      "fromMeshMapperIn": "From MeshMapper ({{iata}})",
+      "passwordHint": "Guest password only, never admin.",
+      "usedShort": "{{used}} of {{limit}} used",
+      "polled": "Polled",
+      "by": "by",
+      "manage": "Manage in profile",
+      "packetsSent": "Packets sent",
+      "noPacketsSent": "No packets sent",
+      "packetsSentInfo": "Adverts and login requests this node sent. Other packets don't name their sender in full, so they can't be listed here.",
+      "packetsSentExpire": "Older packets expire after the server's retention period."
+    },
+    "atlasLimits": {
+      "overLimit_one": "This server allows {{count}} card. Remove {{remove}} more to save your Atlas to your account.",
+      "overLimit_other": "This server allows {{count}} cards. Remove {{remove}} more to save your Atlas to your account."
+    },
+    "alertChannels": {
+      "title": "How alerts reach you",
+      "email": "Email",
+      "push": "Push",
+      "thisServer": "this server",
+      "reason": {
+        "server_off": "This server doesn't send alert emails.",
+        "portal_account": "Accounts that sign in through the portal have no email address here.",
+        "unverified_email": "Confirm your email address to get alert emails.",
+        "other": "Alert emails are not available for this account."
+      },
+      "pushOff": "This server doesn't send push notifications.",
+      "pushVia": "Alerts from {{server}} are delivered via the MeshCore Beacon push server. It sees which server sent them, not what they say.",
+      "noChannel": "Email and push are both off, so your alerts won't reach you.",
+      "failed": "Could not change this. Try again."
+    },
+    "atlasAlerts": {
+      "bell": "Alerts",
+      "bellOn_one": "Alerts: {{count}} on",
+      "bellOn_other": "Alerts: {{count}} on",
+      "bellFiring_one": "Alerts: {{count}} firing",
+      "bellFiring_other": "Alerts: {{count}} firing",
+      "title": "Alerts for {{name}}",
+      "signInPrompt": "Sign in to set alerts for this radio.",
+      "notYet": "Alerts for this radio are not available yet. Try again once your Atlas has saved to your account.",
+      "channels": "Choose how alerts reach you in your profile",
+      "noChannel": "Email and push are both off, so alerts won't reach you. Turn one on in your profile."
+    },
+    "analyzerActions": {
+      "viewNode": "View node"
+    },
+    "observerMerge": {
+      "view": "Radio view",
+      "node": "Node",
+      "observer": "Observer",
+      "errorObserverNode": "Observers report their own telemetry.",
+      "reasonObserver": "Observer, reports its own telemetry"
+    },
+    "atlasRange": {
+      "7d": "7d"
+    },
+    "atlasGraph": {
+      "open": "Open graph: {{metric}}",
+      "hint": "Pinch to zoom, hold and drag for values"
     }
   }
 }

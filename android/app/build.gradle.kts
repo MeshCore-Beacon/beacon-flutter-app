@@ -7,6 +7,12 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// Push needs the publisher's Firebase file. Without it the plugin stays off and
+// the app builds as before; push then reports itself as not set up.
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 // Load signing config from environment variables (Build.sh sources
 // ~/.beacon_release.env) or android/key.properties (local, gitignored)
 val keystorePropertiesFile = rootProject.file("key.properties")
@@ -27,6 +33,8 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        // flutter_local_notifications needs java.time on older Android.
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -80,4 +88,8 @@ flutter {
 dependencies {
     // WindowCompat.enableEdgeToEdge (MainActivity)
     implementation("androidx.core:core:1.18.0")
+}
+
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }

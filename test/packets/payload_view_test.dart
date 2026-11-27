@@ -243,7 +243,14 @@ void main() {
                 },
               },
             },
-            observation: {},
+            observation: {
+              'resolvedSource': {
+                'confidence': 'high',
+                'nodes': [
+                  {'id': 'n1', 'name': 'Hill Relay', 'publicKey': publicKey},
+                ],
+              },
+            },
             onOpen: (_, _) {},
           ),
         ),
@@ -254,6 +261,18 @@ void main() {
     expect(find.text('Signature'), findsOneWidget);
     expect(find.textContaining('Role Repeater'), findsOneWidget);
     expect(find.textContaining('(4B LE)'), findsOneWidget);
+    // The advert names its sender itself, so no From row repeats it.
+    expect(find.text('From '), findsNothing);
+    // The flags block is marked like the other fields, in the flags colour.
+    final flags = find.text('APP FLAGS');
+    expect(
+      tester.widget<Text>(flags).style?.color,
+      packetFieldColor(tester.element(flags), 'flags'),
+    );
+    expect(
+      find.ancestor(of: flags, matching: find.byType(PacketFieldMark)),
+      findsOneWidget,
+    );
     expect(find.text('Device role'), findsNothing);
     expect(find.text('Has location'), findsNothing);
     expect(find.textContaining('65 6C 61 79'), findsNothing);
@@ -262,12 +281,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text(publicKey.toUpperCase()), findsOneWidget);
     expect(find.byType(SelectableText), findsWidgets);
-    await tester.tap(find.text('Close'));
+    await tester.tap(find.byTooltip('Close'));
     await tester.pumpAndSettle();
     await tester.tap(find.textContaining('…').last);
     await tester.pumpAndSettle();
     expect(find.text(signature.toUpperCase()), findsOneWidget);
-    await tester.tap(find.text('Close'));
+    await tester.tap(find.byTooltip('Close'));
     await tester.pumpAndSettle();
     expect(find.text('0010'), findsOneWidget);
     expect(tester.takeException(), isNull);

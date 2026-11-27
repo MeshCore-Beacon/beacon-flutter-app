@@ -3,11 +3,17 @@ import 'dart:convert';
 import '../../core/api.dart';
 import '../../core/json.dart';
 
-const atlasLimit = 12;
+/// The cap a server that does not send limits.atlas enforces.
+const atlasLimitFallback = 12;
+
+/// The highest cap a server can set. Loading keeps up to this many; the
+/// screen enforces the server's own.
+const atlasLimitMax = 100;
 
 enum AtlasRange {
   day('24h', 24, '24h'),
-  threeDays('3d', 72, '72h');
+  threeDays('3d', 72, '72h'),
+  week('7d', 168, '168h');
 
   const AtlasRange(this.id, this.hours, this.duration);
   final String id;
@@ -17,7 +23,12 @@ enum AtlasRange {
   final String duration;
 }
 
-enum AtlasView { analytics, heard, observer }
+/// The range to show and fetch. A saved week reads as three days on a server
+/// without it; [atlas7d] is null until /info answers, and nothing changes then.
+AtlasRange effectiveRange(AtlasRange saved, bool? atlas7d) =>
+    saved == AtlasRange.week && atlas7d == false ? AtlasRange.threeDays : saved;
+
+enum AtlasView { analytics, heard, observer, telemetry }
 
 /// The metrics an Observer view tile can show. A pin stores its four only when
 /// they differ from the default.
@@ -35,6 +46,19 @@ const observerTiles = [
 ];
 const defaultTiles = ['airtime', 'battery', 'types', 'noise'];
 
+/// The metrics a Telemetry view tile can show; same storage rule as the Observer tiles.
+const telemetryTileIds = [
+  'battery',
+  'noise',
+  'uptime',
+  'airtime',
+  'temperature',
+  'packets',
+  'signal',
+  'errors',
+];
+const defaultTelemetryTiles = ['battery', 'noise', 'uptime', 'airtime'];
+
 final _uuid = RegExp(
   r'^[\da-f]{8}(-[\da-f]{4}){3}-[\da-f]{12}$',
   caseSensitive: false,
@@ -49,6 +73,7 @@ class AtlasPin {
     required this.name,
     this.observerId,
     this.tiles,
+    this.telemetryTiles,
     this.view,
   }) : isNode = true;
   const AtlasPin.observer({
@@ -58,6 +83,7 @@ class AtlasPin {
   }) : isNode = false,
        id = null,
        publicKey = null,
+       telemetryTiles = null,
        view = null;
 
   final bool isNode;
@@ -66,6 +92,9 @@ class AtlasPin {
 
   /// Four tile ids in slot order; null for the default layout.
   final List<String>? tiles;
+
+  /// The Telemetry view's four tiles; null for the default layout.
+  final List<String>? telemetryTiles;
 
   /// The tab a node card opens on; null for Analytics.
   final AtlasView? view;
@@ -81,6 +110,7 @@ class AtlasPin {
           'name': name,
           'observerId': ?observerId,
           'tiles': ?tiles,
+          'telemetryTiles': ?telemetryTiles,
           'view': ?view?.name,
         }
       : {
@@ -91,7 +121,7 @@ class AtlasPin {
         };
 
   AtlasPin withTiles(List<String> next) {
-    final kept = _tiles(next);
+    final kept = _tiles(next, observerTiles, defaultTiles);
     return isNode
         ? AtlasPin.node(
             id: id!,
@@ -99,10 +129,21 @@ class AtlasPin {
             name: name,
             observerId: observerId,
             tiles: kept,
+            telemetryTiles: telemetryTiles,
             view: view,
           )
         : AtlasPin.observer(observerId: observerId!, name: name, tiles: kept);
   }
+
+  AtlasPin withTelemetryTiles(List<String> next) => AtlasPin.node(
+    id: id!,
+    publicKey: publicKey!,
+    name: name,
+    observerId: observerId,
+    tiles: tiles,
+    telemetryTiles: _tiles(next, telemetryTileIds, defaultTelemetryTiles),
+    view: view,
+  );
 
   AtlasPin withView(AtlasView next) => AtlasPin.node(
     id: id!,
@@ -110,6 +151,7 @@ class AtlasPin {
     name: name,
     observerId: observerId,
     tiles: tiles,
+    telemetryTiles: telemetryTiles,
     view: next == AtlasView.analytics ? null : next,
   );
 
@@ -120,6 +162,7 @@ class AtlasPin {
     name: name,
     observerId: observer,
     tiles: tiles,
+    telemetryTiles: telemetryTiles,
     view: view,
   );
 
@@ -153,12 +196,12 @@ class SavedAtlas {
 }
 
 /// Four distinct known ids in slot order; null for anything else and for the default layout.
-List<String>? _tiles(dynamic raw) {
-  if (raw is! List || raw.length != defaultTiles.length) return null;
+List<String>? _tiles(dynamic raw, List<String> known, List<String> fallback) {
+  if (raw is! List || raw.length != fallback.length) return null;
   if (raw.toSet().length != raw.length) return null;
-  if (!raw.every(observerTiles.contains)) return null;
+  if (!raw.every(known.contains)) return null;
   for (var i = 0; i < raw.length; i++) {
-    if (raw[i] != defaultTiles[i]) return List<String>.from(raw);
+    if (raw[i] != fallback[i]) return List<String>.from(raw);
   }
   return null;
 }
@@ -167,9 +210,11 @@ AtlasPin? _pin(dynamic raw) {
   if (raw is! Map) return null;
   final rawName = raw['name'];
   final name = rawName is String
-      ? (rawName.length > 160 ? rawName.substring(0, 160) : rawName)
+      ? (rawName.length > 160
+            ? String.fromCharCodes(rawName.runes.take(160))
+            : rawName)
       : '';
-  final tiles = _tiles(raw['tiles']);
+  final tiles = _tiles(raw['tiles'], observerTiles, defaultTiles);
   final observerId = raw['observerId'];
   if (raw['kind'] == 'observer') {
     return _isUuid(observerId)
@@ -193,9 +238,15 @@ AtlasPin? _pin(dynamic raw) {
     name: name,
     observerId: _isUuid(observerId) ? observerId as String : null,
     tiles: tiles,
+    telemetryTiles: _tiles(
+      raw['telemetryTiles'],
+      telemetryTileIds,
+      defaultTelemetryTiles,
+    ),
     view: switch (raw['view']) {
       'heard' => AtlasView.heard,
       'observer' => AtlasView.observer,
+      'telemetry' => AtlasView.telemetry,
       _ => null,
     },
   );
@@ -204,7 +255,7 @@ AtlasPin? _pin(dynamic raw) {
 /// Only a version 2 payload loads; anything else is empty.
 SavedAtlas parseAtlas(String? raw) {
   try {
-    if (raw == null || raw.isEmpty || raw.length > 32000) {
+    if (raw == null || raw.isEmpty || raw.length > atlasFileMaxBytes) {
       return const SavedAtlas();
     }
     final value = jsonDecode(raw);
@@ -216,10 +267,14 @@ SavedAtlas parseAtlas(String? raw) {
       final pin = _pin(entry);
       if (pin == null || pins.any((other) => other.key == pin.key)) continue;
       pins.add(pin);
-      if (pins.length == atlasLimit) break;
+      if (pins.length == atlasLimitMax) break;
     }
     return SavedAtlas(
-      range: value['range'] == '3d' ? AtlasRange.threeDays : AtlasRange.day,
+      range: switch (value['range']) {
+        '3d' => AtlasRange.threeDays,
+        '7d' => AtlasRange.week,
+        _ => AtlasRange.day,
+      },
       pins: pins,
     );
   } catch (_) {
@@ -250,9 +305,9 @@ class AtlasImport {
   final int skipped;
 }
 
-/// Null when the text is not an Atlas export. Pins go through the same checks,
-/// dedupe and cap as a restore.
-AtlasImport? readAtlasFile(String text) {
+/// Null when the text is not an Atlas export. Pins go through the same checks
+/// and dedupe as a restore, then the cap.
+AtlasImport? readAtlasFile(String text, {int limit = atlasLimitFallback}) {
   if (text.length > atlasFileMaxBytes) return null;
   dynamic value;
   try {
@@ -265,7 +320,8 @@ AtlasImport? readAtlasFile(String text) {
       value['pins'] is! List) {
     return null;
   }
-  final atlas = parseAtlas(jsonEncode(value));
+  final parsed = parseAtlas(jsonEncode(value));
+  final atlas = parsed.copyWith(pins: parsed.pins.take(limit).toList());
   return AtlasImport(atlas, (value['pins'] as List).length - atlas.pins.length);
 }
 
@@ -327,6 +383,10 @@ class HourSlots {
   bool inWindow(num? t) =>
       t != null && t.isFinite && t < now + hourMs && _age(t) < hours;
 
+  /// The hour slot [i] starts on, epoch ms.
+  int start(int i) =>
+      ((now - (hours - 1 - i) * hourMs) / hourMs).floor() * hourMs;
+
   /// Zero for an hour the server read, null for one it has not: no reply yet,
   /// or between the rollups and the raw tail.
   List<double?> counts(Json? read) {
@@ -334,7 +394,7 @@ class HourSlots {
     final rolledUntil = finite(read?['rolledUntil']);
     return List<double?>.generate(hours, (i) {
       if (read == null) return null;
-      final hour = ((now - (hours - 1 - i) * hourMs) / hourMs).floor() * hourMs;
+      final hour = start(i);
       return rawFrom != null &&
               hour < rawFrom &&
               (rolledUntil == null || hour >= rolledUntil)

@@ -99,10 +99,11 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    // Both span the card's inner width, inside its 1px border.
     for (final id in [1, 2]) {
       final rect = tester.getRect(find.byKey(ValueKey('report-$id')));
-      expect(rect.left, 0);
-      expect(rect.right, 390);
+      expect(rect.left, 1);
+      expect(rect.right, 389);
     }
     expect(tester.takeException(), isNull);
   });

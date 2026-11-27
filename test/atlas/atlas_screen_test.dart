@@ -1,13 +1,21 @@
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:beacon/core/account.dart';
 import 'package:beacon/core/api.dart';
+import 'package:beacon/core/auth_api.dart';
 import 'package:beacon/core/preferences.dart';
 import 'package:beacon/core/theme.dart';
+import 'package:beacon/core/token_store.dart';
+import 'package:beacon/features/analytics/charts.dart';
 import 'package:beacon/features/atlas/atlas.dart';
 import 'package:beacon/features/atlas/atlas_grid.dart';
 import 'package:beacon/features/atlas/atlas_screen.dart';
+import 'package:beacon/features/atlas/atlas_store.dart';
 import 'package:beacon/features/atlas/atlas_widgets.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -29,8 +37,8 @@ Map<String, dynamic> nodePin([Map<String, dynamic> extra = const {}]) => {
   'name': 'Hill',
   ...extra,
 };
-String stored(List<Map<String, dynamic>> pins) =>
-    jsonEncode({'version': 2, 'range': '24h', 'pins': pins});
+String stored(List<Map<String, dynamic>> pins, [String range = '24h']) =>
+    jsonEncode({'version': 2, 'range': range, 'pins': pins});
 
 /// A small Beacon server: two nodes, one of them also an observer.
 class Server {
@@ -62,7 +70,27 @@ class Server {
     'radio': '910.525,62.5,7',
     'batteryLevel': 4.1,
   };
+
+  /// Holds the observer lookup, like a slow network.
+  Completer<void>? holdObserver;
   bool activity404 = false;
+  bool polling = true, atlasTelemetry = false, atlas7d = false;
+  int? atlasLimit;
+  String temperatureUnit = 'c';
+
+  /// What /nodes/{id}/polling answers; null is a 404.
+  Map<String, dynamic>? pollingDoc = {
+    'polled': true,
+    'latestReadingAt': tick - 720000,
+    'poller': {'observerId': observerId, 'name': 'Roof'},
+    'standbys': <dynamic>[],
+  };
+  List<Map<String, dynamic>> readings = [
+    {'t': tick - 7200000, 'batteryMv': 4100, 'temperatureC': 15.2},
+    {'t': tick - 3600000, 'batteryMv': 4226},
+    {'t': tick - 1800000, 'temperatureC': 16.54},
+    {'t': tick - 600000, 'readings': 1},
+  ];
 
   Object? reply(Uri url) {
     final path = url.path.replaceFirst('/api/v1', '');
@@ -81,6 +109,21 @@ class Server {
               ),
             );
       return {'items': found.toList(), 'hasMore': false};
+    }
+    if (path == '/info') {
+      return {
+        'features': {
+          'polling': polling,
+          'atlasTelemetry': atlasTelemetry,
+          'atlas7d': atlas7d,
+        },
+        'display': {'temperatureUnit': temperatureUnit},
+        if (atlasLimit != null) 'limits': {'atlas': atlasLimit},
+      };
+    }
+    if (path == '/nodes/$nodeId/polling') return pollingDoc;
+    if (path == '/nodes/$nodeId/telemetry') {
+      return {'polled': readings.isNotEmpty, 'points': readings};
     }
     if (path == '/nodes/$nodeId') return hill;
     if (path == '/nodes/$otherId') return ridge;
@@ -161,6 +204,9 @@ class Server {
     now: () => clock,
     client: MockClient((request) async {
       requests.add(request.url);
+      if (request.url.path.endsWith('/observers/$observerId')) {
+        await holdObserver?.future;
+      }
       final body = reply(request.url);
       return body == null
           ? http.Response('{"error":{"message":"not found"}}', 404)
@@ -175,6 +221,7 @@ final opened = <(String, String)>[];
 Future<Preferences> pump(
   WidgetTester tester, {
   List<Map<String, dynamic>>? pins,
+  String range = '24h',
   Size size = const Size(390, 844),
 }) async {
   tester.view.physicalSize = size;
@@ -186,7 +233,7 @@ Future<Preferences> pump(
       {'name': 'Test', 'url': server},
     ]),
     'beacon.active': server,
-    'beacon.atlas.$server': ?(pins == null ? null : stored(pins)),
+    'beacon.atlas.$server': ?(pins == null ? null : stored(pins, range)),
   });
   final prefs = await Preferences.load();
   opened.clear();
@@ -222,11 +269,53 @@ Future<void> search(WidgetTester tester, String text) async {
   await tester.pumpAndSettle();
 }
 
+/// Whether the footer dot beside [text] is lit; fails when there is no dot.
+bool footerFresh(WidgetTester tester, String text) {
+  final row = find
+      .ancestor(of: find.text(text), matching: find.byType(Row))
+      .first;
+  final dot = find.descendant(
+    of: row,
+    matching: find.byKey(const ValueKey('atlas-footer-dot')),
+  );
+  final color =
+      (tester.widget<Container>(dot).decoration! as BoxDecoration).color;
+  return color == BeaconColors.of(tester.element(dot)).success;
+}
+
 void main() {
   // Asset loads never finish inside a widget test's fake clock.
   setUp(() async {
     fake = Server();
     await BeaconTheme.load();
+  });
+
+  testWidgets('takes its card cap from the server', (tester) async {
+    fake.atlasLimit = 1;
+    await pump(tester, pins: [nodePin()]);
+    expect(find.text('1/1'), findsOneWidget);
+    await search(tester, 'ridge');
+    expect(find.textContaining('All 1 slots are in use'), findsOneWidget);
+    await close(tester);
+  });
+
+  testWidgets('a poller search row shows both badges, others do not', (
+    tester,
+  ) async {
+    fake.hill['isObserver'] = true;
+    fake.hill['isPoller'] = true;
+    fake.ridge['isObserver'] = true;
+    await pump(tester);
+    await search(tester, 'hill');
+    expect(find.text('OBSERVER'), findsOneWidget);
+    expect(find.text('POLLER'), findsOneWidget);
+    await search(tester, 'ridge');
+    expect(find.text('OBSERVER'), findsOneWidget);
+    expect(find.text('POLLER'), findsNothing);
+    fake.ridge.remove('isObserver');
+    await search(tester, 'ridg');
+    expect(find.text('POLLER'), findsNothing);
+    await close(tester);
   });
 
   testWidgets('starts empty, finds a node by name and saves it as a card', (
@@ -297,8 +386,9 @@ void main() {
     expect(find.text('5.3 dB'), findsOneWidget);
     expect(find.text('-101.4 dBm'), findsOneWidget);
     expect(find.text('1/24'), findsOneWidget);
-    expect(find.text('Last seen 3m ago'), findsOneWidget);
-    expect(find.text('Mean hops 2.3 · Neighbors (5)'), findsOneWidget);
+    expect(find.text('Heard · 3m ago'), findsOneWidget);
+    expect(find.text('2.3 hops · 5 neighbors'), findsOneWidget);
+    expect(footerFresh(tester, 'Heard · 3m ago'), isTrue);
     expect(
       fake.requests
           .where((url) => url.path.endsWith('/activity'))
@@ -320,6 +410,451 @@ void main() {
       '72h',
     );
     await close(tester);
+  });
+
+  group('Telemetry tab', () {
+    bool tabShown() => find.text('Telemetry').evaluate().isNotEmpty;
+    Iterable<Uri> asked(String range) => fake.requests.where(
+      (url) =>
+          url.path == '/api/v1/nodes/$nodeId/telemetry' &&
+          url.queryParameters['range'] == range,
+    );
+
+    testWidgets('appears for a polled repeater with readings', (tester) async {
+      final prefs = await pump(tester, pins: [nodePin()]);
+      expect(tabShown(), true);
+      // The old readings line is gone.
+      expect(find.text('4.23 V · 16.5 °C'), findsNothing);
+      // Nothing is read for the tiles until the tab is open.
+      expect(asked('24h'), isEmpty);
+      expect(prefs.atlasFor(server), stored([nodePin()]));
+      await close(tester);
+    });
+
+    testWidgets('appears when the node is polled but has no readings', (
+      tester,
+    ) async {
+      fake.readings = [];
+      await pump(tester, pins: [nodePin()]);
+      expect(tabShown(), true);
+      await close(tester);
+    });
+
+    testWidgets('is missing with no readings and no poller', (tester) async {
+      fake.readings = [];
+      fake.pollingDoc = null;
+      await pump(tester, pins: [nodePin()]);
+      expect(tabShown(), false);
+      await close(tester);
+    });
+
+    testWidgets('is missing for a non-repeater', (tester) async {
+      await pump(
+        tester,
+        pins: [
+          nodePin({'id': otherId, 'publicKey': otherKey}),
+        ],
+      );
+      expect(tabShown(), false);
+      expect(
+        fake.requests.any((url) => url.path.endsWith('/telemetry')),
+        false,
+      );
+      await close(tester);
+    });
+
+    testWidgets('is missing and asks nothing with polling off', (tester) async {
+      fake.polling = false;
+      await pump(tester, pins: [nodePin()]);
+      expect(tabShown(), false);
+      expect(
+        fake.requests.any((url) => url.path.endsWith('/telemetry')),
+        false,
+      );
+      await close(tester);
+    });
+
+    testWidgets('shows tile values, a dash for no data and the poller line', (
+      tester,
+    ) async {
+      await pump(tester, pins: [nodePin()]);
+      await tester.tap(find.text('Telemetry'));
+      await tester.pumpAndSettle();
+      expect(asked('24h').single.queryParameters['interval'], '1h');
+      expect(find.text('BATTERY'), findsOneWidget);
+      expect(find.text('4.23V'), findsOneWidget);
+      expect(find.text('NOISE FLOOR'), findsOneWidget);
+      // Readings exist but no counter pair: the counter tile says so.
+      expect(find.text('No readings in this window'), findsNWidgets(2));
+      expect(find.text('Needs two status readings'), findsOneWidget);
+      expect(find.text('Polled · 12m ago'), findsOneWidget);
+      expect(find.text('by Roof'), findsOneWidget);
+      expect(footerFresh(tester, 'Polled · 12m ago'), isTrue);
+      await close(tester);
+    });
+
+    for (final width in [390.0, 320.0]) {
+      testWidgets(
+        'a long poller name gives way and never cuts the age ($width)',
+        (tester) async {
+          fake.pollingDoc = {
+            'polled': true,
+            'latestReadingAt': tick - 49 * 60000,
+            'poller': {'observerId': observerId, 'name': 'MrAlders0n_G3_R1'},
+            'standbys': <dynamic>[],
+          };
+          await pump(tester, pins: [nodePin()], size: Size(width, 844));
+          await tester.tap(find.text('Telemetry'));
+          await tester.pumpAndSettle();
+          final left = find.text('Polled · 49m ago');
+          final right = find.text('by MrAlders0n_G3_R1');
+          expect(left, findsOneWidget);
+          expect(right, findsOneWidget);
+          expect(
+            tester.renderObject<RenderParagraph>(left).didExceedMaxLines,
+            isFalse,
+          );
+          expect(
+            tester.getTopLeft(right).dy,
+            moreOrLessEquals(tester.getTopLeft(left).dy, epsilon: 1),
+          );
+          expect(tester.takeException(), isNull);
+          await close(tester);
+        },
+      );
+    }
+
+    testWidgets('says when nobody is polling', (tester) async {
+      fake.pollingDoc = {
+        'polled': true,
+        'latestReadingAt': tick - 3 * 86400000,
+        'poller': null,
+        'standbys': <dynamic>[],
+      };
+      await pump(tester, pins: [nodePin()]);
+      await tester.tap(find.text('Telemetry'));
+      await tester.pumpAndSettle();
+      expect(find.text('Not polled'), findsOneWidget);
+      expect(find.textContaining('by '), findsNothing);
+      expect(footerFresh(tester, 'Not polled'), isFalse);
+      await close(tester);
+    });
+
+    testWidgets('a pinned card opens on it and follows the range', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        pins: [
+          nodePin({'view': 'telemetry'}),
+        ],
+      );
+      expect(find.text('BATTERY'), findsOneWidget);
+      expect(asked('24h'), hasLength(1));
+      await tester.tap(find.text('3d'));
+      await tester.pumpAndSettle();
+      // This server has no 72h range: a week, trimmed to the window.
+      expect(asked('168h').last.queryParameters['interval'], '6h');
+      expect(asked('72h'), isEmpty);
+      await close(tester);
+    });
+
+    testWidgets('asks for 72h when the server offers it', (tester) async {
+      fake.atlasTelemetry = true;
+      await pump(
+        tester,
+        pins: [
+          nodePin({'view': 'telemetry'}),
+        ],
+      );
+      await tester.tap(find.text('3d'));
+      await tester.pumpAndSettle();
+      expect(asked('72h').last.queryParameters['interval'], '1h');
+      expect(asked('168h'), isEmpty);
+      await close(tester);
+    });
+
+    for (final (unit, shown) in [('c', '16.5 °C'), ('f', '61.8 °F')]) {
+      testWidgets('shows the temperature tile in $unit', (tester) async {
+        fake.temperatureUnit = unit;
+        await pump(
+          tester,
+          pins: [
+            nodePin({
+              'view': 'telemetry',
+              'telemetryTiles': ['temperature', 'noise', 'uptime', 'airtime'],
+            }),
+          ],
+        );
+        expect(find.text(shown), findsOneWidget);
+        await close(tester);
+      });
+    }
+
+    testWidgets('swaps a tile, stores it only when it differs', (tester) async {
+      final prefs = await pump(
+        tester,
+        pins: [
+          nodePin({'view': 'telemetry'}),
+        ],
+      );
+      await tester.tap(find.text('NOISE FLOOR'));
+      await tester.pumpAndSettle();
+      expect(find.text('Reset tiles'), findsNothing);
+      // The fixture has a temperature, so it is offered.
+      expect(find.text('Temperature'), findsOneWidget);
+      await tester.tap(find.text('Packets'));
+      await tester.pumpAndSettle();
+      expect(savedPins(prefs).single['telemetryTiles'], [
+        'battery',
+        'packets',
+        'uptime',
+        'airtime',
+      ]);
+      await tester.tap(find.text('PACKETS'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Reset tiles'));
+      await tester.pumpAndSettle();
+      expect(
+        (savedPins(prefs).single as Map).containsKey('telemetryTiles'),
+        false,
+      );
+      expect(find.text('NOISE FLOOR'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('pins the view', (tester) async {
+      final prefs = await pump(tester, pins: [nodePin()]);
+      await tester.tap(find.text('Telemetry'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.bySemanticsLabel('Open on this tab'));
+      await tester.pumpAndSettle();
+      expect(savedPins(prefs).single['view'], 'telemetry');
+      await close(tester);
+    });
+  });
+
+  group('7 day range', () {
+    Iterable<Uri> asked(String path) =>
+        fake.requests.where((url) => url.path == '/api/v1$path');
+
+    testWidgets('is offered only by a server that has it', (tester) async {
+      await pump(tester, pins: [nodePin()]);
+      expect(find.text('3d'), findsOneWidget);
+      expect(find.text('7d'), findsNothing);
+      await close(tester);
+      fake = Server()..atlas7d = true;
+      await pump(tester, pins: [nodePin()]);
+      expect(find.text('7d'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('asks every feed for 168 hourly buckets', (tester) async {
+      fake.atlas7d = true;
+      fake.hill = {...fake.hill, 'observerId': observerId};
+      final prefs = await pump(tester, pins: [nodePin()]);
+      await tester.tap(find.text('7d'));
+      await tester.pumpAndSettle();
+      expect(jsonDecode(prefs.atlasFor(server)!)['range'], '7d');
+      expect(asked('/nodes/$nodeId/activity').last.queryParameters, {
+        'range': '168h',
+      });
+      expect(find.text('7d'), findsNWidgets(2));
+      await tester.tap(find.text('Observer'));
+      await tester.pumpAndSettle();
+      for (final feed in ['activity', 'telemetry']) {
+        expect(asked('/observers/$observerId/$feed').last.queryParameters, {
+          'range': '168h',
+          'interval': '1h',
+        });
+      }
+      await tester.tap(find.text('Telemetry'));
+      await tester.pumpAndSettle();
+      expect(asked('/nodes/$nodeId/telemetry').last.queryParameters, {
+        'range': '168h',
+        'interval': '1h',
+      });
+      await close(tester);
+    });
+
+    testWidgets('a saved 7d shows and fetches as 3d on an older server', (
+      tester,
+    ) async {
+      final prefs = await pump(tester, pins: [nodePin()], range: '7d');
+      expect(find.text('7d'), findsNothing);
+      expect(asked('/nodes/$nodeId/activity').last.queryParameters, {
+        'range': '72h',
+      });
+      // The stored range is left alone.
+      expect(jsonDecode(prefs.atlasFor(server)!)['range'], '7d');
+      await close(tester);
+    });
+  });
+
+  group('tile graph', () {
+    Finder sparkOf(String label) => find.descendant(
+      of: find.ancestor(
+        of: find.text(label),
+        matching: find.byType(AtlasStatTile),
+      ),
+      matching: find.byKey(const ValueKey('atlas-tile-graph')),
+    );
+    LineChart chart(WidgetTester tester) =>
+        tester.widget<LineChart>(find.byType(LineChart));
+
+    testWidgets('a sparkline opens its metric large, in the tile\'s colour', (
+      tester,
+    ) async {
+      await pump(tester, pins: [nodePin()]);
+      expect(find.bySemanticsLabel('Open graph: Observations'), findsOneWidget);
+      // The presence strip has no graph.
+      expect(sparkOf('ACTIVE HOURS'), findsNothing);
+      await tester.tap(sparkOf('OBSERVATIONS'));
+      await tester.pumpAndSettle();
+      expect(find.text('Hill · Observations'), findsOneWidget);
+      expect(find.textContaining('24h · '), findsOneWidget);
+      final bar = chart(tester).data.lineBarsData.single;
+      expect(bar.spots, hasLength(24));
+      expect(bar.spots.last.y, 3);
+      expect(bar.dotData.show, isTrue);
+      expect(
+        bar.color,
+        analyticsChartColors(tester.element(find.byType(LineChart))).first,
+      );
+      expect(chart(tester).data.maxX - chart(tester).data.minX, 24 * hourMs);
+      // The newest slot starts on the hour, shown in UTC with the tile's format.
+      final tip = chart(tester).data.lineTouchData.touchTooltipData
+          .getTooltipItems([LineBarSpot(bar, 0, bar.spots.last)])
+          .single!
+          .text;
+      expect(tip, '09-29T12:00 UTC\nObservations: 3');
+      await tester.tap(find.byTooltip('Close'));
+      await tester.pumpAndSettle();
+      expect(find.byType(LineChart), findsNothing);
+
+      await tester.tap(sparkOf('MEAN SNR'));
+      await tester.pumpAndSettle();
+      expect(find.text('Hill · Mean SNR'), findsOneWidget);
+      final snr = chart(tester).data.lineBarsData.single;
+      // One hour was heard; the rest are gaps, not zeros.
+      expect(snr.spots.where((s) => s.isNotNull()), hasLength(1));
+      expect(
+        chart(tester).data.lineTouchData.touchTooltipData
+            .getTooltipItems([LineBarSpot(snr, 0, snr.spots.last)])
+            .single!
+            .text,
+        endsWith('Mean SNR: 4.0 dB'),
+      );
+      await close(tester);
+    });
+
+    testWidgets('a tile with nothing to draw offers no graph', (tester) async {
+      await pump(
+        tester,
+        pins: [
+          nodePin({'id': otherId, 'publicKey': otherKey, 'name': 'Ridge'}),
+        ],
+      );
+      expect(sparkOf('MEAN SNR'), findsNothing);
+      expect(sparkOf('MEAN RSSI'), findsNothing);
+      await close(tester);
+    });
+
+    testWidgets('the sheet zooms sideways and still drags shut', (
+      tester,
+    ) async {
+      await pump(tester, pins: [nodePin()]);
+      await tester.tap(sparkOf('OBSERVATIONS'));
+      await tester.pumpAndSettle();
+      final config = chart(tester).transformationConfig;
+      expect(config.scaleAxis, FlScaleAxis.horizontal);
+      final centre = tester.getCenter(find.byType(LineChart));
+      final a = await tester.startGesture(centre - const Offset(20, 0));
+      final b = await tester.startGesture(centre + const Offset(20, 0));
+      await a.moveBy(const Offset(-60, 0));
+      await b.moveBy(const Offset(60, 0));
+      await tester.pump();
+      await a.up();
+      await b.up();
+      await tester.pumpAndSettle();
+      expect(
+        config.transformationController!.value.getMaxScaleOnAxis(),
+        greaterThan(1),
+      );
+      expect(find.text('Hill · Observations'), findsOneWidget);
+      await tester.drag(find.byType(LineChart), const Offset(0, 500));
+      await tester.pumpAndSettle();
+      expect(find.text('Hill · Observations'), findsNothing);
+      await close(tester);
+    });
+
+    testWidgets('fits a phone on its side', (tester) async {
+      await pump(tester, pins: [nodePin()], size: const Size(640, 360));
+      await tester.ensureVisible(sparkOf('OBSERVATIONS'));
+      await tester.tap(sparkOf('OBSERVATIONS'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(tester.getSize(find.byType(LineChart)).height, greaterThan(100));
+      await close(tester);
+    });
+
+    testWidgets(
+      'Observer and Telemetry tiles open theirs, the label its menu',
+      (tester) async {
+        fake.hill = {...fake.hill, 'observerId': observerId};
+        await pump(
+          tester,
+          pins: [
+            nodePin({'observerId': observerId, 'view': 'observer'}),
+          ],
+        );
+        // The type mix has no sparkline.
+        expect(sparkOf('PACKET TYPES'), findsNothing);
+        await tester.tap(sparkOf('NOISE FLOOR'));
+        await tester.pumpAndSettle();
+        expect(find.text('Hill · Noise floor'), findsOneWidget);
+        final noise = chart(tester).data.lineBarsData.single;
+        expect(
+          chart(tester).data.lineTouchData.touchTooltipData
+              .getTooltipItems([LineBarSpot(noise, 0, noise.spots.last)])
+              .single!
+              .text,
+          endsWith('Noise floor: -112 dBm'),
+        );
+        await tester.tap(find.byTooltip('Close'));
+        await tester.pumpAndSettle();
+        // The label still opens the tile picker.
+        await tester.tap(find.text('NOISE FLOOR'));
+        await tester.pumpAndSettle();
+        expect(find.text('Queue length'), findsOneWidget);
+        expect(find.byType(LineChart), findsNothing);
+        await tester.tapAt(const Offset(5, 5));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Telemetry'));
+        await tester.pumpAndSettle();
+        await tester.tap(sparkOf('BATTERY'));
+        await tester.pumpAndSettle();
+        expect(find.text('Hill · Battery'), findsOneWidget);
+        final battery = chart(tester).data.lineBarsData.single;
+        expect(
+          [for (final s in battery.spots) s.isNull() ? null : (s.x, s.y)],
+          [(tick - 7200000.0, 4.1), (tick - 3600000.0, 4.226)],
+        );
+        expect(
+          chart(tester).data.lineTouchData.touchTooltipData
+              .getTooltipItems([LineBarSpot(battery, 0, battery.spots.last)])
+              .single!
+              .text,
+          endsWith('Battery: 4.23V'),
+        );
+        await tester.tap(find.byTooltip('Close'));
+        await tester.pumpAndSettle();
+        // No readings of noise: nothing to open.
+        expect(sparkOf('NOISE FLOOR'), findsNothing);
+        await close(tester);
+      },
+    );
   });
 
   testWidgets('says so when the server has no node activity', (tester) async {
@@ -368,6 +903,24 @@ void main() {
     ]);
     expect(find.byTooltip('The card opens on this tab'), findsOneWidget);
     expect(find.text('Open packet'), findsOneWidget);
+    await close(tester);
+  });
+
+  testWidgets('every card keeps the view it was switched to', (tester) async {
+    await pump(
+      tester,
+      pins: [
+        nodePin(),
+        nodePin({'id': otherId, 'publicKey': otherKey}),
+      ],
+      size: const Size(1200, 1600),
+    );
+    expect(find.text('OBSERVATIONS'), findsNWidgets(2));
+    await tester.tap(find.text('Heard by').at(0));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Heard by').at(1));
+    await tester.pumpAndSettle();
+    expect(find.text('OBSERVATIONS'), findsNothing);
     await close(tester);
   });
 
@@ -614,5 +1167,81 @@ void main() {
     final prefs = await Preferences.load();
     expect(parseAtlas(prefs.atlasFor(server)).pins, hasLength(1));
     expect(prefs.atlasFor('https://other.invalid'), isNull);
+  });
+
+  testWidgets('an observer add that outlives its sign-in writes nothing', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    SharedPreferences.setMockInitialValues({
+      'beacon.servers': jsonEncode([
+        {'name': 'Test', 'url': server},
+      ]),
+      'beacon.active': server,
+      'beacon.atlas.synced.$server.u1': true,
+      'beacon.atlas.synced.$server.u2': true,
+    });
+    final prefs = await Preferences.load();
+    final tokens = MemoryTokenStore();
+    await tokens.write(server, 'tok');
+    final puts = <Map<String, dynamic>>[];
+    final account = AccountState(
+      AuthApi(
+        server,
+        tokens,
+        client: MockClient((r) async {
+          if (r.method == 'PUT') {
+            puts.add(jsonDecode(r.body) as Map<String, dynamic>);
+          }
+          return http.Response(
+            jsonEncode({
+              'revision': 1,
+              'range': '24h',
+              'limit': 12,
+              'pins': [],
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }),
+      ),
+    )..adopt({'id': 'u1'});
+    final store = AtlasStore(prefs, server, account: account);
+    await store.idle;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: BeaconTheme.all.first.data,
+        home: Scaffold(
+          body: AtlasScreen(
+            api: fake.api,
+            preferences: prefs,
+            store: store,
+            onOpen: (_, _) {},
+            clock: () => now,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('atlas-search-field')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Observer').last);
+    await tester.pumpAndSettle();
+    await search(tester, 'roof');
+    fake.holdObserver = Completer();
+    await tester.tap(find.text('Add'));
+    await tester.pump();
+    account.adopt(null);
+    account.adopt({'id': 'u2'});
+    await store.idle;
+    fake.holdObserver!.complete();
+    await tester.pumpAndSettle();
+    await store.idle;
+    expect(puts, isEmpty);
+    expect(store.saved.pins, isEmpty);
+    await close(tester);
   });
 }

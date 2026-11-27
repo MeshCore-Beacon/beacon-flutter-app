@@ -52,9 +52,9 @@ void main() {
     expect(find.text(key), findsNothing);
     await tester.tap(find.text('abcdef12abcd…abcdef12').first);
     await tester.pumpAndSettle();
-    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.byType(AlertDialog), findsNothing);
     expect(find.text(key), findsOneWidget);
-    await tester.tap(find.widgetWithText(TextButton, 'Close'));
+    await tester.tap(find.byTooltip('Close').last);
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Copy public key').first);
     await tester.pumpAndSettle();

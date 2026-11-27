@@ -289,7 +289,8 @@
       "observations_one": "{{formatted}} obs.",
       "observations_other": "{{formatted}} obs.",
       "observations_many": "{{formatted}} obs.",
-      "hops": "Sauts"
+      "hops": "Sauts",
+      "poller": "Interrogateur"
     },
     "nodes": {
       "lastHeard": "dernier contact {{ago}}",
@@ -305,7 +306,8 @@
       "neighbors_other": "{{formatted}} voisins",
       "neighbors_many": "{{formatted}} voisins",
       "possiblyForeign": "Possiblement étranger",
-      "possiblyForeignHint": "La position de ce nœud est hors de la zone locale de ce serveur."
+      "possiblyForeignHint": "La position de ce nœud est hors de la zone locale de ce serveur.",
+      "poller": "Interrogateur"
     },
     "packetRow": {
       "noResolution": "Aucune résolution de chemin disponible",
@@ -633,7 +635,8 @@
       "neighborLinks": "Liens de voisinage",
       "packetPath": "Trajet du paquet",
       "noPath": "Aucun trajet localisé sans ambiguïté n’est disponible pour ce paquet.",
-      "pathBreaks": "Les lignes s’interrompent aux sauts ambigus ou sans position."
+      "pathBreaks": "Les lignes s’interrompent aux sauts ambigus ou sans position.",
+      "pollersOnly": "Interrogateurs seulement"
     },
     "nodeFilters": {
       "label": "Filtres des nœuds",
@@ -646,7 +649,8 @@
       "no": "Non",
       "fieldName": "Nom",
       "fieldPubkey": "Clé publique",
-      "all": "Tous"
+      "all": "Tous",
+      "poller": "Interrogateur"
     },
     "packetAnalyzer": {
       "title": "Analyseur de paquets",
@@ -994,6 +998,7 @@
       "manageServers": "Gérer les serveurs",
       "removeServer": "Supprimer le serveur",
       "licenses": "Licences",
+      "kofi": "Soutenir sur Ko-fi",
       "notBeacon": "Ce serveur ne semble pas exposer l’API Beacon.",
       "invalidUrl": "Saisissez une URL de serveur http:// ou https:// complète, sans identifiants, requête ni fragment.",
       "betaBuild": "Version bêta",
@@ -1254,6 +1259,11 @@
       "savedCountShort": "{{count}}/{{limit}}",
       "localOnly": "Enregistré sur cet appareil",
       "storageFailed": "Le stockage est indisponible ; les modifications ne durent que cette session.",
+      "syncedToAccount": "Synchronisé avec votre compte",
+      "conflict": "L'Atlas a été modifié sur un autre appareil. Affichage de la dernière version.",
+      "overflow_one": "{{count}} fiche de cet appareil n'a pas tenu et n'a pas été ajoutée.",
+      "overflow_other": "{{count}} fiches de cet appareil n'ont pas tenu et n'ont pas été ajoutées.",
+      "syncFailed": "Impossible d'enregistrer sur votre compte. Vos modifications restent sur cet appareil.",
       "limitReached": "Les {{limit}} emplacements sont utilisés. Retirez une fiche pour en ajouter une autre.",
       "refine": "{{limit}} premiers résultats affichés ; précisez la recherche pour en voir d’autres.",
       "add": "Ajouter",
@@ -1281,6 +1291,7 @@
       "openPacket": "Ouvrir le paquet",
       "fieldObserver": "Observateur",
       "observerBadge": "Observateur",
+      "pollerBadge": "Interrogateur",
       "viewAnalytics": "Analyses",
       "viewHeard": "Entendu par",
       "viewObserver": "Observateur",
@@ -1312,6 +1323,384 @@
       "exported": "Atlas exporté.",
       "exportFailed": "Impossible d’enregistrer le fichier.",
       "settingsFor": "Fiches enregistrées pour {{name}}"
+    },
+    "nodeTelemetry": {
+      "title": "Télémétrie",
+      "range24h": "24 heures",
+      "range7d": "7 jours",
+      "range30d": "30 jours",
+      "battery": "Batterie (V)",
+      "batterySeries": "Batterie",
+      "temperature": "Température ({{unit}})",
+      "temperatureSeries": "Température",
+      "noiseFloor": "Bruit de fond (dBm)",
+      "noiseFloorSeries": "Bruit de fond",
+      "airtime": "Temps d’antenne TX et RX (% du temps)",
+      "polledBy": "Interrogé par {{name}}",
+      "lastReading": "Dernière mesure",
+      "standbys_one": "{{count}} observateur de réserve",
+      "standbys_other": "{{count}} observateurs de réserve",
+      "waiting": "En attente de la première mesure de ce nœud.",
+      "empty": "Aucune mesure dans cette période",
+      "failed": "Impossible de charger les mesures."
+    },
+    "account": {
+      "heading": "Compte sur {{server}}",
+      "signedInAs": "Connecté en tant que {{name}}",
+      "signedIn": "Connecté",
+      "signIn": "Se connecter",
+      "signInNote": "Votre navigateur s'ouvre pour la connexion, puis vous ramène dans l'application.",
+      "signInPortal": "Se connecter avec MeshMapper",
+      "profile": "Profil",
+      "signOut": "Se déconnecter",
+      "browserFailed": "Impossible d'ouvrir le navigateur.",
+      "saveFailed": "Impossible d'enregistrer la connexion sur cet appareil.",
+      "callbackRejected": "Ce lien de connexion n'était pas attendu ou a expiré. Relancez la connexion depuis cet écran.",
+      "sectionAccount": "Compte",
+      "sectionPassword": "Mot de passe",
+      "sectionPortal": "Connexion",
+      "portalManaged": "Votre connexion est gérée sur le portail MeshMapper.",
+      "sectionDevices": "Appareils",
+      "sectionDelete": "Supprimer le compte",
+      "displayName": "Nom affiché",
+      "save": "Enregistrer",
+      "saved": "Enregistré.",
+      "email": "Courriel",
+      "verified": "Vérifié",
+      "pendingVerification": "En attente de vérification",
+      "pendingFor": "En attente de vérification de {{email}}",
+      "newEmail": "Nouvelle adresse courriel",
+      "currentPassword": "Mot de passe actuel",
+      "changeEmail": "Changer le courriel",
+      "emailSent": "Consultez {{email}} pour le lien de confirmation.",
+      "newPassword": "Nouveau mot de passe",
+      "changePassword": "Changer le mot de passe",
+      "passwordChanged": "Mot de passe modifié. Vos autres appareils ont été déconnectés.",
+      "showPassword": "Afficher le mot de passe",
+      "hidePassword": "Masquer le mot de passe",
+      "browser": "Navigateur",
+      "app": "Application",
+      "thisDevice": "Cet appareil",
+      "lastUsed": "Dernière utilisation {{when}}",
+      "created": "Créé {{when}}",
+      "endSession": "Se déconnecter",
+      "endOthers": "Se déconnecter partout ailleurs",
+      "othersEnded": "Déconnecté partout ailleurs.",
+      "devicesFailed": "Impossible de charger vos appareils.",
+      "retry": "Réessayer",
+      "deleteExplain": "La suppression de votre compte efface votre profil et tout ce qui y est lié. Cette action est irréversible.",
+      "typeUsername": "Saisissez {{username}} pour confirmer",
+      "deleteButton": "Supprimer mon compte",
+      "errors": {
+        "invalidCredentials": "Ce mot de passe n'est pas le bon.",
+        "invalidInput": "Vérifiez ce que vous avez saisi et réessayez.",
+        "rateLimited": "Trop de requêtes.",
+        "tooManyAttempts": "Trop de tentatives.",
+        "retryIn": "Réessayez dans {{time}}.",
+        "seconds_one": "{{count}} seconde",
+        "seconds_other": "{{count}} secondes",
+        "minutes_one": "{{count}} minute",
+        "minutes_other": "{{count}} minutes",
+        "network": "Impossible de joindre le serveur. Vérifiez votre connexion.",
+        "generic": "Une erreur est survenue. Réessayez."
+      },
+      "portalManagedError": "Votre connexion est gérée sur le portail MeshMapper. Utilisez-le là-bas.",
+      "wrongUsername": "Ce n’est pas votre nom d’utilisateur."
+    },
+    "telemetryRequests": {
+      "title": "Demandes de télémétrie",
+      "request": "Demander la télémétrie",
+      "explain": "Demandez à des observateurs bénévoles qui entendent ce répéteur de lire ses statistiques. Les mesures apparaissent ensuite ici.",
+      "passwordLabel": "Mot de passe invité (facultatif)",
+      "notice": "Le mot de passe invité est partagé avec des observateurs bénévoles pour qu'ils puissent demander ses statistiques à ce répéteur. N'entrez jamais un mot de passe administrateur.",
+      "used": "{{used}} demandes sur {{limit}} utilisées",
+      "count": "{{used}} sur {{limit}}",
+      "limitReached": "Vous avez utilisé toutes vos demandes. Supprimez-en une dans votre profil pour faire de la place.",
+      "submit": "Demander la télémétrie",
+      "requested": "Vous avez demandé ce répéteur.",
+      "openProfile": "Ouvrir le profil",
+      "loadFailed": "Impossible de charger vos demandes.",
+      "retry": "Réessayer",
+      "requestedOk": "Demande envoyée.",
+      "empty": "Aucune demande pour l'instant. Ouvrez un répéteur et choisissez Demander la télémétrie.",
+      "unknownRepeater": "Répéteur inconnu",
+      "polledBy": "Interrogé par {{name}}",
+      "lastReading": "Dernière mesure {{when}}",
+      "noReading": "Aucune mesure pour l'instant",
+      "passwordSet": "Mot de passe invité défini",
+      "passwordNone": "Pas de mot de passe invité",
+      "adminStoppedHelp": "Le mot de passe saisi était un mot de passe administrateur. Beacon l'a supprimé. Seul un mot de passe invité relancera la demande.",
+      "enterNewPassword": "Saisir un nouveau mot de passe",
+      "newPasswordRequired": "Nouveau mot de passe invité",
+      "changePassword": "Changer le mot de passe",
+      "newPassword": "Nouveau mot de passe invité (vide pour le retirer)",
+      "save": "Enregistrer",
+      "cancel": "Annuler",
+      "saved": "Enregistré.",
+      "reenable": "Réactiver",
+      "remove": "Supprimer",
+      "confirmRemove": "Supprimer cette demande ?",
+      "status": {
+        "waiting": "En attente d'un observateur qui peut l'atteindre",
+        "active": "Interrogé régulièrement",
+        "login_failed": "Le répéteur a refusé le mot de passe",
+        "admin_stopped": "Arrêté : ce mot de passe donnait un accès administrateur et a été supprimé",
+        "disabled": "En pause : le répéteur n'a pas été entendu récemment"
+      },
+      "errors": {
+        "request_limit": "Vous avez utilisé toutes vos demandes.",
+        "already_requested": "Vous avez déjà demandé ce répéteur.",
+        "not_a_repeater": "Seuls les répéteurs et les serveurs de salle peuvent être interrogés.",
+        "password_invalid": "Le mot de passe invité doit comporter de 1 à 15 caractères.",
+        "password_invalid_stopped": "Cette demande exige un mot de passe invité de 1 à 15 caractères. Elle ne peut pas repartir avec une connexion sans mot de passe.",
+        "no_password_blocked": "Ce répéteur donne un accès administrateur sans mot de passe, il ne peut donc pas être interrogé ainsi",
+        "requests_disabled": "Les demandes de télémétrie sont désactivées sur ce serveur."
+      }
+    },
+    "alerts": {
+      "title": "Alertes",
+      "retry": "Réessayer",
+      "toEmail": "Les alertes sont envoyées à {{email}}",
+      "empty": "Les alertes se règlent sur les radios de votre Atlas. Ajoutez d'abord une radio.",
+      "requestAttention": "Vous êtes toujours prévenu quand une de vos demandes de télémétrie demande votre attention.",
+      "needsGoneQuiet": "Activez d'abord « {{name}} ».",
+      "summaryNone": "Aucune alerte activée",
+      "summaryOnCount_one": "{{count}} alerte activée",
+      "summaryOnCount_many": "{{count}} alertes activées",
+      "summaryOnCount_other": "{{count}} alertes activées",
+      "summaryFiring_one": "En alerte : {{name}}",
+      "summaryFiring_many": "En alerte : {{count}} alertes",
+      "summaryFiring_other": "En alerte : {{count}} alertes",
+      "push": {
+        "notSetUp": "Les notifications push ne sont pas configurées dans cette version.",
+        "enable": "Activer les notifications",
+        "denied": "Les notifications sont désactivées pour Beacon. Autorisez-les dans les réglages du téléphone pour recevoir les alertes.",
+        "failed": "Impossible d'inscrire ce téléphone aux alertes."
+      },
+      "kind": {
+        "gone_quiet": "Silence",
+        "back_online": "De retour",
+        "battery_low": "Batterie faible",
+        "battery_falling": "Batterie en baisse",
+        "rebooted": "Redémarrage",
+        "temperature": "Température",
+        "noise_high": "Bruit élevé",
+        "clock": "Dérive d'horloge",
+        "observer_offline": "Observateur hors ligne"
+      },
+      "input": {
+        "hours": "Heures",
+        "volts": "Volts",
+        "drop": "Baisse par jour",
+        "dbm": "dBm",
+        "drift": "Dérive",
+        "minutes": "Sans rapport depuis",
+        "low": "Bas ({{symbol}})",
+        "high": "Haut ({{symbol}})"
+      },
+      "drift": {
+        "300": "5 minutes",
+        "3600": "1 heure",
+        "86400": "1 jour"
+      },
+      "state": {
+        "ok": "OK",
+        "firing": "En alerte depuis {{when}}",
+        "inactive": "Aucune donnée pour le moment",
+        "unknown": "Pas encore vérifié"
+      },
+      "errors": {
+        "kind_unavailable": "Cette alerte n'est pas offerte pour cette radio.",
+        "invalid_threshold": "Cette valeur n'est pas permise pour cette alerte.",
+        "not_on_atlas": "Cette radio n'est plus dans votre Atlas.",
+        "alerts_disabled": "Les alertes sont désactivées sur ce serveur.",
+        "volts": "Entrez une valeur entre 2,50 et 5,00 volts.",
+        "dbm": "Entrez un nombre entier entre -130 et -50 dBm.",
+        "temperatureNone": "Entrez une limite basse ou haute.",
+        "temperature": "Entrez une température en degrés {{unit}}, par exemple {{example}}.",
+        "temperatureWhole": "Entrez un nombre entier de degrés {{unit}}, par exemple {{example}}.",
+        "not_found": "Cette alerte n'existe plus.",
+        "app_session_required": "Seule l'application Beacon peut inscrire un téléphone aux alertes.",
+        "temperatureRange": "Entrez des limites entre {{min}} et {{max}} degrés {{unit}}.",
+        "temperatureWidth": "La limite haute doit être au moins {{width}} degrés au-dessus de la limite basse."
+      },
+      "when": {
+        "gone_quiet": "Quand la radio n'a pas été entendue depuis ce délai.",
+        "back_online": "Quand la radio est de nouveau entendue après un silence.",
+        "battery_low": "Quand la batterie reste sous cette tension.",
+        "battery_falling": "Quand la batterie baisse plus vite que cela en une journée.",
+        "rebooted": "Quand la radio redémarre.",
+        "temperature": "Quand la température passe sous la limite basse ou au-dessus de la limite haute.",
+        "noise_high": "Quand le niveau de bruit reste au-dessus de cette valeur.",
+        "clock": "Quand l'horloge de la radio s'écarte de plus que cela.",
+        "observer_offline": "Quand l'observateur n'envoie aucun rapport d'état depuis ce délai."
+      },
+      "voltsPerDay": "{{volts}} V par jour",
+      "hours_one": "{{count}} heure",
+      "hours_other": "{{count}} heures",
+      "minutes_one": "{{count}} minute",
+      "minutes_other": "{{count}} minutes"
+    },
+    "serverText": {
+      "requestReason": {
+        "noObserver": "Aucun observateur ne peut encore atteindre ce répéteur.",
+        "noSeat": "Tous les observateurs qui peuvent atteindre ce répéteur interrogent déjà leur maximum.",
+        "loginFailed": "Le répéteur n'a pas accepté ce mot de passe invité. Entrez-en un nouveau.",
+        "blankFailed": "Le répéteur n'a pas accepté une connexion vide ou « hello ». Entrez un mot de passe invité.",
+        "adminStopped": "Le répéteur a donné un accès administrateur avec ce mot de passe, donc Beacon l'a supprimé. Entrez un mot de passe invité, jamais celui d'un administrateur.",
+        "blankBlocked": "Ce répéteur donne un accès administrateur avec une connexion vide, donc Beacon ne l'interrogera pas sans mot de passe invité.",
+        "offline_one": "Aucun observateur ne l'a entendu depuis {{count}} jour.",
+        "offline_other": "Aucun observateur ne l'a entendu depuis {{count}} jours."
+      },
+      "alertReason": {
+        "observerNoData": "Cet observateur ne remonte pas {{what}}.",
+        "repeatersOnly": "Seuls les répéteurs remontent {{what}}.",
+        "notPolled": "Beacon ne sonde pas ce répéteur. Demandez d'abord sa télémétrie.",
+        "noData": "Ce répéteur ne remonte pas {{what}}.",
+        "observerNoClock": "Les observateurs n'ont pas de dérive d'horloge.",
+        "clockRepeatersOnly": "Seuls les répéteurs et les serveurs de salle remontent leur horloge.",
+        "needsGoneQuiet": "Activez d'abord l'alerte de silence pour cette radio.",
+        "notApplicable": "Cette alerte ne s'applique pas à cette radio."
+      },
+      "alertWhat": {
+        "battery": "le niveau de batterie",
+        "uptime": "la durée de fonctionnement",
+        "temperature": "la température",
+        "noise": "le niveau de bruit"
+      },
+      "errors": {
+        "busy": "Le serveur est occupé. Réessayez dans un instant.",
+        "readOnly": "Ce serveur est en lecture seule pour le moment. Réessayez plus tard.",
+        "requestNotFound": "Cette demande n'existe plus."
+      }
+    },
+    "passwordRule": {
+      "hint": "Au moins 12 caractères.",
+      "tooLong": "Ce mot de passe est trop long."
+    },
+    "accountUi": {
+      "introBase": "Synchronisez votre Atlas.",
+      "introTelemetry": "Synchronisez votre Atlas et demandez la télémétrie des répéteurs.",
+      "introAlerts": "Synchronisez votre Atlas et recevez des alertes.",
+      "introBoth": "Synchronisez votre Atlas, demandez la télémétrie des répéteurs et recevez des alertes.",
+      "waiting": "En attente de votre navigateur",
+      "waitingNote": "Terminez la connexion dans votre navigateur, puis revenez dans l'application.",
+      "cancel": "Annuler",
+      "profileNote": "Nom, courriel, mot de passe et appareils",
+      "signOutTitle": "Se déconnecter ?",
+      "signOutBody": "Vous devrez vous reconnecter pour utiliser votre compte sur cet appareil.",
+      "endOthersTitle": "Se déconnecter partout ailleurs ?",
+      "endOthersBody": "Tous les autres navigateurs et applications connectés à votre compte seront déconnectés. Cet appareil reste connecté.",
+      "deleteTitle": "Supprimer votre compte ?",
+      "nameHelper": "40 caractères au maximum.",
+      "emailHelper": "Nous envoyons un lien à la nouvelle adresse pour la confirmer.",
+      "emailInvalid": "Saisissez une adresse courriel valide.",
+      "passwordHelper": "Nécessaire pour confirmer votre identité.",
+      "noDevices": "Aucun appareil à afficher.",
+      "deleteUsernameHelper": "Saisissez votre nom d'utilisateur exactement comme affiché."
+    },
+    "pollerState": {
+      "ok": "Interrogé par {{name}}",
+      "pending": "Attribué à {{name}}. La première interrogation est en route.",
+      "notDirect": "Attribué à {{name}}, qui n'entend pas ce répéteur directement pour l'instant.",
+      "noReply": "{{name}} interroge, mais le répéteur ne répond pas.",
+      "notClaimed": "Attribué à {{name}}. En attente qu'il le prenne en charge.",
+      "passwordProblem": "{{name}} a signalé un problème de mot de passe. Vérification en cours."
+    },
+    "atlasTelemetry": {
+      "tab": "Télémétrie",
+      "battery": "Batterie",
+      "noise": "Plancher de bruit",
+      "uptime": "Disponibilité",
+      "airtime": "Temps radio",
+      "temperature": "Température",
+      "packets": "Paquets",
+      "signal": "Signal",
+      "errors": "Erreurs",
+      "noReadings": "Aucune mesure sur cette période",
+      "needsPair": "Il faut deux relevés d’état",
+      "restarted": "Redémarré",
+      "sentPerHour": "envoyés {{value}}",
+      "polledBy": "Interrogé par {{name}}",
+      "polled": "Interrogé",
+      "notPolled": "Pas interrogé pour le moment",
+      "lastReading": "Dernière mesure",
+      "help": "Mesures relevées par Beacon sur ce répéteur, sur la période choisie. Le temps radio est la part du temps passée à émettre et à recevoir. Les paquets et les erreurs sont par heure. Le signal est le dernier SNR et RSSI rapporté par le répéteur. Avec peu de mesures, les points sont dessinés isolés."
+    },
+    "atlasFooter": {
+      "heard": "Entendu",
+      "hops": "{{value}} sauts",
+      "neighbors_one": "{{count}} voisin",
+      "neighbors_other": "{{count}} voisins",
+      "polled": "Interrogé",
+      "notPolled": "Non interrogé",
+      "byPoller": "par {{name}}"
+    },
+    "nodePanel": {
+      "details": "Détails",
+      "scopes_one": "{{count}} portée",
+      "scopes_other": "{{count}} portées",
+      "fromMeshMapperIn": "Depuis MeshMapper ({{iata}})",
+      "passwordHint": "Mot de passe invité seulement, jamais admin.",
+      "usedShort": "{{used}} sur {{limit}} utilisées",
+      "polled": "Interrogé",
+      "by": "par",
+      "manage": "Gérer dans le profil",
+      "packetsSent": "Paquets envoyés",
+      "noPacketsSent": "Aucun paquet envoyé",
+      "packetsSentInfo": "Annonces et demandes de connexion envoyées par ce nœud. Les autres paquets ne nomment pas leur expéditeur en entier, ils ne peuvent donc pas être listés ici.",
+      "packetsSentExpire": "Les paquets plus anciens expirent après la période de conservation du serveur."
+    },
+    "atlasLimits": {
+      "overLimit_one": "Ce serveur permet {{count}} carte. Retirez-en encore {{remove}} pour enregistrer votre Atlas dans votre compte.",
+      "overLimit_other": "Ce serveur permet {{count}} cartes. Retirez-en encore {{remove}} pour enregistrer votre Atlas dans votre compte."
+    },
+    "alertChannels": {
+      "title": "Comment les alertes vous parviennent",
+      "email": "Courriel",
+      "push": "Notifications push",
+      "thisServer": "ce serveur",
+      "reason": {
+        "server_off": "Ce serveur n'envoie pas d'alertes par courriel.",
+        "portal_account": "Les comptes qui se connectent par le portail n'ont pas d'adresse courriel ici.",
+        "unverified_email": "Confirmez votre adresse courriel pour recevoir les alertes par courriel.",
+        "other": "Les alertes par courriel ne sont pas disponibles pour ce compte."
+      },
+      "pushOff": "Ce serveur n'envoie pas de notifications push.",
+      "pushVia": "Les alertes de {{server}} passent par le serveur push de MeshCore Beacon. Il voit quel serveur les envoie, mais pas ce qu'elles disent.",
+      "noChannel": "Le courriel et les notifications push sont tous deux désactivés : vos alertes ne vous parviendront pas.",
+      "failed": "Impossible de modifier ce réglage. Réessayez."
+    },
+    "atlasAlerts": {
+      "bell": "Alertes",
+      "bellOn_one": "Alertes : {{count}} activée",
+      "bellOn_many": "Alertes : {{count}} activées",
+      "bellOn_other": "Alertes : {{count}} activées",
+      "bellFiring_one": "Alertes : {{count}} en alerte",
+      "bellFiring_many": "Alertes : {{count}} en alerte",
+      "bellFiring_other": "Alertes : {{count}} en alerte",
+      "title": "Alertes pour {{name}}",
+      "signInPrompt": "Connectez-vous pour définir des alertes pour cette radio.",
+      "notYet": "Les alertes de cette radio ne sont pas encore disponibles. Réessayez une fois votre Atlas enregistré dans votre compte.",
+      "channels": "Choisissez comment recevoir vos alertes dans votre profil",
+      "noChannel": "Le courriel et les notifications push sont tous deux désactivés : vos alertes ne vous parviendront pas. Activez-en un dans votre profil."
+    },
+    "analyzerActions": {
+      "viewNode": "Voir le nœud"
+    },
+    "observerMerge": {
+      "view": "Vue de la radio",
+      "node": "Nœud",
+      "observer": "Observateur",
+      "errorObserverNode": "Les observateurs transmettent leur propre télémétrie.",
+      "reasonObserver": "Observateur, transmet sa propre télémétrie"
+    },
+    "atlasRange": {
+      "7d": "7 j"
+    },
+    "atlasGraph": {
+      "open": "Ouvrir le graphique : {{metric}}",
+      "hint": "Pincez pour zoomer, maintenez et glissez pour les valeurs"
     }
   }
 }

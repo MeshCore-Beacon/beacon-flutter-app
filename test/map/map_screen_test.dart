@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:beacon/core/api.dart';
+import 'package:beacon/core/strings.dart';
 import 'package:beacon/core/theme.dart';
 import 'package:beacon/features/map/map_screen.dart';
 import 'package:flutter/material.dart';
@@ -68,6 +70,7 @@ Future<void> unmount(WidgetTester tester, ApiClient api) async {
 
 void main() {
   setUp(BeaconTheme.load);
+  pollerTests();
 
   // One test: the plugin's failed dispose leaks pointer routes into the next.
   testWidgets(
@@ -113,4 +116,152 @@ void main() {
       await unmount(tester, api);
     },
   );
+}
+
+// Evaluates just the expression forms _nodeIcon uses.
+Object? evalIcon(Object? e, Map<String, Object?> props) {
+  if (e is! List) return e;
+  switch (e.first) {
+    case 'concat':
+      return e.skip(1).map((x) => evalIcon(x, props)).join();
+    case 'get':
+      return props[e[1]];
+    case 'case':
+      for (var i = 1; i + 1 < e.length; i += 2) {
+        if (evalIcon(e[i], props) == true) return evalIcon(e[i + 1], props);
+      }
+      return evalIcon(e.last, props);
+    case '==':
+      return evalIcon(e[1], props) == evalIcon(e[2], props);
+  }
+  throw StateError('unsupported $e');
+}
+
+void pollerTests() {
+  testWidgets('the Pollers only options come from the locale strings', (
+    tester,
+  ) async {
+    addTearDown(() => language = 'en');
+    for (final (lang, on, off) in [
+      ('fr', 'Activé', 'Désactivé'),
+      ('sv', 'På', 'Av'),
+    ]) {
+      language = lang;
+      final api = await pumpMap(tester, {});
+      final group = find
+          .ancestor(
+            of: find.text(trKey('map.pollersOnly')),
+            matching: find.byType(Column),
+          )
+          .first;
+      for (final label in [on, off]) {
+        expect(
+          find.descendant(of: group, matching: find.text(label)),
+          findsOneWidget,
+          reason: '$lang $label',
+        );
+      }
+      await unmount(tester, api);
+    }
+  });
+  test('the node icon expression prefers the poller pip over the eye', () {
+    String icon(bool poller, bool observer) =>
+        '${evalIcon(nodeIconExpression, {'nodeTypeName': 'repeater', 'isPoller': poller, 'isObserver': observer})}';
+    expect(icon(true, true), 'node-repeater-poller');
+    expect(icon(true, false), 'node-repeater-poller');
+    expect(icon(false, true), 'node-repeater-observer');
+    expect(icon(false, false), 'node-repeater');
+  });
+  testWidgets('Pollers only filters the loaded points with the type filter', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({'beacon-map-settings-open': true});
+    final api = ApiClient(
+      Uri.parse('https://beacon.example.com'),
+      client: MockClient((r) async {
+        if (r.url.path.endsWith('/iatas')) return http.Response('[]', 200);
+        return http.Response(
+          jsonEncode({
+            'items': [
+              {
+                'id': 'rp',
+                'nodeTypeName': 'repeater',
+                'isPoller': true,
+                'lat': 43,
+                'lng': -79,
+              },
+              {
+                'id': 'r',
+                'nodeTypeName': 'repeater',
+                'isObserver': true,
+                'lat': 44,
+                'lng': -80,
+              },
+              {
+                'id': 'cp',
+                'nodeTypeName': 'companion',
+                'isPoller': true,
+                'lat': 45,
+                'lng': -81,
+              },
+            ],
+            'hasMore': false,
+          }),
+          200,
+        );
+      }),
+    );
+    final events = StreamController<Map<String, dynamic>>.broadcast();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: BeaconTheme.all.first.data,
+        home: Scaffold(
+          body: MapScreen(
+            api: api,
+            region: const {},
+            events: events.stream,
+            onOpen: (_, _) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    Future<void> pick(String group, String label) async {
+      final target = find.descendant(
+        of: find
+            .ancestor(of: find.text(group), matching: find.byType(Column))
+            .first,
+        matching: find.widgetWithText(ChoiceChip, label),
+      );
+      await tester.ensureVisible(target);
+      await tester.tap(target);
+    }
+
+    List ids() => [
+      for (final f
+          in tester.widget<NativeMap>(find.byType(NativeMap)).points['features']
+              as List)
+        f['id'],
+    ];
+    expect(ids(), ['rp', 'r', 'cp']);
+
+    await pick('Pollers only', 'On');
+    await tester.pumpAndSettle();
+    expect(ids(), ['rp', 'cp']);
+
+    await pick('Node Type', 'Repeater');
+    await tester.pumpAndSettle();
+    expect(ids(), ['rp']);
+
+    // A live update that flips a poller updates the filtered points.
+    events.add({
+      'type': 'event',
+      'event': 'nodeUpdate',
+      'data': {'nodeId': 'r', 'isPoller': true},
+    });
+    await tester.pumpAndSettle();
+    expect(ids(), ['rp', 'r']);
+    await events.close();
+    await unmount(tester, api);
+  });
 }

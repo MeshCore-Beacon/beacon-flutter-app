@@ -5,6 +5,8 @@ import '../../core/api.dart';
 import '../../core/json.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
+import '../directory/directory_widgets.dart'
+    show section, sectionDecoration, sectionTitle;
 import '../map/map_data.dart';
 import '../map/packet_path_screen.dart';
 import 'investigation.dart';
@@ -111,18 +113,12 @@ class _PacketDetailScreenState extends State<PacketDetailScreen>
       appBar: AppBar(
         title: Text(
           tr('Packet analyzer'),
-          style: const TextStyle(
-            fontFamily: 'JetBrainsMono',
-            fontSize: 13,
-            letterSpacing: .6,
-          ),
+          style: const TextStyle(fontSize: 16),
         ),
         actions: [
-          TextButton(
-            child: Text(
-              tr('Copy link'),
-              style: const TextStyle(fontFamily: 'JetBrainsMono', fontSize: 11),
-            ),
+          IconButton(
+            tooltip: tr('Copy link'),
+            icon: const Icon(Icons.link),
             onPressed: () => copy(
               widget.api.base
                   .replace(
@@ -154,9 +150,9 @@ class _PacketDetailScreenState extends State<PacketDetailScreen>
                     ),
             )
           : ListView(
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              children: _insetSections([
-                _section('Summary', [
+              padding: const EdgeInsets.all(16),
+              children: [
+                section('Summary', [
                   Row(
                     children: [
                       Tooltip(
@@ -211,32 +207,53 @@ class _PacketDetailScreenState extends State<PacketDetailScreen>
                     ),
                   ),
                   if (data['scope'] != null) _field('Scope', data['scope']),
-                ]),
-                OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(4),
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      minimumSize: const Size.fromHeight(36),
+                      textStyle: const TextStyle(
+                        fontFamily: 'JetBrainsMono',
+                        fontSize: 12,
+                      ),
                     ),
-                    minimumSize: const Size.fromHeight(36),
-                    textStyle: const TextStyle(
-                      fontFamily: 'JetBrainsMono',
-                      fontSize: 12,
-                    ),
-                  ),
-                  icon: const Icon(Icons.map_outlined, size: 14),
-                  label: Text(tr('Map all paths')),
-                  onPressed: packetPaths(data).isEmpty
-                      ? null
-                      : () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => PacketPathScreen(
-                              detail: data,
-                              onOpen: widget.onOpen,
+                    icon: const Icon(Icons.map_outlined, size: 14),
+                    label: Text(tr('Map all paths')),
+                    onPressed: packetPaths(data).isEmpty
+                        ? null
+                        : () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => PacketPathScreen(
+                                detail: data,
+                                onOpen: widget.onOpen,
+                              ),
                             ),
                           ),
+                  ),
+                  // An advert's sender, kept apart from the decoded bytes.
+                  if (_advertiser(header, obs) case final String node) ...[
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      key: const ValueKey('analyzer-view-node'),
+                      style: OutlinedButton.styleFrom(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
                         ),
-                ),
+                        minimumSize: const Size.fromHeight(36),
+                        textStyle: const TextStyle(
+                          fontFamily: 'JetBrainsMono',
+                          fontSize: 12,
+                        ),
+                      ),
+                      icon: const Icon(Icons.router_outlined, size: 14),
+                      label: Text(trKey('analyzerActions.viewNode')),
+                      onPressed: () => widget.onOpen('node', node),
+                    ),
+                  ],
+                ]),
                 if (unavailable)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 12),
@@ -260,9 +277,8 @@ class _PacketDetailScreenState extends State<PacketDetailScreen>
                   ),
                   onOpen: widget.onOpen,
                 ),
-                const SizedBox(height: 12),
                 if (!unavailable)
-                  _section('Raw packet', [
+                  section('Raw packet', [
                     _hex(
                       observationFrame(data, obs),
                       ranges: computeFieldRanges(data, obs ?? const {}),
@@ -282,68 +298,54 @@ class _PacketDetailScreenState extends State<PacketDetailScreen>
                       ),
                     ),
                   ]),
-                if (obs != null) ...[
-                  if (object(obs['resolvedSource']).isNotEmpty ||
-                      object(obs['resolvedDestination']).isNotEmpty)
-                    _section('Endpoints', [
-                      for (final key in [
-                        'resolvedSource',
-                        'resolvedDestination',
-                      ])
-                        if (object(obs[key]).isNotEmpty) ...[
-                          Text(
-                            tr(
-                              key == 'resolvedSource'
-                                  ? 'Source'
-                                  : 'Destination',
-                            ),
-                            style: Theme.of(context).textTheme.titleSmall,
-                          ),
-                          _resolved(object(obs[key])),
-                        ],
-                    ]),
-                  if (textOf(obs['pathBytes']).isNotEmpty)
-                    _section('Path', [
-                      PacketPathHops(observation: obs, onOpen: widget.onOpen),
-                    ]),
-                ],
-                _section('Packet structure', [
-                  _structureLabel('Header byte'),
-                  _inlineFields([
-                    '${tr('Ver')} ${header['payloadVersion'] ?? '?'}',
-                    '${tr('Type')} ${payloadName(header['payloadType'])} (${header['payloadType'] ?? '?'})',
-                    '${tr('Route')} ${header['routeTypeName'] ?? '?'} (${header['routeType'] ?? '?'})',
-                  ]),
-                  if (int.tryParse(textOf(header['raw']), radix: 16)
-                      case final int byte)
-                    _bits(byte),
-                  if (object(data['transportCodes']).isNotEmpty) ...[
-                    _structureLabel('Transport codes'),
+                section('Packet structure', [
+                  _structure('header', 'Header byte', [
                     _inlineFields([
-                      '${tr('Region code')} ${object(data['transportCodes'])['regionCode']}',
-                      '${tr('Subregion code')} ${object(data['transportCodes'])['subRegionCode']}',
+                      '${tr('Ver')} ${header['payloadVersion'] ?? '?'}',
+                      '${tr('Type')} ${payloadName(header['payloadType'])} (${header['payloadType'] ?? '?'})',
+                      '${tr('Route')} ${header['routeTypeName'] ?? '?'} (${header['routeType'] ?? '?'})',
                     ]),
-                  ],
-                  if (obs != null) ...[
-                    _structureLabel('Path length'),
-                    _inlineFields([
-                      '${tr('Hash size')} ${object(obs['pathLength'])['hashSize'] ?? '?'}B',
-                      '${tr('Hops')} ${object(obs['pathLength'])['hopCount'] ?? '?'}',
-                    ]),
-                    if (int.tryParse(
-                          textOf(object(obs['pathLength'])['raw']),
-                          radix: 16,
-                        )
+                    if (int.tryParse(textOf(header['raw']), radix: 16)
                         case final int byte)
-                      _bits(byte, pathLength: true),
-                  ],
+                      _bits(byte),
+                  ]),
+                  if (object(data['transportCodes']).isNotEmpty)
+                    _structure('transport', 'Transport codes', [
+                      _inlineFields([
+                        '${tr('Region code')} ${object(data['transportCodes'])['regionCode']}',
+                        '${tr('Subregion code')} ${object(data['transportCodes'])['subRegionCode']}',
+                      ]),
+                    ]),
+                  if (obs != null)
+                    _structure('pathLength', 'Path length', [
+                      _inlineFields([
+                        '${tr('Hash size')} ${object(obs['pathLength'])['hashSize'] ?? '?'}B',
+                        '${tr('Hops')} ${object(obs['pathLength'])['hopCount'] ?? '?'}',
+                      ]),
+                      if (int.tryParse(
+                            textOf(object(obs['pathLength'])['raw']),
+                            radix: 16,
+                          )
+                          case final int byte)
+                        _bits(byte, pathLength: true),
+                    ]),
                   if (data['originPubkey'] != null &&
                       textOf(data['originPubkey']).toUpperCase() !=
                           textOf(object(data['parsedPayload'])['publicKey'])
                               .toUpperCase())
                     _field('Origin public key', data['originPubkey']),
                 ]),
-                _section('Payload breakdown', [
+                if (obs != null && textOf(obs['pathBytes']).isNotEmpty)
+                  section('Path', [
+                    PacketFieldMark(
+                      color: packetFieldColor(context, 'pathData'),
+                      child: PacketPathHops(
+                        observation: obs,
+                        onOpen: widget.onOpen,
+                      ),
+                    ),
+                  ]),
+                section('Payload breakdown', [
                   PacketPayloadView(
                     detail: data,
                     observation: obs ?? const {},
@@ -351,77 +353,80 @@ class _PacketDetailScreenState extends State<PacketDetailScreen>
                   ),
                 ]),
                 if (textOf(data['rawPayload']).isNotEmpty)
-                  ExpansionTile(
-                    tilePadding: EdgeInsets.zero,
-                    shape: const Border(),
-                    collapsedShape: const Border(),
-                    title: Text(
-                      tr('Payload data').toUpperCase(),
-                      style: const TextStyle(
-                        fontFamily: 'JetBrainsMono',
-                        fontSize: 12,
+                  Container(
+                    margin: const EdgeInsets.symmetric(vertical: 7),
+                    clipBehavior: Clip.antiAlias,
+                    decoration: sectionDecoration(BeaconColors.of(context)),
+                    child: Material(
+                      type: MaterialType.transparency,
+                      child: ExpansionTile(
+                        tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+                        childrenPadding: const EdgeInsets.fromLTRB(
+                          12,
+                          0,
+                          12,
+                          12,
+                        ),
+                        controlAffinity: ListTileControlAffinity.leading,
+                        shape: const Border(),
+                        collapsedShape: const Border(),
+                        title: sectionTitle(
+                          'Payload data',
+                          BeaconColors.of(context),
+                        ),
+                        subtitle: Text(
+                          trKey(
+                            'packetAnalyzer.bytes',
+                            count: textOf(data['rawPayload']).length ~/ 2,
+                          ),
+                          style: TextStyle(
+                            fontFamily: 'JetBrainsMono',
+                            fontSize: 11,
+                            color: BeaconColors.of(context).muted,
+                          ),
+                        ),
+                        children: [_hex(textOf(data['rawPayload']))],
                       ),
                     ),
-                    subtitle: Text(
-                      trKey(
-                        'packetAnalyzer.bytes',
-                        count: textOf(data['rawPayload']).length ~/ 2,
-                      ),
-                      style: const TextStyle(
-                        fontFamily: 'JetBrainsMono',
-                        fontSize: 11,
-                      ),
-                    ),
-                    children: [_hex(textOf(data['rawPayload']))],
                   ),
-              ]),
+              ],
             ),
     );
   }
 
-  List<Widget> _insetSections(List<Widget> children) => [
-    for (final child in children)
-      if (child is PacketInvestigation)
-        child
-      else
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          child: child,
-        ),
-  ];
+  /// The node an advert came from, when the server resolved exactly one.
+  String? _advertiser(Json header, Json? obs) {
+    if (number(header['payloadType']) != 4 || obs == null) return null;
+    final nodes = rows(object(obs['resolvedSource'])['nodes']);
+    if (nodes.length != 1) return null;
+    final id = textOf(nodes.first['id']);
+    return id.isEmpty ? null : id;
+  }
 
-  Widget _section(String title, List<Widget> children) => Padding(
-    padding: const EdgeInsets.only(bottom: 18),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: Text(
-            tr(title).toUpperCase(),
-            style: const TextStyle(
-              fontFamily: 'JetBrainsMono',
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              letterSpacing: .7,
+  /// One frame field's block, marked in the colour of its raw bytes.
+  Widget _structure(String field, String label, List<Widget> children) {
+    final color = packetFieldColor(context, field);
+    return PacketFieldMark(
+      color: color,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text(
+              tr(label).toUpperCase(),
+              style: TextStyle(
+                fontFamily: 'JetBrainsMono',
+                fontSize: 11,
+                color: color,
+              ),
             ),
           ),
-        ),
-        ...children,
-      ],
-    ),
-  );
-  Widget _structureLabel(String label) => Padding(
-    padding: const EdgeInsets.only(top: 8, bottom: 6),
-    child: Text(
-      tr(label).toUpperCase(),
-      style: TextStyle(
-        fontFamily: 'JetBrainsMono',
-        fontSize: 11,
-        color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ...children,
+        ],
       ),
-    ),
-  );
+    );
+  }
 
   Widget _inlineFields(List<String> values) => Padding(
     padding: const EdgeInsets.only(bottom: 8),
@@ -451,15 +456,6 @@ class _PacketDetailScreenState extends State<PacketDetailScreen>
       ],
     ),
   );
-  Widget _resolved(Json hop) => Align(
-    alignment: Alignment.centerLeft,
-    child: PathHopChip(
-      hash: textOf(hop['hashBytes']),
-      hop: hop,
-      onOpen: widget.onOpen,
-    ),
-  );
-
   Widget _bits(int byte, {bool pathLength = false}) {
     final bits = (byte & 255).toRadixString(2).padLeft(8, '0');
     final groups = pathLength
@@ -534,29 +530,7 @@ class _PacketDetailScreenState extends State<PacketDetailScreen>
   }
 
   Widget _hex(String raw, {Map<String, PacketByteRange> ranges = const {}}) {
-    final scheme = Theme.of(context).colorScheme;
-    Color fieldColor(String? field) => switch (field) {
-      'header' ||
-      'pathData' ||
-      'signature' ||
-      'sourceHash' ||
-      'tracePath' => scheme.secondary,
-      'pathLength' ||
-      'channelHash' ||
-      'advertTimestamp' ||
-      'destinationHash' ||
-      'traceTag' => scheme.primary,
-      'transport' ||
-      'cipherMac' ||
-      'flags' ||
-      'checksum' => BeaconColors.of(context).warning,
-      'publicKey' ||
-      'location' ||
-      'senderPublicKey' ||
-      'authCode' => BeaconColors.of(context).success,
-      'ciphertext' => scheme.error,
-      _ => scheme.onSurface.withValues(alpha: .7),
-    };
+    Color fieldColor(String? field) => packetFieldColor(context, field);
     String? fieldAt(int offset) => ranges.entries
         .where(
           (e) =>

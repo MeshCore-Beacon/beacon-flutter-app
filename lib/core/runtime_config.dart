@@ -54,7 +54,8 @@ class RuntimeConfig {
           '${base.toString().replaceFirst(RegExp(r'/+$'), '')}/config.js',
         ),
         1024 * 1024,
-      ).timeout(const Duration(seconds: 8));
+        timeout: const Duration(seconds: 8),
+      );
       return response.statusCode == 200
           ? parse(response.body)
           : const RuntimeConfig();
