@@ -367,6 +367,7 @@ void main() {
     await pump(tester, initialView: 'poller');
     expect(pollerTab, findsOneWidget);
     expect(nodeDetails, findsNothing);
+    expect(find.text('Could not load the poller.'), findsOneWidget);
     expect(find.text('Retry'), findsOneWidget);
     expect(find.byKey(refreshNote), findsNothing);
 
@@ -395,7 +396,7 @@ void main() {
     expect(find.text('Polled One'), findsOneWidget);
     expect(find.text('1 / 8', findRichText: true), findsOneWidget);
     expect(find.byKey(refreshNote), findsOneWidget);
-    expect(find.text(trKey('atlasNotes.refreshFailed')), findsOneWidget);
+    expect(find.text('Could not refresh'), findsOneWidget);
 
     pollerStatus = 200;
     await tester.tap(

@@ -3,6 +3,7 @@ import 'package:beacon/core/theme.dart';
 import 'package:beacon/features/directory/node_chips.dart';
 import 'package:beacon/features/directory/node_poller.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const minute = 60000;
@@ -324,6 +325,40 @@ void main() {
     await pump(tester, answer(own: 0, requested: 0, free: 8));
     expect(find.text('It polls no repeaters yet.'), findsOneWidget);
     expect(find.text('0 / 8', findRichText: true), findsOneWidget);
+  });
+
+  testWidgets('a large readings count is shortened', (tester) async {
+    await pump(tester, {...answer(), 'readings24h': 14732});
+    expect(
+      find.text('Readings in 24 h 14.7k', findRichText: true),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a repeater\'s name is the control a screen reader gets', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    final opened = await pump(
+      tester,
+      answer(
+        targets: [
+          target(name: 'Known', publicKey: 'k1', nodeId: 'node-9'),
+          target(name: 'Unknown', publicKey: 'k2', nodeId: null),
+        ],
+      ),
+    );
+    final known = tester.getSemantics(find.bySemanticsLabel('Known'));
+    expect(known.label, 'Known');
+    expect(known.flagsCollection.isButton, isTrue);
+    expect(known.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
+    final unknown = tester.getSemantics(find.bySemanticsLabel('Unknown'));
+    expect(unknown.label, 'Unknown');
+    expect(unknown.flagsCollection.isButton, isFalse);
+    expect(unknown.getSemanticsData().hasAction(SemanticsAction.tap), isFalse);
+    tester.semantics.tap(find.semantics.byLabel('Known'));
+    expect(opened, ['node-9']);
+    handle.dispose();
   });
 
   testWidgets('only a card with a node opens it', (tester) async {

@@ -1290,7 +1290,15 @@ class _AtlasCardState extends State<AtlasCard> {
       );
     }
 
-    if (view == AtlasView.poller && node != null) {
+    // A card held on the tab by its pin says so when the first read fails.
+    final pollerFailed =
+        pollerData == null &&
+        pollerQuery?.error != null &&
+        !isNotFound(pollerQuery?.error);
+    if (view == AtlasView.poller && node != null && pollerFailed) {
+      body.add(retry('poller'));
+    }
+    if (view == AtlasView.poller && node != null && !pollerFailed) {
       final claim = pollerData?['claim'] is Map
           ? object(pollerData!['claim'])
           : null;
@@ -1473,7 +1481,8 @@ class _AtlasCardState extends State<AtlasCard> {
                   : trKey('atlasPoller.notPolling'),
               right: '',
               loading: pollerQuery?.loading ?? false,
-              failed: refreshFailed,
+              failed: false,
+              refreshFailed: refreshFailed,
               tip: [
                 if (claimedAt != null)
                   '${trKey('nodePoller.lastClaim')} ${formatAbsolute(claimedAt)}',
@@ -1546,12 +1555,16 @@ class _Footer extends StatelessWidget {
     required this.right,
     required this.loading,
     required this.failed,
+    this.refreshFailed = false,
     this.tip = const [],
   });
   final String? left;
   final Color? dot;
   final String right;
   final bool loading, failed;
+
+  /// A later read failed and the data shown is the earlier answer.
+  final bool refreshFailed;
   final List<String> tip;
 
   @override
@@ -1568,7 +1581,9 @@ class _Footer extends StatelessWidget {
       overflow: TextOverflow.ellipsis,
       style: color == null ? style : style.copyWith(color: color),
     );
-    final state = failed
+    final state = refreshFailed
+        ? trKey('atlasNotes.refreshFailed')
+        : failed
         ? tr('Failed to load')
         : loading
         ? tr('Loading…')
@@ -1601,7 +1616,14 @@ class _Footer extends StatelessWidget {
         if (state != null)
           LayoutId(
             id: 'state',
-            child: text(state, color: failed ? c.danger : null),
+            child: text(
+              state,
+              color: refreshFailed
+                  ? c.warning
+                  : failed
+                  ? c.danger
+                  : null,
+            ),
           ),
         LayoutId(id: 'right', child: text(right)),
         if (tip.isNotEmpty) LayoutId(id: 'tip', child: AtlasInfoTip(tip)),

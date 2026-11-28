@@ -858,7 +858,10 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
     if (p == null) {
       return [
         if (pollerError != null && !pollerLoading)
-          failure(pollerError!, () => loadPoller(fresh: true))
+          failure(
+            trKey('atlasNotes.pollerLoadFailed'),
+            () => loadPoller(fresh: true),
+          )
         else
           const Padding(
             padding: EdgeInsets.all(24),

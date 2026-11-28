@@ -1771,9 +1771,10 @@
       "doneHelp": "Terminer la modification des cartes"
     },
     "atlasNotes": {
-      "refreshFailed": "Actualisation impossible. Données précédentes affichées.",
+      "refreshFailed": "Actualisation impossible",
       "openNode": "Ouvrir le nœud {{name}}",
-      "openObserver": "Ouvrir l'observateur {{name}}"
+      "openObserver": "Ouvrir l'observateur {{name}}",
+      "pollerLoadFailed": "Impossible de charger l’interrogateur."
     }
   }
 }

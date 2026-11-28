@@ -1720,9 +1720,10 @@
       "doneHelp": "Avsluta redigering"
     },
     "atlasNotes": {
-      "refreshFailed": "Kunde inte uppdatera. Visar tidigare data.",
+      "refreshFailed": "Kunde inte uppdatera",
       "openNode": "Öppna nod {{name}}",
-      "openObserver": "Öppna observatör {{name}}"
+      "openObserver": "Öppna observatör {{name}}",
+      "pollerLoadFailed": "Kunde inte läsa in pollaren."
     }
   }
 }

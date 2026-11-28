@@ -1678,7 +1678,9 @@ void main() {
         await tester.pumpAndSettle();
         expect(tab('poller'), findsOneWidget);
         expect(inTile('slots', '2/8'), findsOneWidget);
-        expect(find.text('Failed to load'), findsOneWidget);
+        expect(find.text('Failed to load'), findsNothing);
+        final note = tester.widget<Text>(find.text('Could not refresh'));
+        expect(note.style!.color, colors(tester).warning);
         // No longer lit as a live claim.
         expect(dot(), isNot(pollerColor));
 
@@ -1686,12 +1688,38 @@ void main() {
         fake.clock = now.add(const Duration(seconds: 122));
         await tester.pump(const Duration(seconds: 61));
         await tester.pumpAndSettle();
-        expect(find.text('Failed to load'), findsNothing);
+        expect(find.text('Could not refresh'), findsNothing);
         expect(inTile('slots', '2/8'), findsOneWidget);
         expect(dot(), pollerColor);
         await close(tester);
       },
     );
+
+    testWidgets('a card pinned to the tab says when its first read fails', (
+      tester,
+    ) async {
+      fake.pollerFails = true;
+      await open(tester);
+      expect(tab('poller'), findsOneWidget);
+      expect(tile('slots'), findsNothing);
+      expect(find.text('Failed to load'), findsOneWidget);
+      fake.pollerFails = false;
+      await tester.tap(find.text('Retry'));
+      await tester.pumpAndSettle();
+      expect(find.text('Failed to load'), findsNothing);
+      expect(inTile('slots', '2/8'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('a failed read gives a card on another tab no Poller tab', (
+      tester,
+    ) async {
+      fake.pollerFails = true;
+      await open(tester, view: null);
+      expect(tab('poller'), findsNothing);
+      expect(find.text('OBSERVATIONS'), findsOneWidget);
+      await close(tester);
+    });
 
     testWidgets('says when requests are not accepted', (tester) async {
       fake.pollerDoc = {

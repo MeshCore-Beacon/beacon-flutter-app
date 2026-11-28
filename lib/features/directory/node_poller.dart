@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/json.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
+import '../atlas/atlas_widgets.dart' show formatCount;
 import 'directory_widgets.dart';
 import 'node_chips.dart';
 
@@ -305,7 +306,7 @@ class NodePollerSection extends StatelessWidget {
             ),
             line(
               trKey('nodePoller.readings24h'),
-              '${(number(data['readings24h']) ?? 0).round()}',
+              formatCount(number(data['readings24h'])?.roundToDouble() ?? 0),
             ),
           ],
         ),
@@ -400,10 +401,14 @@ class NodePollerSection extends StatelessWidget {
     Widget ago(String title, dynamic value) => value == null
         ? stat(title, trKey('nodePoller.never'), colors.dim)
         : stat(title, age(value), colors.normal);
+    final onTap = nodeId.isEmpty || open == null ? null : () => open(nodeId);
+    final shown = name.isEmpty ? shortKey(t['publicKey']) : name;
     return InkWell(
       key: ValueKey('poller-target-${textOf(t['publicKey'])}'),
       borderRadius: BorderRadius.circular(4),
-      onTap: nodeId.isEmpty || open == null ? null : () => open(nodeId),
+      // The name is the control a screen reader gets; the card is a wider target.
+      excludeFromSemantics: true,
+      onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
         decoration: BoxDecoration(
@@ -416,17 +421,24 @@ class NodePollerSection extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: Text(
-                    name.isEmpty ? shortKey(t['publicKey']) : name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontFamily: _mono,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: .3,
-                      fontStyle: name.isEmpty ? FontStyle.italic : null,
-                      color: name.isEmpty ? colors.dim : colors.primary,
+                  child: Semantics(
+                    container: true,
+                    button: onTap != null,
+                    label: shown,
+                    onTap: onTap,
+                    excludeSemantics: true,
+                    child: Text(
+                      shown,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontFamily: _mono,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: .3,
+                        fontStyle: name.isEmpty ? FontStyle.italic : null,
+                        color: name.isEmpty ? colors.dim : colors.primary,
+                      ),
                     ),
                   ),
                 ),

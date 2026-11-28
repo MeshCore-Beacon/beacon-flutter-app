@@ -1720,9 +1720,10 @@
       "doneHelp": "Finish editing"
     },
     "atlasNotes": {
-      "refreshFailed": "Could not refresh. Showing earlier data.",
+      "refreshFailed": "Could not refresh",
       "openNode": "Open node {{name}}",
-      "openObserver": "Open observer {{name}}"
+      "openObserver": "Open observer {{name}}",
+      "pollerLoadFailed": "Could not load the poller."
     }
   }
 }
