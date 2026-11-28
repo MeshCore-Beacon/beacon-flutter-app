@@ -198,6 +198,16 @@ class AtlasStore extends ChangeNotifier {
     return _weekSync ? atlas : carryWeek(atlas, local);
   }
 
+  /// Reads what the server stores. False when `/info` did not answer.
+  Future<bool> _flags() async {
+    final features = await account!.api.atlasFeatures();
+    if (features == null) return false;
+    _telemetrySync = features.atlasTelemetry;
+    _pollerSync = features.atlasPoller;
+    _weekSync = features.atlas7d;
+    return true;
+  }
+
   /// Records that the local copy now belongs to [user]'s account.
   void _own(String user) {
     if (preferences.atlasOwnerFor(url) != user) {
@@ -222,9 +232,9 @@ class AtlasStore extends ChangeNotifier {
     ServerAtlas? server;
     try {
       server = parseServerAtlas(await account!.api.atlas());
-      _telemetrySync = await account!.api.atlasTelemetry();
-      _pollerSync = await account!.api.atlasPoller();
-      _weekSync = await account!.api.atlas7d();
+      // What an older server does not store is kept from the local copy, so
+      // the flags must be in before the server copy is taken.
+      if (!await _flags()) return !_live(user, epoch);
     } catch (_) {
       return !_live(user, epoch);
     }
@@ -278,9 +288,11 @@ class AtlasStore extends ChangeNotifier {
     _dirty = false;
     Json doc;
     try {
-      _telemetrySync = await account!.api.atlasTelemetry();
-      _pollerSync = await account!.api.atlasPoller();
-      _weekSync = await account!.api.atlas7d();
+      // Without the flags a write could strip what the server does store.
+      if (!await _flags()) {
+        if (_live(user, epoch)) _dirty = true;
+        return !_live(user, epoch);
+      }
       if (!_live(user, epoch)) return true;
       final body = atlasPutBody(
         snapshot,

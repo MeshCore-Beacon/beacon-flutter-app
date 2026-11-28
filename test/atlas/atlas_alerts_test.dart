@@ -119,6 +119,8 @@ Future<Rig> rig({bool signedIn = true, String? name, bool hold = false}) async {
   rulePuts = [];
   final h = Harness((r) {
     final path = r.url.path.replaceFirst('/api/v1', '');
+    // The store takes the account copy only once /info has answered.
+    if (path == '/info') return json(200, {'features': <String, dynamic>{}});
     if (path == '/me/atlas') {
       if (r.method == 'PUT') {
         // The account keeps the pins the phone sent, in its order.

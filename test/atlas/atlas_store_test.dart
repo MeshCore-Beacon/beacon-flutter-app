@@ -42,6 +42,9 @@ class FakeServer {
   Completer<void>? hold, holdGet;
   bool bareConflict = false;
   bool offline = false;
+
+  /// /info answers 500 while the rest of the server works.
+  bool infoDown = false;
   int? staleAfter;
   bool atlasTelemetry = false, atlas7d = false, atlasPoller = false;
 
@@ -63,6 +66,7 @@ class FakeServer {
     final gate = hold;
     if (gate != null && r.method == 'PUT') await gate.future;
     if (r.url.path.endsWith('/info')) {
+      if (infoDown) return http.Response('{}', 500);
       return _ok({
         'features': {
           'atlasTelemetry': atlasTelemetry,
@@ -335,6 +339,59 @@ void main() {
       expect(r.store.saved.pins.single.view, isNull);
     });
 
+    test('nothing is adopted or written until /info has answered', () async {
+      // The server stores the view; a guess of "no" would strip it on a write.
+      final fake = FakeServer()
+        ..atlasTelemetry = true
+        ..atlasPoller = true
+        ..revision = 3
+        ..pins = [
+          {...serverNode(key), 'view': 'poller'},
+        ]
+        ..infoDown = true;
+      final r = await rig(fake: fake, marked: true);
+      final store = r.store;
+      await store.idle;
+      expect(store.saved.pins, isEmpty);
+      store.update((v) => v.appended(node(otherKey, 'Ridge')));
+      await store.idle;
+      expect(fake.puts, isEmpty);
+      expect(fake.pins.single['view'], 'poller');
+
+      fake.infoDown = false;
+      await store.sync();
+      expect([for (final p in store.saved.pins) p.name], ['Hill', 'Ridge']);
+      expect(store.saved.pins.first.view, AtlasView.poller);
+      expect(fake.pins.first['view'], 'poller');
+    });
+
+    test('a write waits for /info too', () async {
+      final fake = FakeServer()
+        ..atlasTelemetry = true
+        ..atlasPoller = true
+        ..revision = 3
+        ..pins = [
+          {...serverNode(key), 'view': 'poller'},
+        ];
+      final r = await rig(fake: fake, marked: true);
+      final store = r.store;
+      await store.idle;
+      expect(store.saved.pins.single.view, AtlasView.poller);
+      // The flags are no longer known and cannot be read again.
+      r.account.api.forgetFeatures();
+      fake.infoDown = true;
+      store.update((v) => v.appended(node(otherKey, 'Ridge')));
+      await store.idle;
+      expect(fake.puts, isEmpty);
+      expect(store.notice?.kind, AtlasNoticeKind.failed);
+
+      fake.infoDown = false;
+      store.update((v) => v.copyWith(range: AtlasRange.threeDays));
+      await store.idle;
+      expect(fake.pins.first['view'], 'poller');
+      expect(fake.pins, hasLength(2));
+    });
+
     test('a server with the flag gets it', () async {
       final fake = FakeServer()
         ..atlasTelemetry = true
@@ -369,6 +426,31 @@ void main() {
       await store.sync();
       expect(store.saved.range, AtlasRange.week);
       expect(cachedRange(r.prefs), '7d');
+    });
+
+    test('another account\'s 7d and tiles are never carried', () async {
+      final fake = FakeServer()
+        ..range = '3d'
+        ..revision = 2
+        ..pins = [serverNode(key)];
+      final r = await rig(
+        fake: fake,
+        owner: 'u0',
+        range: AtlasRange.week,
+        local: [
+          AtlasPin.node(
+            id: nodeId,
+            publicKey: key,
+            name: 'Hill',
+            view: AtlasView.telemetry,
+            telemetryTiles: const ['noise', 'battery', 'uptime', 'airtime'],
+          ),
+        ],
+      );
+      await r.store.idle;
+      expect(r.store.saved.range, AtlasRange.threeDays);
+      expect(r.store.saved.pins.single.view, isNull);
+      expect(r.store.saved.pins.single.telemetryTiles, isNull);
     });
 
     test('an older server\'s other range still wins', () async {
