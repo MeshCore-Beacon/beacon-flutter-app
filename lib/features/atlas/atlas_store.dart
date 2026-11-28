@@ -178,20 +178,24 @@ class AtlasStore extends ChangeNotifier {
     }
   }
 
-  void _adopt(ServerAtlas server) {
+  /// Takes the server copy, keeping what it cannot store from [local]. A copy
+  /// that belongs to another account ([foreign]) gives nothing.
+  void _adopt(ServerAtlas server, {SavedAtlas? local, bool foreign = false}) {
     _revision = server.revision;
     _observerKeys = {..._observerKeys, ...server.observerKeys};
-    saved = _kept(server.atlas);
+    saved = foreign ? server.atlas : _kept(server.atlas, local);
     _changes++;
     _notify();
     _cache();
   }
 
-  /// The server copy with what this server cannot store put back from [saved].
-  SavedAtlas _kept(SavedAtlas server) {
-    var atlas = _telemetrySync ? server : carryTelemetry(server, saved);
-    if (!_pollerSync) atlas = carryPoller(atlas, saved);
-    return _weekSync ? atlas : carryWeek(atlas, saved);
+  /// [server] with what this server cannot store put back from [local], the
+  /// saved copy unless given.
+  SavedAtlas _kept(SavedAtlas server, [SavedAtlas? local]) {
+    local ??= saved;
+    var atlas = _telemetrySync ? server : carryTelemetry(server, local);
+    if (!_pollerSync) atlas = carryPoller(atlas, local);
+    return _weekSync ? atlas : carryWeek(atlas, local);
   }
 
   /// Records that the local copy now belongs to [user]'s account.
@@ -234,13 +238,15 @@ class AtlasStore extends ChangeNotifier {
     _revision = server.revision;
     _observerKeys = {..._observerKeys, ...server.observerKeys};
     final owner = preferences.atlasOwnerFor(url);
+    // A copy another account synced is never merged into this one.
+    final foreign = owner != null && owner != user;
     if (!preferences.atlasSyncedFor(url, user)) {
-      // A copy another account synced is never merged into this one.
-      final merged = owner != null && owner != user
+      final merged = foreign
           ? AtlasMerge(server.atlas, upload: false)
           : mergeFirstSignIn(server, local);
       if (merged.upload) {
-        saved = _weekSync ? merged.atlas : carryWeek(merged.atlas, local);
+        // The server's pins win the merge; their unsynced fields are local.
+        saved = _kept(merged.atlas, local);
         _changes++;
         _dirty = true;
         _markAfterWrite = true;
@@ -250,7 +256,7 @@ class AtlasStore extends ChangeNotifier {
         _notify();
         _cache();
       } else {
-        _adopt(server);
+        _adopt(server, local: local, foreign: foreign);
         await preferences.markAtlasSynced(url, user);
       }
     } else if (_dirty) {
@@ -259,7 +265,7 @@ class AtlasStore extends ChangeNotifier {
       saved = local;
       _revision = edited ?? server.revision;
     } else {
-      _adopt(server);
+      _adopt(server, foreign: foreign);
     }
     _own(user);
     _applyHeld(held);

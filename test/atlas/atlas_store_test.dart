@@ -275,6 +275,66 @@ void main() {
       },
     );
 
+    test('a first sign-in that adds a local card keeps it', () async {
+      // The server has Hill without a view, and not Ridge.
+      final fake = FakeServer()
+        ..atlasTelemetry = true
+        ..revision = 3
+        ..pins = [serverNode(key)];
+      final r = await rig(
+        fake: fake,
+        local: [pollerPin(), node(otherKey, 'Ridge')],
+      );
+      final store = r.store;
+      await store.idle;
+      expect(fake.puts, hasLength(1));
+      expect([for (final p in store.saved.pins) p.name], ['Hill', 'Ridge']);
+      expect(store.saved.pins.first.view, AtlasView.poller);
+      expect(cachedPins(r.prefs).first['view'], 'poller');
+      // The next read answers no view and still does not replace it.
+      await store.sync();
+      expect(store.saved.pins.first.view, AtlasView.poller);
+    });
+
+    test('a first sign-in that only adopts the server copy keeps it', () async {
+      final fake = FakeServer()
+        ..atlasTelemetry = true
+        ..revision = 3
+        ..pins = [serverNode(key)];
+      final r = await rig(fake: fake, local: [pollerPin()]);
+      await r.store.idle;
+      expect(fake.puts, isEmpty);
+      expect(r.store.saved.pins.single.view, AtlasView.poller);
+    });
+
+    test('another account\'s pinned view is never carried', () async {
+      final fake = FakeServer()
+        ..atlasTelemetry = true
+        ..revision = 3
+        ..pins = [serverNode(key)];
+      // The local copy was synced by u0; u1 signs in for the first time.
+      final r = await rig(fake: fake, owner: 'u0', local: [pollerPin()]);
+      await r.store.idle;
+      expect(fake.puts, isEmpty);
+      expect(r.store.saved.pins.single.view, isNull);
+      expect((cachedPins(r.prefs).single as Map).containsKey('view'), false);
+    });
+
+    test('nor when the account has synced here before', () async {
+      final fake = FakeServer()
+        ..atlasTelemetry = true
+        ..revision = 3
+        ..pins = [serverNode(key)];
+      final r = await rig(
+        fake: fake,
+        marked: true,
+        owner: 'u0',
+        local: [pollerPin()],
+      );
+      await r.store.idle;
+      expect(r.store.saved.pins.single.view, isNull);
+    });
+
     test('a server with the flag gets it', () async {
       final fake = FakeServer()
         ..atlasTelemetry = true
