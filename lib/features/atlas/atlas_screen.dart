@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../../core/account.dart';
 import '../../core/api.dart';
@@ -66,6 +68,7 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
   // Each card keeps the view picked this session; only the pin saves it as where the card opens.
   final open = <String, AtlasView>{};
   bool resumed = true;
+  bool editing = false;
   late int now = widget.clock().millisecondsSinceEpoch;
 
   /// The server's card cap, from /info.
@@ -129,7 +132,8 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
     if (!mounted) return;
     // An import replaced the cards, so views of cards that are gone go too.
     open.removeWhere((key, _) => !saved.pins.any((pin) => pin.key == key));
-    setState(() {});
+    // With no card left there is nothing to edit, and no pencil to leave by.
+    setState(() => editing = editing && saved.pins.isNotEmpty);
     _loadAlerts();
   }
 
@@ -461,6 +465,50 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
               ? 'searchTooShort'
               : null)
         : atlasSearch(field, typed).hint;
+    final count = Tooltip(
+      message: at(store.signedIn ? 'syncedToAccount' : 'localOnly'),
+      triggerMode: TooltipTriggerMode.tap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: full ? c.warning.withValues(alpha: .07) : c.surface,
+          border: Border.all(
+            color: full ? c.warning.withValues(alpha: .15) : c.border,
+          ),
+          borderRadius: BorderRadius.circular(2),
+        ),
+        child: Text(
+          at(
+            'savedCountShort',
+            args: {'count': saved.pins.length, 'limit': limit},
+          ),
+          style: atlasMono(11, full ? c.warning : c.muted),
+        ),
+      ),
+    );
+    final rangeSwitch = AtlasSegmented<AtlasRange>(
+      label: at('range'),
+      value: range,
+      onChanged: (range) =>
+          store.update((value) => value.copyWith(range: range)),
+      options: {
+        for (final option in AtlasRange.values)
+          if (option != AtlasRange.week ||
+              features?.atlas7d == true ||
+              range == AtlasRange.week)
+            option: atlasRangeLabel(option),
+      },
+    );
+    final pencil = saved.pins.isEmpty
+        ? null
+        : AtlasIconButton(
+            key: const ValueKey('atlas-edit'),
+            icon: PencilIcon.new,
+            label: trKey(editing ? 'atlasEdit.done' : 'atlasEdit.edit'),
+            tooltip: trKey(editing ? 'atlasEdit.doneHelp' : 'atlasEdit.help'),
+            pressed: editing,
+            onPressed: () => setState(() => editing = !editing),
+          );
     return Column(
       children: [
         Container(
@@ -469,55 +517,25 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
             color: c.base,
             border: Border(bottom: BorderSide(color: c.borderSubtle)),
           ),
-          child: Row(
+          // The search gets a row to itself when the others leave it too little.
+          child: _Toolbar(
+            minSearch: _SearchBar.minWidth(context, field),
             children: [
-              Expanded(
-                child: _SearchBar(
-                  controller: search,
-                  field: field,
-                  onField: changeField,
-                  onChanged: typing,
+              _SearchBar(
+                controller: search,
+                field: field,
+                onField: changeField,
+                onChanged: typing,
+              ),
+              // Shrunk as a last resort, on a narrow phone with very large text.
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [count, const SizedBox(width: 8), rangeSwitch],
                 ),
               ),
-              const SizedBox(width: 6),
-              Tooltip(
-                message: at(store.signedIn ? 'syncedToAccount' : 'localOnly'),
-                triggerMode: TooltipTriggerMode.tap,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: full ? c.warning.withValues(alpha: .07) : c.surface,
-                    border: Border.all(
-                      color: full ? c.warning.withValues(alpha: .15) : c.border,
-                    ),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                  child: Text(
-                    at(
-                      'savedCountShort',
-                      args: {'count': saved.pins.length, 'limit': limit},
-                    ),
-                    style: atlasMono(11, full ? c.warning : c.muted),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              AtlasSegmented<AtlasRange>(
-                label: at('range'),
-                value: range,
-                onChanged: (range) =>
-                    store.update((value) => value.copyWith(range: range)),
-                options: {
-                  for (final option in AtlasRange.values)
-                    if (option != AtlasRange.week ||
-                        features?.atlas7d == true ||
-                        range == AtlasRange.week)
-                      option: atlasRangeLabel(option),
-                },
-              ),
+              ?pencil,
             ],
           ),
         ),
@@ -611,6 +629,7 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
                             ),
                             onOpen: widget.onOpen,
                             handle: handle,
+                            editing: editing,
                           );
                         },
                       ),
@@ -778,15 +797,47 @@ class _SearchBar extends StatelessWidget {
   final TextEditingController controller;
   final String field;
   final ValueChanged<String> onField, onChanged;
+  static Map<String, String> _fields() => {
+    'name': tr('Name'),
+    'pubkey': tr('Public Key'),
+    'observer': at('fieldObserver'),
+  };
+
+  /// The least width that still leaves room to type a few characters beside
+  /// the field picker, at the system text size.
+  static double minWidth(BuildContext context, String field) {
+    double wide(String text) {
+      final painter = TextPainter(
+        text: TextSpan(text: text, style: atlasMono(11, Colors.black)),
+        textDirection: TextDirection.ltr,
+        textScaler: MediaQuery.textScalerOf(context),
+      )..layout();
+      final width = painter.width;
+      painter.dispose();
+      return width;
+    }
+
+    // Picker: padding, border, gap and caret. Input: border, icon and clear.
+    return wide(_fields()[field]!) +
+        16 +
+        1 +
+        5 +
+        6 +
+        2 +
+        27 +
+        26 +
+        wide('0' * 6);
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = BeaconColors.of(context);
-    final fields = {
-      'name': tr('Name'),
-      'pubkey': tr('Public Key'),
-      'observer': at('fieldObserver'),
-    };
-    const height = 30.0;
+    final fields = _fields();
+    // Large system text needs a taller box.
+    final height = math.max(
+      30.0,
+      MediaQuery.textScalerOf(context).scale(11) + 16,
+    );
     return SizedBox(
       height: height,
       child: Row(
@@ -912,4 +963,78 @@ class _SearchBar extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The toolbar: search, then the count and range, then the edit pencil. All on
+/// one row when the search keeps [minSearch]; otherwise the search takes the
+/// first row and the rest the second, the pencil at its end.
+class _Toolbar extends MultiChildRenderObjectWidget {
+  const _Toolbar({required this.minSearch, required super.children});
+  final double minSearch;
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderToolbar(minSearch);
+  @override
+  void updateRenderObject(BuildContext context, _RenderToolbar renderObject) =>
+      renderObject.minSearch = minSearch;
+}
+
+class _ToolbarSlot extends ContainerBoxParentData<RenderBox> {}
+
+class _RenderToolbar extends RenderBox
+    with
+        ContainerRenderObjectMixin<RenderBox, _ToolbarSlot>,
+        RenderBoxContainerDefaultsMixin<RenderBox, _ToolbarSlot> {
+  _RenderToolbar(this._minSearch);
+  static const _gap = 6.0, _rowGap = 8.0;
+
+  double _minSearch;
+  set minSearch(double value) {
+    if (value == _minSearch) return;
+    _minSearch = value;
+    markNeedsLayout();
+  }
+
+  @override
+  void setupParentData(RenderBox child) {
+    if (child.parentData is! _ToolbarSlot) child.parentData = _ToolbarSlot();
+  }
+
+  @override
+  void performLayout() {
+    final width = constraints.maxWidth;
+    final search = firstChild!, controls = childAfter(search)!;
+    final pencil = childAfter(controls);
+    void place(RenderBox child, double x, double y) =>
+        (child.parentData! as _ToolbarSlot).offset = Offset(x, y);
+    pencil?.layout(const BoxConstraints(), parentUsesSize: true);
+    final edit = pencil == null ? 0.0 : pencil.size.width + _gap;
+    controls.layout(
+      BoxConstraints(maxWidth: math.max(0, width - edit)),
+      parentUsesSize: true,
+    );
+    final rest = controls.size.width + edit;
+    final left = width - rest - _gap;
+    final oneRow = left >= _minSearch;
+    search.layout(
+      BoxConstraints.tightFor(width: oneRow ? left : width),
+      parentUsesSize: true,
+    );
+    final tall = math.max(controls.size.height, pencil?.size.height ?? 0.0);
+    final first = oneRow ? math.max(search.size.height, tall) : tall;
+    final top = oneRow ? 0.0 : search.size.height + _rowGap;
+    double mid(RenderBox child) => top + (first - child.size.height) / 2;
+    place(search, 0, oneRow ? mid(search) : 0);
+    place(controls, oneRow ? left + _gap : 0, mid(controls));
+    if (pencil != null) place(pencil, width - pencil.size.width, mid(pencil));
+    size = constraints.constrain(Size(width, top + first));
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) =>
+      defaultPaint(context, offset);
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) =>
+      defaultHitTestChildren(result, position: position);
 }

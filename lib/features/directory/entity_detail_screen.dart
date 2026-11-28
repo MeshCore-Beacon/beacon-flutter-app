@@ -17,10 +17,14 @@ import '../atlas/atlas_widgets.dart' show AtlasSegmented;
 import 'directory_widgets.dart';
 import 'meshmapper_section.dart';
 import 'node_chips.dart';
+import 'node_poller.dart';
 import 'node_telemetry.dart';
 import 'observation_row.dart';
 import 'observer_info.dart';
 import 'paging.dart';
+
+/// How often an open node screen reads its poller again, as an Atlas card.
+const pollerRefresh = Duration(minutes: 1);
 
 class EntityDetailScreen extends StatefulWidget {
   const EntityDetailScreen({
@@ -32,8 +36,13 @@ class EntityDetailScreen extends StatefulWidget {
     required this.onOpen,
     this.events,
     this.account,
+    this.initialView,
   });
   final String kind, id;
+
+  /// `poller` opens a node on its Poller view once that is offered; a node
+  /// that never offers it stays on Node.
+  final String? initialView;
   final ApiClient api;
   final Json region;
   final void Function(String, String) onOpen;
@@ -76,18 +85,65 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
   }
 
   String view = 'node';
+  late String? wantedView = widget.initialView;
   Json? observer;
   List<Json> adverts = [];
   Json advertsCursor = {};
   Object? observerError, advertsError;
   bool observerStarted = false, observerLoading = false, loadingAdverts = false;
   int observerGeneration = 0, advertsGeneration = 0;
+
+  /// The Poller view: asked for as soon as the node qualifies and offered
+  /// once its route has answered. A 404 (an older server) drops it for good.
+  Json? poller;
+  Object? pollerError;
+  bool pollingOn = false, pollerMissing = false;
+  bool pollerStarted = false, pollerLoading = false;
+  int pollerGeneration = 0;
+  Timer? pollerTimer;
+
+  /// A refresh that came due while hidden or in the background.
+  bool pollerDue = false;
+  bool visible = true;
+  bool resumed =
+      WidgetsBinding.instance.lifecycleState == null ||
+      WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+  bool get pollerAsked =>
+      linkedObserverId != null &&
+      detail?['isPoller'] == true &&
+      pollingOn &&
+      !pollerMissing;
+
+  /// A node opened on its Poller view holds it until the route has answered.
+  bool get pollerOffered =>
+      pollerAsked && (poller != null || wantedView == 'poller');
+
+  /// The view on screen: a Poller view that is no longer offered shows the node.
+  String get shownView => view == 'poller' && !pollerOffered ? 'node' : view;
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    pollerTimer = Timer.periodic(pollerRefresh, (_) => refreshPoller());
     load();
     bind();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Hidden behind another tab or under another screen: reads wait.
+    visible =
+        TickerMode.valuesOf(context).enabled &&
+        (ModalRoute.of(context)?.isCurrent ?? true);
+    if (pollerDue) refreshPoller();
+  }
+
+  /// Reads the poller again, or owes the read until the screen is back.
+  void refreshPoller() {
+    if (!mounted || !pollerAsked) return;
+    pollerDue = !(visible && resumed);
+    if (!pollerDue) loadPoller(fresh: true);
   }
 
   void bind() {
@@ -168,9 +224,11 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
+    resumed = state == AppLifecycleState.resumed;
+    if (resumed) {
       load(preserveHistory: true);
       refreshObserver();
+      if (pollerStarted) refreshPoller();
     }
   }
 
@@ -184,6 +242,11 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
     advertsCursor = {};
     observerError = advertsError = null;
     observerStarted = observerLoading = loadingAdverts = false;
+    pollerGeneration++;
+    poller = null;
+    pollerError = null;
+    pollingOn = pollerMissing = pollerStarted = pollerLoading = false;
+    pollerDue = false;
   }
 
   @override
@@ -192,6 +255,7 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
     subscription?.cancel();
     refreshTimer?.cancel();
     observerTimer?.cancel();
+    pollerTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     historyScroll.dispose();
     super.dispose();
@@ -229,7 +293,13 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
         detail = value;
         loading = false;
       });
+      if (wantedView == 'observer' && linkedObserverId != null) {
+        setView('observer');
+      }
       if (view == 'observer' && !observerStarted) unawaited(loadObserver());
+      if (!pollingOn && value['isPoller'] == true && linkedObserverId != null) {
+        unawaited(checkPolling());
+      }
       if (entityKind == 'node') await loadNeighbors(g, fresh: fresh);
       if (entityKind == 'channel' && !emptyDirectoryRegion(widget.region)) {
         try {
@@ -372,8 +442,62 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
     }
   }
 
+  Future<void> checkPolling() async {
+    final pg = pollerGeneration;
+    final features = await widget.api.features();
+    if (!mounted || pg != pollerGeneration || !features.polling) return;
+    setState(() {
+      pollingOn = true;
+      if (wantedView == 'poller' && pollerOffered) view = 'poller';
+    });
+    if (pollerAsked && !pollerStarted) unawaited(loadPoller());
+  }
+
+  Future<void> loadPoller({bool fresh = false}) async {
+    if (entityKind != 'node') return;
+    pollerStarted = true;
+    final pg = ++pollerGeneration;
+    bool current() => mounted && pg == pollerGeneration;
+    setState(() {
+      pollerLoading = poller == null;
+      // Over loaded data the note stays up until a read succeeds.
+      if (poller == null) pollerError = null;
+    });
+    try {
+      final value = await widget.api.nodePoller(entityId, fresh: fresh);
+      if (!current()) return;
+      setState(() {
+        poller = value;
+        pollerError = null;
+        pollerLoading = false;
+        if (wantedView == 'poller') wantedView = null;
+      });
+    } catch (e) {
+      if (!current()) return;
+      setState(() {
+        pollerLoading = false;
+        // No such route on this server: the option goes away.
+        if (e is ApiException && e.status == 404) {
+          pollerMissing = true;
+          pollerStarted = pollerDue = false;
+          poller = null;
+          pollerError = null;
+          if (wantedView == 'poller') wantedView = null;
+          if (view == 'poller') view = 'node';
+        } else {
+          pollerError = e;
+        }
+      });
+    }
+  }
+
   void setView(String next) {
-    if (next == view) return;
+    if (next == view) {
+      // Tapping the view already up leaves a held Poller view held.
+      if (wantedView != next) setState(() => wantedView = null);
+      return;
+    }
+    wantedView = null;
     setState(() => view = next);
     if (next == 'observer' && !observerStarted) loadObserver();
   }
@@ -615,8 +739,8 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
         : {
             'tab': '${entityKind[0].toUpperCase()}${entityKind.substring(1)}s',
             entityKind: entityId,
-            if (linkedObserverId != null && view == 'observer')
-              'view': 'observer',
+            if (linkedObserverId != null && shownView != 'node')
+              'view': shownView,
           };
     await Clipboard.setData(
       ClipboardData(text: uri.replace(queryParameters: params).toString()),
@@ -664,9 +788,12 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
               onRefresh: () => Future.wait([
                 load(fresh: true),
                 if (observerStarted) loadObserver(fresh: true),
+                if (pollerStarted) loadPoller(fresh: true),
               ]),
               child: ListView(
                 controller: historyScroll,
+                // A short view, such as a poller with no claim, still pulls to refresh.
+                physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.all(16),
                 children: [
                   ...switch (entityKind) {
@@ -678,7 +805,7 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
                   },
                   if (showingObserver)
                     ...observerViewFooter()
-                  else ...[
+                  else if (!showingPoller) ...[
                     if (historyError != null)
                       failure(historyError!, () => loadHistory(fresh: true)),
                     if (loadingHistory)
@@ -698,6 +825,7 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
   }
 
   bool get showingObserver => linkedObserverId != null && view == 'observer';
+  bool get showingPoller => shownView == 'poller';
 
   List<Widget> observerViewFooter() => [
     if (advertsError != null)
@@ -715,14 +843,62 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
     child: AtlasSegmented<String>(
       stretch: true,
       label: trKey('observerMerge.view'),
-      value: view,
+      value: shownView,
       onChanged: setView,
       options: {
         'node': trKey('observerMerge.node'),
         'observer': trKey('observerMerge.observer'),
+        if (pollerOffered) 'poller': trKey('nodePoller.tab'),
       },
     ),
   );
+
+  List<Widget> pollerContent() {
+    final p = poller;
+    if (p == null) {
+      return [
+        if (pollerError != null && !pollerLoading)
+          failure(
+            trKey('atlasNotes.pollerLoadFailed'),
+            () => loadPoller(fresh: true),
+          )
+        else
+          const Padding(
+            padding: EdgeInsets.all(24),
+            child: Center(child: CircularProgressIndicator()),
+          ),
+      ];
+    }
+    final colors = BeaconColors.of(context);
+    return [
+      // A failed refresh keeps the last answer on screen and says so.
+      if (pollerError != null)
+        Padding(
+          key: const ValueKey('poller-refresh-failed'),
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  trKey('atlasNotes.refreshFailed'),
+                  style: TextStyle(
+                    fontFamily: 'JetBrainsMono',
+                    fontSize: 11,
+                    color: colors.warning,
+                  ),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: () => loadPoller(fresh: true),
+                icon: const Icon(Icons.refresh, size: 16),
+                label: const DirectoryText('Retry'),
+              ),
+            ],
+          ),
+        ),
+      NodePollerSection(data: p, onOpenNode: (id) => widget.onOpen('node', id)),
+    ];
+  }
 
   List<Widget> linkedObserverContent(String id) {
     final o = observer;
@@ -866,6 +1042,7 @@ class _EntityDetailScreenState extends State<EntityDetailScreen>
     if (observerId != null && view == 'observer') {
       return [identity, viewSwitch(), ...linkedObserverContent(observerId)];
     }
+    if (showingPoller) return [identity, viewSwitch(), ...pollerContent()];
     return [
       identity,
       if (observerId != null) viewSwitch(),

@@ -10,6 +10,7 @@ class ServerFeatures {
     required this.alerts,
     this.registration = false,
     this.atlasTelemetry = false,
+    this.atlasPoller = false,
     this.atlas7d = false,
     this.mapTelemetry = false,
     this.appDeviceLabel = false,
@@ -28,6 +29,7 @@ class ServerFeatures {
       alerts = false,
       registration = false,
       atlasTelemetry = false,
+      atlasPoller = false,
       atlas7d = false,
       mapTelemetry = false,
       appDeviceLabel = false,
@@ -51,6 +53,7 @@ class ServerFeatures {
       alerts: f['alerts'] == true,
       registration: f['registration'] == true,
       atlasTelemetry: f['atlasTelemetry'] == true,
+      atlasPoller: f['atlasPoller'] == true,
       atlas7d: f['atlas7d'] == true,
       mapTelemetry: f['mapTelemetry'] == true,
       appDeviceLabel: f['appDeviceLabel'] == true,
@@ -75,6 +78,9 @@ class ServerFeatures {
   /// The account Atlas stores Telemetry tiles and a pinned Telemetry view, and
   /// the readings route takes range=72h.
   final bool atlasTelemetry;
+
+  /// The account Atlas stores a pinned Poller view.
+  final bool atlasPoller;
 
   /// The Atlas takes a 7 day range, and the account Atlas stores it.
   final bool atlas7d;

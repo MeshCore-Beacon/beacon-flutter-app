@@ -1,4 +1,4 @@
-// Renders an Atlas card on its Telemetry tab to PNGs for review. Off in the normal run:
+// Renders Atlas cards (Telemetry tab, a poller's Observer and Poller tabs) to PNGs for review. Off in the normal run:
 //   BEACON_PREVIEW=1 flutter test test/previews/atlas_previews_test.dart
 // Output goes to BEACON_PREVIEW_DIR (default ../graphics/app-account).
 import 'dart:convert';
@@ -217,4 +217,184 @@ void main() {
       height: 560,
     );
   }, skip: !_on);
+
+  for (final view in ['observer', 'poller']) {
+    testWidgets('Atlas poller card on its $view tab, beside a plain repeater', (
+      tester,
+    ) async {
+      const plainId = '22222222-2222-4222-8222-222222222222';
+      final plainKey = 'cd' * 32;
+      tester.view.physicalSize = const Size(375 * 3, 640 * 3);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      SharedPreferences.setMockInitialValues({
+        'beacon.servers': jsonEncode([
+          {'name': 'Home mesh', 'url': _server},
+        ]),
+        'beacon.active': _server,
+        'beacon.atlas.$_server': jsonEncode({
+          'version': 2,
+          'range': '24h',
+          'pins': [
+            {
+              'kind': 'node',
+              'id': _nodeId,
+              'publicKey': _key,
+              'name': 'MrAlders0n_G3_R1',
+              'observerId': _observerId,
+              'view': view,
+            },
+            {
+              'kind': 'node',
+              'id': plainId,
+              'publicKey': plainKey,
+              'name': 'BLUEY_SOLAR_R_1W',
+            },
+          ],
+        }),
+      });
+      final prefs = await Preferences.load();
+      Map<String, dynamic> node(String id, String key, String name) => {
+        'id': id,
+        'publicKey': key,
+        'name': name,
+        'nodeTypeName': 'Repeater',
+        'stale': false,
+        'lastSeen': _tick - 180000,
+        'knownNeighborCount': 9,
+      };
+      Object? reply(Uri url) {
+        final path = url.path.replaceFirst('/api/v1', '');
+        return switch (path) {
+          '/info' => {
+            'features': {'polling': true},
+          },
+          '/nodes/$_nodeId' => {
+            ...node(_nodeId, _key, 'MrAlders0n_G3_R1'),
+            'isPoller': true,
+            'isObserver': true,
+            'observerId': _observerId,
+          },
+          '/nodes/$plainId' => node(plainId, plainKey, 'BLUEY_SOLAR_R_1W'),
+          '/nodes/$_nodeId/poller' => {
+            'claim': {
+              // The claim's age is read off the real clock.
+              'receivedAt': DateTime.now().millisecondsSinceEpoch - 600000,
+              'live': true,
+              'acceptsRequests': true,
+              'slots': {
+                'max': 8,
+                'used': 2,
+                'own': 2,
+                'requested': 0,
+                'free': 6,
+              },
+            },
+            'readings24h': 46,
+            'targets': [
+              {'nodeId': 'a', 'name': 'One', 'role': 'poller', 'state': 'ok'},
+              {'nodeId': 'b', 'name': 'Two', 'role': 'poller', 'state': 'ok'},
+            ],
+          },
+          '/observers/$_observerId' => {
+            'id': _observerId,
+            'displayName': 'MrAlders0n_G3_R1',
+            'status': 'online',
+            'radio': '910.525,62.5,7',
+            'batteryLevel': 3.31,
+            'lastStatusAt': _tick - 120000,
+          },
+          '/observers/$_observerId/activity' => {
+            'points': [
+              for (var back = 23; back >= 0; back--)
+                {
+                  't': _hour - back * 3600000,
+                  'observations': 40 + (math.sin(back / 3) * 20).round(),
+                  'snrAvg': 4,
+                  'rssiAvg': -95,
+                },
+            ],
+            'payloadTypes': [
+              {'payloadTypeName': 'ADVERT', 'count': 600},
+              {'payloadTypeName': 'GRP_TXT', 'count': 300},
+            ],
+          },
+          '/observers/$_observerId/telemetry' => {
+            'points': [
+              for (var back = 23; back >= 0; back--)
+                {
+                  't': _hour - back * 3600000,
+                  'noiseFloorDb': -93 + (math.cos(back / 4) * 3).round(),
+                  'batteryLevel': 3.31,
+                },
+            ],
+          },
+          '/nodes/$_nodeId/activity' || '/nodes/$plainId/activity' => {
+            'summary': {
+              'observations': 412,
+              'snrAvg': 5.8,
+              'rssiAvg': -94.1,
+              'hopAvg': 2.3,
+            },
+            'points': [
+              for (var back = 23; back >= 0; back--)
+                {
+                  't': _hour - back * 3600000,
+                  'observations': 16 + (math.sin(back / 2) * 8).round(),
+                  'snrAvg': 5.5,
+                  'rssiAvg': -94,
+                },
+            ],
+            'latest': null,
+          },
+          _ => null,
+        };
+      }
+
+      final api = ApiClient(
+        Uri.parse(_server),
+        transientRetries: 0,
+        now: () => _now,
+        client: MockClient((request) async {
+          final body = reply(request.url);
+          return body == null
+              ? http.Response('{"error":{"message":"not found"}}', 404)
+              : http.Response.bytes(utf8.encode(jsonEncode(body)), 200);
+        }),
+      );
+      await tester.pumpWidget(
+        RepaintBoundary(
+          key: _shot,
+          child: MaterialApp(
+            debugShowCheckedModeBanner: false,
+            theme: BeaconTheme.all
+                .firstWhere((t) => t.id == 'neutral-blue')
+                .data,
+            home: Scaffold(
+              body: AtlasScreen(
+                api: api,
+                preferences: prefs,
+                onOpen: (_, _) {},
+                clock: () => _now,
+              ),
+            ),
+          ),
+        ),
+      );
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 200));
+      }
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.runAsync(() async {
+        final boundary =
+            _shot.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+        final image = await boundary.toImage(pixelRatio: 3);
+        final data = await image.toByteData(format: ui.ImageByteFormat.png);
+        File('$_dir/13-atlas-poller-card-$view-dark.png')
+            .writeAsBytesSync(data!.buffer.asUint8List());
+      });
+      await tester.pumpWidget(const SizedBox());
+    }, skip: !_on);
+  }
 }

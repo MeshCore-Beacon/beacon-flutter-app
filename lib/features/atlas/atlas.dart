@@ -28,7 +28,7 @@ enum AtlasRange {
 AtlasRange effectiveRange(AtlasRange saved, bool? atlas7d) =>
     saved == AtlasRange.week && atlas7d == false ? AtlasRange.threeDays : saved;
 
-enum AtlasView { analytics, heard, observer, telemetry }
+enum AtlasView { analytics, heard, observer, telemetry, poller }
 
 /// The metrics an Observer view tile can show. A pin stores its four only when
 /// they differ from the default.
@@ -247,6 +247,7 @@ AtlasPin? _pin(dynamic raw) {
       'heard' => AtlasView.heard,
       'observer' => AtlasView.observer,
       'telemetry' => AtlasView.telemetry,
+      'poller' => AtlasView.poller,
       _ => null,
     },
   );

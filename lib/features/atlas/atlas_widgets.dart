@@ -8,6 +8,7 @@ import 'package:flutter/rendering.dart';
 import '../../core/json.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
+import '../directory/node_chips.dart';
 import 'atlas.dart';
 import 'observer_sample.dart';
 
@@ -101,8 +102,8 @@ String formatAbsolute(int epochMs) {
   return '${d.year}-${pad(d.month)}-${pad(d.day)} ${pad(d.hour)}:${pad(d.minute)}:${pad(d.second)}';
 }
 
-/// "3m ago", counted from the page's tick so every card agrees.
-String ago(int epochMs, int now) {
+/// "3m", counted from [now].
+String elapsed(int epochMs, int now) {
   final seconds = math.max(0, (now - epochMs) ~/ 1000);
   final (unit, count) = seconds < 60
       ? ('s', seconds)
@@ -111,9 +112,12 @@ String ago(int epochMs, int now) {
       : seconds < 86400
       ? ('h', seconds ~/ 3600)
       : ('d', seconds ~/ 86400);
-  return tr('{{duration}} ago')
-      .replaceAll('{{duration}}', trKey('timestamp.unit.$unit', count: count));
+  return trKey('timestamp.unit.$unit', count: count);
 }
+
+/// "3m ago", counted from the page's tick so every card agrees.
+String ago(int epochMs, int now) =>
+    tr('{{duration}} ago').replaceAll('{{duration}}', elapsed(epochMs, now));
 
 /// The fetched status goes stale, so recency of the last status decides when known.
 String observerStatus(Json observer, int now) {
@@ -136,18 +140,27 @@ class AtlasPanel extends StatelessWidget {
     super.key,
     required this.title,
     this.right,
+    this.tags,
+    this.dashed = false,
     required this.child,
   });
+
+  /// A dashed outline: the card is being edited.
+  final bool dashed;
   final Widget title;
   final Widget? right;
+
+  /// A row of its own under the title, across the card.
+  final Widget? tags;
   final Widget child;
   @override
   Widget build(BuildContext context) {
     final c = BeaconColors.of(context);
     return Container(
+      foregroundDecoration: dashed ? _DashedBorder(c.muted) : null,
       decoration: BoxDecoration(
         color: c.surface,
-        border: Border.all(color: c.border),
+        border: Border.all(color: dashed ? Colors.transparent : c.border),
         borderRadius: BorderRadius.circular(8),
       ),
       // Outside the padding, so a header button's touch area can reach into it.
@@ -178,6 +191,7 @@ class AtlasPanel extends StatelessWidget {
                     if (right != null) ...[const SizedBox(width: 8), right!],
                   ],
                 ),
+                if (tags != null) ...[const SizedBox(height: 6), tags!],
                 const SizedBox(height: 10),
                 child,
               ],
@@ -186,6 +200,34 @@ class AtlasPanel extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _DashedBorder extends Decoration {
+  const _DashedBorder(this.color);
+  final Color color;
+  @override
+  BoxPainter createBoxPainter([VoidCallback? onChanged]) =>
+      _DashedBorderPainter(color);
+}
+
+class _DashedBorderPainter extends BoxPainter {
+  _DashedBorderPainter(this.color);
+  final Color color;
+  @override
+  void paint(Canvas canvas, Offset offset, ImageConfiguration configuration) {
+    final rect = (offset & configuration.size!).deflate(.5);
+    final outline = Path()
+      ..addRRect(RRect.fromRectAndRadius(rect, const Radius.circular(8)));
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+    for (final metric in outline.computeMetrics()) {
+      for (var at = 0.0; at < metric.length; at += 7) {
+        canvas.drawPath(metric.extractPath(at, at + 4), paint);
+      }
+    }
   }
 }
 
@@ -353,6 +395,8 @@ class AtlasIconButton extends StatelessWidget {
     final ink = color ?? (muted ? c.muted : c.primary);
     return Tooltip(
       message: tooltip ?? label,
+      // A tooltip the label already says is not read out again.
+      excludeFromSemantics: label.contains(tooltip ?? label),
       child: Semantics(
         button: true,
         label: label,
@@ -459,6 +503,66 @@ class CrossIcon extends CustomPainter {
 
   @override
   bool shouldRepaint(CrossIcon old) => old.color != color;
+}
+
+/// A pencil: the cards can be pinned, moved and removed.
+class PencilIcon extends CustomPainter {
+  const PencilIcon(this.color);
+  final Color color;
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width, top = (size.height - w) / 2;
+    canvas.drawPath(
+      Path()
+        ..moveTo(w * .1, top + w * .9)
+        ..lineTo(w * .17, top + w * .65)
+        ..lineTo(w * .7, top + w * .1)
+        ..lineTo(w * .9, top + w * .3)
+        ..lineTo(w * .36, top + w * .84)
+        ..close(),
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2
+        ..strokeJoin = StrokeJoin.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(PencilIcon old) => old.color != color;
+}
+
+/// A box with an arrow leaving its corner: opens the node or observer.
+class OpenIcon extends CustomPainter {
+  const OpenIcon(this.color);
+  final Color color;
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width, h = size.height;
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    canvas.drawPath(
+      Path()
+        ..moveTo(w * .4, h * .25)
+        ..lineTo(w * .15, h * .25)
+        ..lineTo(w * .15, h * .82)
+        ..lineTo(w * .85, h * .82)
+        ..lineTo(w * .85, h * .64)
+        ..moveTo(w * .55, h * .18)
+        ..lineTo(w * .9, h * .18)
+        ..lineTo(w * .9, h * .43)
+        ..moveTo(w * .9, h * .18)
+        ..lineTo(w * .45, h * .5),
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(OpenIcon old) => old.color != color;
 }
 
 /// Two arrows pulling apart: the sparkline opens larger.
@@ -599,6 +703,201 @@ class AtlasSegmented<T> extends StatelessWidget {
       ),
     );
   }
+}
+
+const _tabGlyphs = {
+  AtlasView.analytics: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M5 20V11M12 20V4M19 20v-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>',
+  AtlasView.heard: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M7.5 7.5a6.4 6.4 0 0 0 0 9M16.5 7.5a6.4 6.4 0 0 1 0 9M4.3 4.5a10.6 10.6 0 0 0 0 15M19.7 4.5a10.6 10.6 0 0 1 0 15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>',
+  AtlasView.telemetry: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 17a8.5 8.5 0 1 1 16 0" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M12 15l4-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>',
+};
+
+/// A card tab's icon; Observer and Poller wear their role chip's glyph.
+Widget atlasViewIcon(AtlasView view, Color color) => switch (view) {
+  AtlasView.observer => nodeGlyph('observer', color, size: 13),
+  AtlasView.poller => nodeGlyph('poller', color, size: 13),
+  _ => glyphPicture(_tabGlyphs[view]!, color, 13),
+};
+
+/// A card's tabs: every tab an icon, and only the open one spells its name,
+/// so five fit a phone in any language. As tall as [AtlasSegmented].
+class AtlasTabs<T extends Object> extends StatelessWidget {
+  const AtlasTabs({
+    super.key,
+    required this.options,
+    required this.icon,
+    required this.value,
+    required this.onChanged,
+    required this.label,
+  });
+  final Map<T, String> options;
+  final Widget Function(T option, Color color) icon;
+  final T value;
+  final ValueChanged<T> onChanged;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = BeaconColors.of(context);
+    final nameStyle = TextStyle(
+      fontFamily: _mono,
+      fontSize: 11,
+      height: 14 / 11,
+      fontWeight: FontWeight.w600,
+      letterSpacing: .275,
+      color: c.bright,
+    );
+    // The open tab's name is measured, so the icon tabs give way to a long one.
+    final measure = TextPainter(
+      text: TextSpan(
+        text: options[value] ?? '',
+        style: DefaultTextStyle.of(context).style.merge(nameStyle),
+      ),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout();
+    final nameSize = measure.size;
+    measure.dispose();
+    Widget tab(T option, String name) {
+      final active = option == value;
+      final ink = active ? c.bright : c.muted;
+      final button = Semantics(
+        button: true,
+        selected: active,
+        label: active ? null : name,
+        child: InkWell(
+          key: ValueKey('atlas-tab-${option is Enum ? option.name : option}'),
+          onTap: () => onChanged(option),
+          borderRadius: BorderRadius.circular(4),
+          child: Container(
+            // An icon tab is as wide as the layout makes it.
+            padding: EdgeInsets.symmetric(
+              horizontal: active ? _tabPad : 0,
+              vertical: 3,
+            ),
+            decoration: BoxDecoration(
+              color: active ? c.primary.withValues(alpha: .15) : null,
+              border: Border.all(
+                color: active
+                    ? c.primary.withValues(alpha: .3)
+                    : Colors.transparent,
+              ),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                icon(option, ink),
+                if (active) ...[
+                  const SizedBox(width: _tabGap),
+                  Flexible(
+                    child: Text(
+                      name,
+                      maxLines: 1,
+                      softWrap: false,
+                      overflow: TextOverflow.ellipsis,
+                      style: nameStyle,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      );
+      return active
+          ? button
+          : Tooltip(message: name, excludeFromSemantics: true, child: button);
+    }
+
+    return Semantics(
+      container: true,
+      label: label,
+      child: Container(
+        padding: const EdgeInsets.all(2),
+        decoration: BoxDecoration(
+          color: c.raised,
+          border: Border.all(color: c.border),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Material(
+          type: MaterialType.transparency,
+          child: CustomMultiChildLayout(
+            delegate: _TabsLayout(
+              count: options.length,
+              open: options.keys.toList().indexOf(value),
+              // Border, padding, icon and gap around the name.
+              openWidth:
+                  nameSize.width.ceilToDouble() +
+                  2 +
+                  2 * _tabPad +
+                  _tabIcon +
+                  _tabGap,
+              height: math.max(nameSize.height, _tabIcon) + 8,
+            ),
+            children: [
+              for (final (i, MapEntry(:key, value: name))
+                  in options.entries.indexed)
+                LayoutId(id: i, child: tab(key, name)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+const _tabPad = 10.0, _tabGap = 6.0, _tabIcon = 13.0;
+
+/// The open tab takes what the icon tabs leave. They narrow from their full
+/// width only as far as its name needs, so it is cut last.
+// A custom layout, not a LayoutBuilder: cards sit in rows sized to the tallest one.
+class _TabsLayout extends MultiChildLayoutDelegate {
+  _TabsLayout({
+    required this.count,
+    required this.open,
+    required this.openWidth,
+    required this.height,
+  });
+  final int count, open;
+  final double openWidth, height;
+  static const _gap = 2.0, _narrowest = 28.0;
+
+  @override
+  Size getSize(BoxConstraints constraints) =>
+      Size(constraints.constrainWidth(), height);
+
+  @override
+  void performLayout(Size size) {
+    final icons = open < 0 ? count : count - 1;
+    final room = size.width - _gap * (count - 1);
+    // A fifth tab leaves the open one room for a long name on a phone.
+    final widest = open < 0
+        ? room / count
+        : count > 4
+        ? 38.0
+        : 44.0;
+    final icon = icons == 0
+        ? 0.0
+        : math.min(
+            math.max(0.0, room / icons),
+            ((room - openWidth) / icons).clamp(_narrowest, widest),
+          );
+    var x = 0.0;
+    for (var i = 0; i < count; i++) {
+      final width = i == open ? math.max(0.0, room - icon * icons) : icon;
+      layoutChild(i, BoxConstraints.tight(Size(width, size.height)));
+      positionChild(i, Offset(x, 0));
+      x += width + _gap;
+    }
+  }
+
+  @override
+  bool shouldRelayout(_TabsLayout old) =>
+      old.count != count ||
+      old.open != open ||
+      old.openWidth != openWidth ||
+      old.height != height;
 }
 
 /// Small (i) marker holding the notes that would crowd a card.
@@ -881,6 +1180,7 @@ class AtlasStatTile extends StatelessWidget {
     this.dots = false,
     this.wrapSublabel = false,
     this.valueTooltip,
+    this.valueColor,
     this.visual,
     this.onGraph,
     this.graphLabel,
@@ -896,6 +1196,9 @@ class AtlasStatTile extends StatelessWidget {
 
   /// The full value when the tile shows a shortened one.
   final String? valueTooltip;
+
+  /// Replaces the bright value colour.
+  final Color? valueColor;
   final List<bool>? presence;
   final String? sublabel;
 
@@ -933,7 +1236,7 @@ class AtlasStatTile extends StatelessWidget {
         height: 1.4,
         fontWeight: FontWeight.w700,
         fontFeatures: const [FontFeature.tabularFigures()],
-        color: c.bright,
+        color: valueColor ?? c.bright,
       ),
     );
     final full = valueTooltip;

@@ -84,13 +84,15 @@ ServerAtlas? parseServerAtlas(Json doc) {
 
 /// The PUT body for [saved]. A stand-in observer goes out by key; any other
 /// observer by id, as a local pin only has that. An older server rejects the
-/// Telemetry fields, so without [telemetry] they stay out. Without [week] a
-/// 7 day range goes out as three days.
+/// Telemetry fields, so without [telemetry] they stay out, and without [poller]
+/// so does a pinned Poller view. Without [week] a 7 day range goes out as three
+/// days.
 Json atlasPutBody(
   SavedAtlas saved,
   Map<String, String> keys,
   int revision, {
   bool telemetry = true,
+  bool poller = true,
   bool week = true,
 }) => {
   'baseRevision': revision,
@@ -104,7 +106,9 @@ Json atlasPutBody(
           'name': pin.name,
           'tiles': ?pin.tiles,
           if (telemetry) 'telemetryTiles': ?pin.telemetryTiles,
-          'view': ?(pin.view == AtlasView.telemetry && !telemetry
+          'view':
+              ?((pin.view == AtlasView.telemetry && !telemetry) ||
+                  (pin.view == AtlasView.poller && !poller)
               ? null
               : pin.view?.name),
         }
@@ -193,6 +197,31 @@ SavedAtlas carryTelemetry(SavedAtlas server, SavedAtlas local) {
             view: pin.view == null && mine[pin.key]!.view == AtlasView.telemetry
                 ? AtlasView.telemetry
                 : pin.view,
+          )
+        else
+          pin,
+    ],
+  );
+}
+
+/// Against a server that does not store a pinned Poller view, the local copy
+/// keeps it.
+SavedAtlas carryPoller(SavedAtlas server, SavedAtlas local) {
+  final mine = {for (final pin in local.pins) pin.key: pin};
+  return server.copyWith(
+    pins: [
+      for (final pin in server.pins)
+        if (pin.isNode &&
+            pin.view == null &&
+            mine[pin.key]?.view == AtlasView.poller)
+          AtlasPin.node(
+            id: pin.id!,
+            publicKey: pin.publicKey!,
+            name: pin.name,
+            observerId: pin.observerId,
+            tiles: pin.tiles,
+            telemetryTiles: pin.telemetryTiles,
+            view: AtlasView.poller,
           )
         else
           pin,

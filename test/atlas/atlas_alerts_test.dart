@@ -119,6 +119,8 @@ Future<Rig> rig({bool signedIn = true, String? name, bool hold = false}) async {
   rulePuts = [];
   final h = Harness((r) {
     final path = r.url.path.replaceFirst('/api/v1', '');
+    // The store takes the account copy only once /info has answered.
+    if (path == '/info') return json(200, {'features': <String, dynamic>{}});
     if (path == '/me/atlas') {
       if (r.method == 'PUT') {
         // The account keeps the pins the phone sent, in its order.
@@ -228,6 +230,12 @@ AtlasIconButton button(WidgetTester tester, String key) =>
     tester.widget<AtlasIconButton>(bell(key));
 bool filled(AtlasIconButton b) => (b.icon(Colors.black) as BellIcon).filled;
 Finder k(String id) => find.byKey(ValueKey(id));
+
+/// Switches the cards to their edit buttons: pin, drag and remove.
+Future<void> edit(WidgetTester tester) async {
+  await tester.tap(find.byKey(const ValueKey('atlas-edit')));
+  await tester.pumpAndSettle();
+}
 
 void main() {
   setUp(() async {
@@ -351,7 +359,7 @@ void main() {
     await close(tester);
   });
 
-  testWidgets('the bell comes first, before pin, remove and drag', (
+  testWidgets('open comes first, then the bell; the rest wait for edit mode', (
     tester,
   ) async {
     final r = await rig();
@@ -366,12 +374,7 @@ void main() {
       ))
         b.label,
     ];
-    expect(labels, [
-      'Alerts: 2 on',
-      'Open on this tab',
-      'Remove',
-      'Drag to reorder',
-    ]);
+    expect(labels, ['Open node Busy', 'Alerts: 2 on']);
     await close(tester);
   });
 
@@ -819,7 +822,7 @@ void main() {
                 .evaluate())
           tester.getRect(find.byWidget(e.widget)),
       ];
-      expect(boxes, hasLength(4));
+      expect(boxes, hasLength(2));
       for (final (i, box) in boxes.indexed) {
         expect(box.size, const Size(28, 26));
         if (i > 0) expect(box.left - boxes[i - 1].right, 4);
@@ -840,7 +843,7 @@ void main() {
       for (final point in [
         box.bottomCenter + const Offset(0, 8),
         box.topCenter - const Offset(0, 10),
-        box.centerLeft - const Offset(3, 0),
+        box.centerLeft - const Offset(1, 0),
       ]) {
         await tester.tapAt(point);
         await tester.pumpAndSettle();
@@ -860,7 +863,7 @@ void main() {
       final r = await rig();
       await pump(tester, r, size: const Size(360, 800));
       final card = find.ancestor(
-        of: bell(busy),
+        of: find.text('Busy'),
         matching: find.byType(AtlasPanel),
       );
       final remove = find.descendant(
@@ -869,10 +872,10 @@ void main() {
           (w) => w is AtlasIconButton && w.label == 'Remove',
         ),
       );
-      final pinView = find.descendant(
+      final grip = find.descendant(
         of: card,
         matching: find.byWidgetPredicate(
-          (w) => w is AtlasIconButton && w.label == 'Open on this tab',
+          (w) => w is AtlasIconButton && w.label == 'Drag to reorder',
         ),
       );
       // Bell side of the gap between the bell and the pin.
@@ -885,8 +888,14 @@ void main() {
       await tester.tapAt(const Offset(180, 20));
       await tester.pumpAndSettle();
 
-      // Remove side of the gap between the pin and remove: only remove fires.
-      expect(tester.getRect(remove).left - tester.getRect(pinView).right, 4);
+      // Remove side of the gap between the grip and remove: only remove fires.
+      await edit(tester);
+      // Remove stands off from the grip, and the space between does nothing.
+      final gap = tester.getRect(remove).left - tester.getRect(grip).right;
+      expect(gap, greaterThanOrEqualTo(16));
+      await tester.tapAt(tester.getRect(grip).centerRight + Offset(gap / 2, 0));
+      await tester.pumpAndSettle();
+      expect(r.store.saved.pins, hasLength(3));
       await tester.tapAt(
         tester.getRect(remove).centerLeft - const Offset(1, 0),
       );
@@ -901,8 +910,9 @@ void main() {
     ) async {
       final r = await rig();
       await pump(tester, r, size: const Size(360, 800));
+      await edit(tester);
       final card = find.ancestor(
-        of: bell(quiet),
+        of: find.text('Quiet'),
         matching: find.byType(AtlasPanel),
       );
       final grip = find.descendant(

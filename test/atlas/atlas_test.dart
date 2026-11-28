@@ -299,6 +299,20 @@ void main() {
   });
 
   group('pinned card view', () {
+    test('reads back a stored Poller view', () {
+      final pin = parseAtlas(
+        jsonEncode({
+          'version': 2,
+          'range': '24h',
+          'pins': [
+            {...nodePin, 'view': 'poller'},
+          ],
+        }),
+      ).pins.single;
+      expect(pin.view, AtlasView.poller);
+      expect(pin.toJson()['view'], 'poller');
+    });
+
     test('keeps a non-default view on a node pin only', () {
       expect(
         parse([

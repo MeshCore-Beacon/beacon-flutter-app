@@ -34,6 +34,17 @@ Color? nodeTypeColor(dynamic name) {
 String _hex(Color c) =>
     '#${(c.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}';
 
+/// An icon written for `currentColor`, drawn in [color].
+Widget glyphPicture(String svg, Color color, double size) => SvgPicture.string(
+  svg.replaceAll('currentColor', _hex(color)),
+  width: size,
+  height: size,
+);
+
+/// The glyph a chip of this name carries, for use outside a chip.
+Widget nodeGlyph(String name, Color color, {double size = 12}) =>
+    glyphPicture(_glyphs[name]!, color, size);
+
 /// The one chip for node type, roles, scope and cautions, in list and panel.
 class NodeChip extends StatelessWidget {
   const NodeChip({
@@ -66,12 +77,7 @@ class NodeChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (svg != null)
-            SvgPicture.string(
-              svg.replaceAll('currentColor', _hex(color)),
-              width: 12,
-              height: 12,
-            ),
+          if (svg != null) glyphPicture(svg, color, 12),
           if (svg != null && label != null) const SizedBox(width: 5),
           if (label != null)
             Text(

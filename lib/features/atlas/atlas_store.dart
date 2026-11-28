@@ -69,6 +69,8 @@ class AtlasStore extends ChangeNotifier {
   // Whether the server stores Telemetry tiles and views; otherwise they live
   // only in the local copy.
   bool _telemetrySync = false;
+  // Whether the server stores a pinned Poller view; otherwise the local copy keeps it.
+  bool _pollerSync = false;
   // Whether the server stores the 7 day range; otherwise the local copy keeps it.
   bool _weekSync = false;
   bool _disposed = false;
@@ -176,19 +178,34 @@ class AtlasStore extends ChangeNotifier {
     }
   }
 
-  void _adopt(ServerAtlas server) {
+  /// Takes the server copy, keeping what it cannot store from [local]. A copy
+  /// that belongs to another account ([foreign]) gives nothing.
+  void _adopt(ServerAtlas server, {SavedAtlas? local, bool foreign = false}) {
     _revision = server.revision;
     _observerKeys = {..._observerKeys, ...server.observerKeys};
-    saved = _kept(server.atlas);
+    saved = foreign ? server.atlas : _kept(server.atlas, local);
     _changes++;
     _notify();
     _cache();
   }
 
-  /// The server copy with what this server cannot store put back from [saved].
-  SavedAtlas _kept(SavedAtlas server) {
-    final atlas = _telemetrySync ? server : carryTelemetry(server, saved);
-    return _weekSync ? atlas : carryWeek(atlas, saved);
+  /// [server] with what this server cannot store put back from [local], the
+  /// saved copy unless given.
+  SavedAtlas _kept(SavedAtlas server, [SavedAtlas? local]) {
+    local ??= saved;
+    var atlas = _telemetrySync ? server : carryTelemetry(server, local);
+    if (!_pollerSync) atlas = carryPoller(atlas, local);
+    return _weekSync ? atlas : carryWeek(atlas, local);
+  }
+
+  /// Reads what the server stores. False when `/info` did not answer.
+  Future<bool> _flags() async {
+    final features = await account!.api.atlasFeatures();
+    if (features == null) return false;
+    _telemetrySync = features.atlasTelemetry;
+    _pollerSync = features.atlasPoller;
+    _weekSync = features.atlas7d;
+    return true;
   }
 
   /// Records that the local copy now belongs to [user]'s account.
@@ -215,8 +232,9 @@ class AtlasStore extends ChangeNotifier {
     ServerAtlas? server;
     try {
       server = parseServerAtlas(await account!.api.atlas());
-      _telemetrySync = await account!.api.atlasTelemetry();
-      _weekSync = await account!.api.atlas7d();
+      // What an older server does not store is kept from the local copy, so
+      // the flags must be in before the server copy is taken.
+      if (!await _flags()) return !_live(user, epoch);
     } catch (_) {
       return !_live(user, epoch);
     }
@@ -230,13 +248,15 @@ class AtlasStore extends ChangeNotifier {
     _revision = server.revision;
     _observerKeys = {..._observerKeys, ...server.observerKeys};
     final owner = preferences.atlasOwnerFor(url);
+    // A copy another account synced is never merged into this one.
+    final foreign = owner != null && owner != user;
     if (!preferences.atlasSyncedFor(url, user)) {
-      // A copy another account synced is never merged into this one.
-      final merged = owner != null && owner != user
+      final merged = foreign
           ? AtlasMerge(server.atlas, upload: false)
           : mergeFirstSignIn(server, local);
       if (merged.upload) {
-        saved = _weekSync ? merged.atlas : carryWeek(merged.atlas, local);
+        // The server's pins win the merge; their unsynced fields are local.
+        saved = _kept(merged.atlas, local);
         _changes++;
         _dirty = true;
         _markAfterWrite = true;
@@ -246,7 +266,7 @@ class AtlasStore extends ChangeNotifier {
         _notify();
         _cache();
       } else {
-        _adopt(server);
+        _adopt(server, local: local, foreign: foreign);
         await preferences.markAtlasSynced(url, user);
       }
     } else if (_dirty) {
@@ -255,7 +275,7 @@ class AtlasStore extends ChangeNotifier {
       saved = local;
       _revision = edited ?? server.revision;
     } else {
-      _adopt(server);
+      _adopt(server, foreign: foreign);
     }
     _own(user);
     _applyHeld(held);
@@ -268,14 +288,18 @@ class AtlasStore extends ChangeNotifier {
     _dirty = false;
     Json doc;
     try {
-      _telemetrySync = await account!.api.atlasTelemetry();
-      _weekSync = await account!.api.atlas7d();
+      // Without the flags a write could strip what the server does store.
+      if (!await _flags()) {
+        if (_live(user, epoch)) _dirty = true;
+        return !_live(user, epoch);
+      }
       if (!_live(user, epoch)) return true;
       final body = atlasPutBody(
         snapshot,
         _observerKeys,
         _revision!,
         telemetry: _telemetrySync,
+        poller: _pollerSync,
         week: _weekSync,
       );
       doc = await account!.api.putAtlas(

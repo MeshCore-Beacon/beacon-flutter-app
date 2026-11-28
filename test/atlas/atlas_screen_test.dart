@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:beacon/core/account.dart';
 import 'package:beacon/core/api.dart';
 import 'package:beacon/core/auth_api.dart';
 import 'package:beacon/core/preferences.dart';
+import 'package:beacon/core/strings.dart';
 import 'package:beacon/core/theme.dart';
 import 'package:beacon/core/token_store.dart';
 import 'package:beacon/features/analytics/charts.dart';
@@ -13,9 +15,13 @@ import 'package:beacon/features/atlas/atlas_grid.dart';
 import 'package:beacon/features/atlas/atlas_screen.dart';
 import 'package:beacon/features/atlas/atlas_store.dart';
 import 'package:beacon/features/atlas/atlas_widgets.dart';
+import 'package:beacon/features/directory/node_chips.dart';
+import 'package:beacon/features/directory/node_poller.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -85,6 +91,24 @@ class Server {
     'poller': {'observerId': observerId, 'name': 'Roof'},
     'standbys': <dynamic>[],
   };
+
+  /// What /nodes/{id}/poller answers; null is a 404.
+  Map<String, dynamic>? pollerDoc = {
+    'claim': {
+      'receivedAt': tick - 720000,
+      'live': true,
+      'acceptsRequests': true,
+      'slots': {'max': 8, 'used': 2, 'own': 2, 'requested': 0, 'free': 6},
+    },
+    'readings24h': 40,
+    'targets': [
+      {'nodeId': 'a', 'name': 'One', 'role': 'poller', 'state': 'ok'},
+      {'nodeId': 'b', 'name': 'Two', 'role': 'poller', 'state': 'ok'},
+    ],
+  };
+
+  /// Answers /poller with a 500, like a server having a bad minute.
+  bool pollerFails = false;
   List<Map<String, dynamic>> readings = [
     {'t': tick - 7200000, 'batteryMv': 4100, 'temperatureC': 15.2},
     {'t': tick - 3600000, 'batteryMv': 4226},
@@ -122,6 +146,7 @@ class Server {
       };
     }
     if (path == '/nodes/$nodeId/polling') return pollingDoc;
+    if (path == '/nodes/$nodeId/poller') return pollerDoc;
     if (path == '/nodes/$nodeId/telemetry') {
       return {'polled': readings.isNotEmpty, 'points': readings};
     }
@@ -207,6 +232,9 @@ class Server {
       if (request.url.path.endsWith('/observers/$observerId')) {
         await holdObserver?.future;
       }
+      if (pollerFails && request.url.path.endsWith('/poller')) {
+        return http.Response('{"error":{"message":"boom"}}', 500);
+      }
       final body = reply(request.url);
       return body == null
           ? http.Response('{"error":{"message":"not found"}}', 404)
@@ -254,6 +282,17 @@ Future<Preferences> pump(
   return prefs;
 }
 
+/// The test font is far wider than the app's, so layouts are measured with the real one.
+Future<void> realFont(WidgetTester tester) => tester.runAsync(() async {
+  final bytes = File('assets/fonts/JetBrainsMono.ttf').readAsBytesSync();
+  await (FontLoader(
+    'JetBrainsMono',
+  )..addFont(Future.value(ByteData.sublistView(bytes)))).load();
+});
+
+/// A card tab by its view; only the open one spells its name.
+Finder tab(String view) => find.byKey(ValueKey('atlas-tab-$view'));
+
 /// Unmounts the page so its poll timers end with the test.
 Future<void> close(WidgetTester tester) async {
   await tester.pumpWidget(const SizedBox());
@@ -281,6 +320,12 @@ bool footerFresh(WidgetTester tester, String text) {
   final color =
       (tester.widget<Container>(dot).decoration! as BoxDecoration).color;
   return color == BeaconColors.of(tester.element(dot)).success;
+}
+
+/// Switches the cards to their edit buttons: pin, drag and remove.
+Future<void> edit(WidgetTester tester) async {
+  await tester.tap(find.byKey(const ValueKey('atlas-edit')));
+  await tester.pumpAndSettle();
 }
 
 void main() {
@@ -351,7 +396,7 @@ void main() {
         .focusNode
         .hasFocus;
     expect(focused(), isTrue);
-    await tester.tap(find.text('Heard by'));
+    await tester.tap(tab('heard'));
     await tester.pumpAndSettle();
     expect(focused(), isFalse);
     expect(find.text('Open packet'), findsOneWidget);
@@ -413,7 +458,7 @@ void main() {
   });
 
   group('Telemetry tab', () {
-    bool tabShown() => find.text('Telemetry').evaluate().isNotEmpty;
+    bool tabShown() => tab('telemetry').evaluate().isNotEmpty;
     Iterable<Uri> asked(String range) => fake.requests.where(
       (url) =>
           url.path == '/api/v1/nodes/$nodeId/telemetry' &&
@@ -478,7 +523,7 @@ void main() {
       tester,
     ) async {
       await pump(tester, pins: [nodePin()]);
-      await tester.tap(find.text('Telemetry'));
+      await tester.tap(tab('telemetry'));
       await tester.pumpAndSettle();
       expect(asked('24h').single.queryParameters['interval'], '1h');
       expect(find.text('BATTERY'), findsOneWidget);
@@ -504,7 +549,7 @@ void main() {
             'standbys': <dynamic>[],
           };
           await pump(tester, pins: [nodePin()], size: Size(width, 844));
-          await tester.tap(find.text('Telemetry'));
+          await tester.tap(tab('telemetry'));
           await tester.pumpAndSettle();
           final left = find.text('Polled · 49m ago');
           final right = find.text('by MrAlders0n_G3_R1');
@@ -532,7 +577,7 @@ void main() {
         'standbys': <dynamic>[],
       };
       await pump(tester, pins: [nodePin()]);
-      await tester.tap(find.text('Telemetry'));
+      await tester.tap(tab('telemetry'));
       await tester.pumpAndSettle();
       expect(find.text('Not polled'), findsOneWidget);
       expect(find.textContaining('by '), findsNothing);
@@ -625,7 +670,8 @@ void main() {
 
     testWidgets('pins the view', (tester) async {
       final prefs = await pump(tester, pins: [nodePin()]);
-      await tester.tap(find.text('Telemetry'));
+      await edit(tester);
+      await tester.tap(tab('telemetry'));
       await tester.pumpAndSettle();
       await tester.tap(find.bySemanticsLabel('Open on this tab'));
       await tester.pumpAndSettle();
@@ -660,7 +706,7 @@ void main() {
         'range': '168h',
       });
       expect(find.text('7d'), findsNWidgets(2));
-      await tester.tap(find.text('Observer'));
+      await tester.tap(tab('observer'));
       await tester.pumpAndSettle();
       for (final feed in ['activity', 'telemetry']) {
         expect(asked('/observers/$observerId/$feed').last.queryParameters, {
@@ -668,7 +714,7 @@ void main() {
           'interval': '1h',
         });
       }
-      await tester.tap(find.text('Telemetry'));
+      await tester.tap(tab('telemetry'));
       await tester.pumpAndSettle();
       expect(asked('/nodes/$nodeId/telemetry').last.queryParameters, {
         'range': '168h',
@@ -831,7 +877,7 @@ void main() {
         await tester.tapAt(const Offset(5, 5));
         await tester.pumpAndSettle();
 
-        await tester.tap(find.text('Telemetry'));
+        await tester.tap(tab('telemetry'));
         await tester.pumpAndSettle();
         await tester.tap(sparkOf('BATTERY'));
         await tester.pumpAndSettle();
@@ -861,7 +907,7 @@ void main() {
     fake.activity404 = true;
     await pump(tester, pins: [nodePin()]);
     expect(find.text('—'), findsWidgets);
-    await tester.tap(find.text('Heard by'));
+    await tester.tap(tab('heard'));
     await tester.pumpAndSettle();
     expect(
       find.text('This server does not provide node activity.'),
@@ -875,7 +921,7 @@ void main() {
   ) async {
     await pump(tester, pins: [nodePin()]);
     final height = tester.getSize(find.byType(AtlasPanel)).height;
-    await tester.tap(find.text('Heard by'));
+    await tester.tap(tab('heard'));
     await tester.pumpAndSettle();
     expect(find.text('2 observers heard the latest packet 1m ago'), findsOne);
     expect(
@@ -893,8 +939,9 @@ void main() {
 
   testWidgets('pins the tab a card opens on', (tester) async {
     final prefs = await pump(tester, pins: [nodePin()]);
+    await edit(tester);
     expect(find.byTooltip('The card opens on this tab'), findsOneWidget);
-    await tester.tap(find.text('Heard by'));
+    await tester.tap(tab('heard'));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Make this the tab the card opens on'));
     await tester.pumpAndSettle();
@@ -916,9 +963,9 @@ void main() {
       size: const Size(1200, 1600),
     );
     expect(find.text('OBSERVATIONS'), findsNWidgets(2));
-    await tester.tap(find.text('Heard by').at(0));
+    await tester.tap(tab('heard').at(0));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Heard by').at(1));
+    await tester.tap(tab('heard').at(1));
     await tester.pumpAndSettle();
     expect(find.text('OBSERVATIONS'), findsNothing);
     await close(tester);
@@ -990,7 +1037,7 @@ void main() {
           'view': 'observer',
         }),
       ]);
-      expect(find.text('Heard by'), findsOneWidget);
+      expect(tab('heard'), findsOneWidget);
       expect(find.text('MEAN SNR'), findsOneWidget);
       await close(tester);
     },
@@ -1030,6 +1077,20 @@ void main() {
     await close(tester);
   });
 
+  testWidgets('pin, drag and remove wait for edit mode', (tester) async {
+    await pump(tester, pins: [nodePin()]);
+    expect(find.byTooltip('Open node'), findsOneWidget);
+    expect(find.byTooltip('Remove'), findsNothing);
+    expect(find.byTooltip('Drag to reorder'), findsNothing);
+    await edit(tester);
+    expect(find.byTooltip('Open node'), findsNothing);
+    expect(find.byTooltip('Remove'), findsOneWidget);
+    expect(find.byTooltip('Drag to reorder'), findsOneWidget);
+    await edit(tester);
+    expect(find.byTooltip('Remove'), findsNothing);
+    await close(tester);
+  });
+
   testWidgets('removes a card', (tester) async {
     final prefs = await pump(
       tester,
@@ -1038,6 +1099,7 @@ void main() {
         {'kind': 'node', 'id': otherId, 'publicKey': otherKey, 'name': 'Ridge'},
       ],
     );
+    await edit(tester);
     expect(find.byTooltip('Stale'), findsOneWidget);
     await tester.tap(find.byTooltip('Remove').first);
     await tester.pumpAndSettle();
@@ -1054,6 +1116,7 @@ void main() {
         {'kind': 'node', 'id': otherId, 'publicKey': otherKey, 'name': 'Ridge'},
       ],
     );
+    await edit(tester);
     final grips = find.byTooltip('Drag to reorder');
     final target = tester.getCenter(grips.last);
     final gesture = await tester.startGesture(tester.getCenter(grips.first));
@@ -1121,11 +1184,189 @@ void main() {
     await close(tester);
   });
 
+  for (final (width, rows) in [(320.0, 2), (375.0, 1)]) {
+    testWidgets('the toolbar takes $rows row(s) at $width', (tester) async {
+      await realFont(tester);
+      await pump(tester, pins: [nodePin()], size: Size(width, 800));
+      final field = tester.getRect(find.byType(TextField).first);
+      final pencil = tester.getRect(find.byKey(const ValueKey('atlas-edit')));
+      final range = tester.getRect(find.text('24h').first);
+      if (rows == 2) {
+        expect(pencil.top, greaterThan(field.bottom));
+        expect(range.center.dy, moreOrLessEquals(pencil.center.dy, epsilon: 1));
+        expect(pencil.right, moreOrLessEquals(width - 16, epsilon: 1));
+        expect(find.text('Find a node'), findsOneWidget);
+        expect(tester.getSize(find.text('Find a node')).width, greaterThan(70));
+      } else {
+        expect(pencil.center.dy, moreOrLessEquals(field.center.dy, epsilon: 2));
+      }
+      await close(tester);
+    });
+  }
+
+  group('the toolbar fits', () {
+    for (final field in ['Public Key', 'Observer']) {
+      for (final width in [320.0, 360.0, 375.0]) {
+        for (final scale in [1.0, 1.3, 2.0]) {
+          testWidgets('$field search, three ranges and a card at $width, '
+              'text x$scale', (tester) async {
+            await realFont(tester);
+            tester.platformDispatcher.textScaleFactorTestValue = scale;
+            addTearDown(
+              tester.platformDispatcher.clearTextScaleFactorTestValue,
+            );
+            fake.atlas7d = true;
+            await pump(tester, pins: [nodePin()], size: Size(width, 800));
+            await tester.tap(find.byKey(const ValueKey('atlas-search-field')));
+            await tester.pumpAndSettle();
+            await tester.tap(find.text(field).last);
+            await tester.pumpAndSettle();
+            expect(tester.takeException(), isNull);
+
+            final screen = Rect.fromLTRB(16, 0, width - 16, 800);
+            final input = tester.getRect(
+              find.byKey(const ValueKey('atlas-search')),
+            );
+            final picker = tester.getRect(
+              find.byKey(const ValueKey('atlas-search-field')),
+            );
+            final pencil = tester.getRect(
+              find.byKey(const ValueKey('atlas-edit')),
+            );
+            final ranges = tester.getRect(
+              find.byType(AtlasSegmented<AtlasRange>),
+            );
+            final count = tester.getRect(find.text('1/12'));
+            expect(find.text('7d'), findsOneWidget);
+            // Room to type in, whatever else shares the row.
+            expect(input.width, greaterThanOrEqualTo(90), reason: '$input');
+            for (final box in [input, picker, pencil, ranges, count]) {
+              expect(box.left, greaterThanOrEqualTo(screen.left - .01));
+              expect(box.right, lessThanOrEqualTo(screen.right + .01));
+            }
+            // Nothing sits on anything else.
+            expect(picker.right, lessThanOrEqualTo(input.left + 1.01));
+            expect(count.right, lessThanOrEqualTo(ranges.left));
+            expect(ranges.right, lessThanOrEqualTo(pencil.left));
+            if (count.top < input.bottom) {
+              expect(input.right, lessThanOrEqualTo(count.left));
+            }
+            // The field's name is whole.
+            final name = tester.renderObject<RenderParagraph>(
+              find.descendant(
+                of: find.byKey(const ValueKey('atlas-search-field')),
+                matching: find.text(field),
+              ),
+            );
+            expect(
+              name.size.width,
+              greaterThanOrEqualTo(name.getMaxIntrinsicWidth(double.infinity)),
+            );
+            await close(tester);
+          });
+        }
+      }
+    }
+
+    testWidgets('one row is kept where the search still has room', (
+      tester,
+    ) async {
+      await realFont(tester);
+      // No card, so no pencil: the Name search fits beside two ranges at 360.
+      await pump(tester, size: const Size(360, 800));
+      final input = tester.getRect(find.byKey(const ValueKey('atlas-search')));
+      final range = tester.getRect(find.text('24h').first);
+      expect(range.center.dy, moreOrLessEquals(input.center.dy, epsilon: 2));
+      expect(input.width, greaterThanOrEqualTo(90));
+      await close(tester);
+    });
+  });
+
+  testWidgets('removing the last card leaves edit mode', (tester) async {
+    await pump(tester, pins: [nodePin()]);
+    await edit(tester);
+    await tester.tap(find.byTooltip('Remove'));
+    await tester.pumpAndSettle();
+    expect(find.text('No nodes saved'), findsOneWidget);
+    expect(find.byKey(const ValueKey('atlas-edit')), findsNothing);
+
+    // The next card comes up with its everyday buttons.
+    await search(tester, 'ridge');
+    await tester.tap(find.text('Add'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Open node'), findsOneWidget);
+    expect(find.byTooltip('Remove'), findsNothing);
+    expect(find.byTooltip('Drag to reorder'), findsNothing);
+    final pencil = tester.widget<AtlasIconButton>(
+      find.byKey(const ValueKey('atlas-edit')),
+    );
+    expect(pencil.pressed, isFalse);
+    await close(tester);
+  });
+
+  testWidgets('edit mode stays on while a card is left', (tester) async {
+    await pump(
+      tester,
+      pins: [
+        nodePin(),
+        {'kind': 'node', 'id': otherId, 'publicKey': otherKey, 'name': 'Ridge'},
+      ],
+    );
+    await edit(tester);
+    await tester.tap(find.byTooltip('Remove').first);
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Remove'), findsOneWidget);
+    await close(tester);
+  });
+
+  testWidgets('remove stands apart from the drag handle', (tester) async {
+    await pump(tester, pins: [nodePin()], size: const Size(320, 800));
+    await edit(tester);
+    final grip = tester.getRect(find.byTooltip('Drag to reorder'));
+    final remove = tester.getRect(find.byTooltip('Remove'));
+    expect(remove.left - grip.right, greaterThanOrEqualTo(16));
+    expect(tester.takeException(), isNull);
+    await close(tester);
+  });
+
+  testWidgets('a screen reader hears each card\'s freshness and whose open '
+      'button it is', (tester) async {
+    final handle = tester.ensureSemantics();
+    await pump(
+      tester,
+      pins: [
+        nodePin(),
+        {'kind': 'node', 'id': otherId, 'publicKey': otherKey, 'name': 'Ridge'},
+        {'kind': 'observer', 'observerId': observerId, 'name': 'Roof'},
+      ],
+    );
+    Finder dot(String label) => find.byWidgetPredicate(
+      (w) =>
+          w is Semantics &&
+          w.properties.image == true &&
+          w.properties.label == label,
+    );
+    for (final label in ['Recent', 'Stale', 'Online']) {
+      expect(dot(label), findsOneWidget);
+      expect(tester.getSemantics(dot(label)).label, label);
+    }
+    expect(find.bySemanticsLabel('Open node Hill'), findsOneWidget);
+    expect(find.bySemanticsLabel('Open node Ridge'), findsOneWidget);
+    expect(find.bySemanticsLabel('Open observer Roof'), findsOneWidget);
+    // Sighted users still get the short tooltip, said once.
+    expect(find.byTooltip('Open node'), findsNWidgets(2));
+    final open = tester.getSemantics(find.bySemanticsLabel('Open node Hill'));
+    expect(open.tooltip, isEmpty);
+    handle.dispose();
+    await close(tester);
+  });
+
   testWidgets('the card header stays on one line, the name giving way', (
     tester,
   ) async {
     fake.hill = {...fake.hill, 'name': 'A very long repeater name on a hill'};
     await pump(tester, pins: [nodePin()]);
+    await edit(tester);
     final name = find.text('A very long repeater name on a hill');
     final badge = find.text('REPEATER');
     expect(tester.getCenter(name).dy, tester.getCenter(badge).dy);
@@ -1138,6 +1379,505 @@ void main() {
       lessThan(tester.getTopLeft(find.byTooltip('Remove')).dx),
     );
     await close(tester);
+  });
+
+  group('card tabs', () {
+    testWidgets('are icons, and only the open one spells its name', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      fake.hill = {...fake.hill, 'isPoller': true, 'observerId': observerId};
+      await pump(
+        tester,
+        pins: [
+          nodePin({'observerId': observerId}),
+        ],
+        size: const Size(375, 844),
+      );
+      const names = {
+        'analytics': 'Analytics',
+        'heard': 'Heard by',
+        'observer': 'Observer',
+        'telemetry': 'Telemetry',
+        'poller': 'Poller',
+      };
+      // In this order, one icon each.
+      final lefts = [
+        for (final view in names.keys) tester.getTopLeft(tab(view)).dx,
+      ];
+      expect(lefts, [...lefts]..sort());
+      for (final view in names.keys) {
+        expect(
+          find.descendant(of: tab(view), matching: find.byType(SvgPicture)),
+          findsOneWidget,
+        );
+      }
+      for (final open in names.keys) {
+        await tester.tap(tab(open));
+        await tester.pumpAndSettle();
+        for (final MapEntry(key: view, value: name) in names.entries) {
+          final text = find.descendant(
+            of: tab(view),
+            matching: find.text(name),
+          );
+          expect(text, view == open ? findsOneWidget : findsNothing);
+          final node = tester.getSemantics(tab(view));
+          expect(node.label, name);
+          expect(node.flagsCollection.isSelected.toBoolOrNull(), view == open);
+          // An icon alone is as wide as the others and names itself on a long press.
+          if (view != open) {
+            expect(tester.getSize(tab(view)).width, 38);
+            expect(
+              find.ancestor(of: tab(view), matching: find.byTooltip(name)),
+              findsOneWidget,
+            );
+          }
+        }
+        expect(tester.takeException(), isNull);
+      }
+      handle.dispose();
+      await close(tester);
+    });
+
+    for (final code in supportedLanguages) {
+      testWidgets('the open tab spells its whole name at 320 px in $code', (
+        tester,
+      ) async {
+        addTearDown(() => language = 'en');
+        await realFont(tester);
+        language = code;
+        fake.hill = {...fake.hill, 'isPoller': true, 'observerId': observerId};
+        await pump(
+          tester,
+          pins: [
+            nodePin({'observerId': observerId}),
+          ],
+          size: const Size(320, 844),
+        );
+        final bar = tester.getRect(find.byType(AtlasTabs<AtlasView>));
+        const views = ['analytics', 'heard', 'observer', 'telemetry', 'poller'];
+        for (final open in views) {
+          await tester.tap(tab(open));
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+          final name = tester.renderObject<RenderParagraph>(
+            find.descendant(of: tab(open), matching: find.byType(Text)),
+          );
+          expect(
+            name.size.width,
+            greaterThanOrEqualTo(name.getMaxIntrinsicWidth(double.infinity)),
+            reason: '$code ${name.text.toPlainText()}',
+          );
+          expect(name.didExceedMaxLines, isFalse);
+          for (final view in views) {
+            final box = tester.getRect(tab(view));
+            expect(box.left, greaterThanOrEqualTo(bar.left));
+            expect(box.right, lessThanOrEqualTo(bar.right));
+            // An icon tab keeps a box worth tapping.
+            if (view != open) expect(box.width, greaterThanOrEqualTo(28));
+          }
+        }
+        await close(tester);
+      });
+    }
+
+    testWidgets('a two tab card and the range switch keep their shapes', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        pins: [
+          nodePin({'id': otherId, 'publicKey': otherKey}),
+        ],
+      );
+      expect(find.byType(AtlasTabs<AtlasView>), findsOneWidget);
+      expect(tab('analytics'), findsOneWidget);
+      expect(tester.getSize(tab('heard')).width, 44);
+      expect(tab('observer'), findsNothing);
+      // The range switch is still words.
+      expect(find.byType(AtlasSegmented<AtlasRange>), findsOneWidget);
+      expect(
+        tester.getSize(find.byType(AtlasTabs<AtlasView>)).height,
+        tester.getSize(find.byType(AtlasSegmented<AtlasRange>)).height,
+      );
+      await close(tester);
+    });
+  });
+
+  group('Poller tab', () {
+    Future<Preferences> open(WidgetTester tester, {String? view = 'poller'}) {
+      fake.hill = {...fake.hill, 'isPoller': true, 'observerId': observerId};
+      return pump(
+        tester,
+        pins: [
+          nodePin({'observerId': observerId, 'view': ?view}),
+        ],
+        size: const Size(375, 844),
+      );
+    }
+
+    bool asked() => fake.requests.any((u) => u.path.endsWith('/poller'));
+    Finder tile(String id) => find.byKey(ValueKey('poller-$id'));
+    Finder inTile(String id, String text) =>
+        find.descendant(of: tile(id), matching: find.text(text));
+    BeaconColors colors(WidgetTester tester) =>
+        BeaconColors.of(tester.element(tile('claim')));
+
+    testWidgets('is offered to a poller from any view', (tester) async {
+      await open(tester, view: null);
+      expect(find.text('OBSERVATIONS'), findsOneWidget);
+      expect(tab('poller'), findsOneWidget);
+      // Last, after Telemetry.
+      expect(
+        tester.getTopLeft(tab('poller')).dx,
+        greaterThan(tester.getTopLeft(tab('telemetry')).dx),
+      );
+      await tester.tap(tab('poller'));
+      await tester.pumpAndSettle();
+      expect(tile('slots'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('shows its four tiles', (tester) async {
+      final handle = tester.ensureSemantics();
+      fake.pollerDoc = {
+        'claim': {
+          'receivedAt': DateTime.now().millisecondsSinceEpoch - 600000,
+          'live': true,
+          'acceptsRequests': true,
+          'slots': {'max': 8, 'used': 3, 'own': 1, 'requested': 2, 'free': 3},
+        },
+        'readings24h': 46,
+        'targets': [
+          {'nodeId': 'a', 'role': 'poller', 'state': 'ok'},
+          {'nodeId': 'b', 'role': 'poller', 'state': 'pending'},
+          {'nodeId': 'c', 'role': 'standby', 'state': 'no_reply'},
+          {'nodeId': 'd', 'role': 'poller', 'state': 'login_failed'},
+        ],
+      };
+      await open(tester);
+      expect(inTile('slots', 'SLOTS'), findsOneWidget);
+      expect(inTile('slots', '3/8'), findsOneWidget);
+      expect(inTile('slots', '1 own · 2 req'), findsOneWidget);
+      expect(find.bySemanticsLabel('3 of 8 slots used'), findsOneWidget);
+      final seats = tester
+          .widgetList<PollerSeat>(
+            find.descendant(
+              of: tile('slots'),
+              matching: find.byType(PollerSeat),
+            ),
+          )
+          .map((s) => s.kind)
+          .toList();
+      expect(seats, [
+        PollerSeatKind.own,
+        PollerSeatKind.requested,
+        PollerSeatKind.requested,
+        PollerSeatKind.free,
+        PollerSeatKind.free,
+        PollerSeatKind.free,
+        PollerSeatKind.notOffered,
+        PollerSeatKind.notOffered,
+      ]);
+
+      expect(inTile('answering', 'ANSWERING'), findsOneWidget);
+      expect(inTile('answering', '1'), findsOneWidget);
+      expect(inTile('answering', 'of 4'), findsOneWidget);
+      final c = colors(tester);
+      expect(
+        [
+          for (var i = 0; i < 4; i++)
+            (tester
+                        .widget<Container>(
+                          find.byKey(ValueKey('atlas-poller-dot-$i')),
+                        )
+                        .decoration!
+                    as BoxDecoration)
+                .color,
+        ],
+        [c.success, c.dim, c.warning, c.danger],
+      );
+
+      expect(inTile('readings', 'READINGS'), findsOneWidget);
+      expect(inTile('readings', '46'), findsOneWidget);
+      expect(inTile('readings', '24h'), findsOneWidget);
+
+      expect(inTile('claim', 'LAST CLAIM'), findsOneWidget);
+      final value = inTile('claim', '10m ago');
+      expect(tester.widget<Text>(value).style!.color, c.bright);
+      expect(inTile('claim', 'accepting requests'), findsOneWidget);
+      // No tile picker on this view.
+      expect(
+        find.descendant(of: tile('slots'), matching: find.byType(TilePicker)),
+        findsNothing,
+      );
+      handle.dispose();
+      await close(tester);
+    });
+
+    testWidgets('the claim tile shows a short age and the full time on tap', (
+      tester,
+    ) async {
+      final at = DateTime.now().millisecondsSinceEpoch - 12 * 60000;
+      fake.pollerDoc = {
+        ...fake.pollerDoc!,
+        'claim': {...fake.pollerDoc!['claim'] as Map, 'receivedAt': at},
+      };
+      await open(tester);
+      expect(inTile('claim', '12m ago'), findsOneWidget);
+      final tip = find.ancestor(
+        of: inTile('claim', '12m ago'),
+        matching: find.byType(Tooltip),
+      );
+      expect(tester.widget<Tooltip>(tip.first).message, formatAbsolute(at));
+      await close(tester);
+    });
+
+    testWidgets('the info tip gives the claim time, the slots and the help', (
+      tester,
+    ) async {
+      await open(tester);
+      final tip = tester.widget<AtlasInfoTip>(
+        find.descendant(
+          of: find.byType(AtlasPanel),
+          matching: find.byType(AtlasInfoTip),
+        ),
+      );
+      expect(tip.lines, [
+        'Last claim ${formatAbsolute(tick - 720000)}',
+        '2 of 8 slots used',
+        trKey('atlasPoller.help'),
+      ]);
+      expect(tip.lines.last, startsWith('What this radio polls for telemetry'));
+      await close(tester);
+    });
+
+    testWidgets(
+      'a failed refresh keeps the tiles and says so until it recovers',
+      (tester) async {
+        await open(tester);
+        Color? dot() =>
+            (tester
+                        .widget<Container>(
+                          find.descendant(
+                            of: find.byType(AtlasPanel),
+                            matching: find.byKey(
+                              const ValueKey('atlas-footer-dot'),
+                            ),
+                          ),
+                        )
+                        .decoration!
+                    as BoxDecoration)
+                .color;
+        expect(find.text('Failed to load'), findsNothing);
+        expect(dot(), pollerColor);
+
+        fake.pollerFails = true;
+        fake.clock = now.add(const Duration(seconds: 61));
+        await tester.pump(const Duration(seconds: 61));
+        await tester.pumpAndSettle();
+        expect(tab('poller'), findsOneWidget);
+        expect(inTile('slots', '2/8'), findsOneWidget);
+        expect(find.text('Failed to load'), findsNothing);
+        final note = tester.widget<Text>(find.text('Could not refresh'));
+        expect(note.style!.color, colors(tester).warning);
+        // No longer lit as a live claim.
+        expect(dot(), isNot(pollerColor));
+
+        fake.pollerFails = false;
+        fake.clock = now.add(const Duration(seconds: 122));
+        await tester.pump(const Duration(seconds: 61));
+        await tester.pumpAndSettle();
+        expect(find.text('Could not refresh'), findsNothing);
+        expect(inTile('slots', '2/8'), findsOneWidget);
+        expect(dot(), pollerColor);
+        await close(tester);
+      },
+    );
+
+    testWidgets('a card pinned to the tab says when its first read fails', (
+      tester,
+    ) async {
+      fake.pollerFails = true;
+      await open(tester);
+      expect(tab('poller'), findsOneWidget);
+      expect(tile('slots'), findsNothing);
+      expect(find.text('Failed to load'), findsOneWidget);
+      fake.pollerFails = false;
+      await tester.tap(find.text('Retry'));
+      await tester.pumpAndSettle();
+      expect(find.text('Failed to load'), findsNothing);
+      expect(inTile('slots', '2/8'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('a failed read gives a card on another tab no Poller tab', (
+      tester,
+    ) async {
+      fake.pollerFails = true;
+      await open(tester, view: null);
+      expect(tab('poller'), findsNothing);
+      expect(find.text('OBSERVATIONS'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('says when requests are not accepted', (tester) async {
+      fake.pollerDoc = {
+        ...fake.pollerDoc!,
+        'claim': {...fake.pollerDoc!['claim'] as Map, 'acceptsRequests': false},
+      };
+      await open(tester);
+      expect(inTile('claim', 'not accepting requests'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('a stale claim is warned about on the tile and the footer', (
+      tester,
+    ) async {
+      fake.pollerDoc = {
+        ...fake.pollerDoc!,
+        'claim': {
+          ...fake.pollerDoc!['claim'] as Map,
+          'receivedAt': DateTime.now().millisecondsSinceEpoch - 3 * 3600000,
+          'live': false,
+        },
+      };
+      await open(tester);
+      final c = colors(tester);
+      expect(
+        tester.widget<Text>(inTile('claim', '3h ago')).style!.color,
+        c.warning,
+      );
+      expect(inTile('claim', 'not currently polling'), findsOneWidget);
+      expect(inTile('claim', 'accepting requests'), findsNothing);
+      expect(find.text('Not currently polling'), findsOneWidget);
+      expect(find.textContaining('Polling '), findsNothing);
+      await close(tester);
+    });
+
+    testWidgets(
+      'the footer counts the repeaters it polls; the open button goes to its view',
+      (tester) async {
+        fake.pollerDoc = {
+          ...fake.pollerDoc!,
+          'targets': [
+            ...fake.pollerDoc!['targets'] as List,
+            {'nodeId': 'c', 'role': 'standby', 'state': 'ok'},
+          ],
+        };
+        await open(tester);
+        expect(find.text('Polling 2 repeaters'), findsOneWidget);
+        final dot = find.descendant(
+          of: find
+              .ancestor(
+                of: find.text('Polling 2 repeaters'),
+                matching: find.byType(Row),
+              )
+              .first,
+          matching: find.byKey(const ValueKey('atlas-footer-dot')),
+        );
+        expect(
+          (tester.widget<Container>(dot).decoration! as BoxDecoration).color,
+          pollerColor,
+        );
+        expect(find.text('Poller view'), findsNothing);
+        await tester.tap(find.byTooltip('Open node'));
+        expect(opened, [('poller', nodeId)]);
+        await close(tester);
+      },
+    );
+
+    testWidgets('counts one repeater in the singular', (tester) async {
+      fake.pollerDoc = {
+        ...fake.pollerDoc!,
+        'targets': [(fake.pollerDoc!['targets'] as List).first],
+      };
+      await open(tester);
+      expect(find.text('Polling 1 repeater'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('the Observer view no longer carries a poller line', (
+      tester,
+    ) async {
+      await open(tester, view: 'observer');
+      expect(find.text('NOISE FLOOR'), findsOneWidget);
+      expect(tab('poller'), findsOneWidget);
+      expect(find.byKey(const ValueKey('atlas-poller-line')), findsNothing);
+      expect(find.textContaining('Polling '), findsNothing);
+      expect(find.text('Poller view'), findsNothing);
+      await close(tester);
+    });
+
+    // Each falls back to Analytics, as a pinned Telemetry view does.
+    testWidgets('is not offered to a node that is not a poller', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        pins: [
+          nodePin({'observerId': observerId, 'view': 'poller'}),
+        ],
+      );
+      expect(asked(), isFalse);
+      expect(tab('poller'), findsNothing);
+      expect(find.text('OBSERVATIONS'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('is not offered and asks nothing with polling off', (
+      tester,
+    ) async {
+      fake.polling = false;
+      await open(tester);
+      expect(asked(), isFalse);
+      expect(tab('poller'), findsNothing);
+      expect(find.text('OBSERVATIONS'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('is not offered on a server without the route', (tester) async {
+      fake.pollerDoc = null;
+      await open(tester);
+      expect(asked(), isTrue);
+      expect(tab('poller'), findsNothing);
+      expect(find.text('OBSERVATIONS'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('is not offered to a radio with no claim', (tester) async {
+      fake.pollerDoc = {'claim': null, 'readings24h': 0, 'targets': []};
+      await open(tester);
+      expect(asked(), isTrue);
+      expect(tab('poller'), findsNothing);
+      expect(find.text('OBSERVATIONS'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('is not offered to a poller with no observer', (tester) async {
+      fake.hill = {...fake.hill, 'isPoller': true};
+      await pump(
+        tester,
+        pins: [
+          nodePin({'view': 'poller'}),
+        ],
+      );
+      expect(asked(), isFalse);
+      expect(tab('poller'), findsNothing);
+      expect(find.text('OBSERVATIONS'), findsOneWidget);
+      await close(tester);
+    });
+
+    testWidgets('pinning it saves the view on the pin', (tester) async {
+      final prefs = await open(tester, view: null);
+      await edit(tester);
+      await tester.tap(tab('poller'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Make this the tab the card opens on'));
+      await tester.pumpAndSettle();
+      expect((savedPins(prefs).single as Map)['view'], 'poller');
+      await close(tester);
+    });
   });
 
   testWidgets('lays cards out in two and three columns on wide screens', (
@@ -1243,5 +1983,223 @@ void main() {
     expect(puts, isEmpty);
     expect(store.saved.pins, isEmpty);
     await close(tester);
+  });
+
+  // Last: its real font stays loaded for whatever runs after it.
+  group('header tags', () {
+    const typeChip = ValueKey('chip-type-repeater');
+    const pollerChip = ValueKey('chip-poller');
+    const observerChip = ValueKey('chip-observer');
+    const tagRow = ValueKey('atlas-tags');
+
+    testWidgets('one tag sits on the name\'s line', (tester) async {
+      await pump(tester, pins: [nodePin()], size: const Size(375, 844));
+      expect(find.byKey(tagRow), findsNothing);
+      expect(find.byKey(pollerChip), findsNothing);
+      expect(find.byKey(observerChip), findsNothing);
+      expect(
+        tester.getCenter(find.byKey(typeChip)).dy,
+        tester.getCenter(find.text('Hill')).dy,
+      );
+      await close(tester);
+    });
+
+    testWidgets('one tag gets a row under the name on a narrow phone', (
+      tester,
+    ) async {
+      await pump(tester, pins: [nodePin()], size: const Size(320, 800));
+      for (final editing in [false, true]) {
+        if (editing) await edit(tester);
+        expect(find.byKey(tagRow), findsOneWidget);
+        expect(
+          tester.getTopLeft(find.byKey(typeChip)).dy,
+          greaterThan(tester.getBottomLeft(find.text('Hill')).dy),
+        );
+      }
+      await close(tester);
+    });
+
+    testWidgets('a poller\'s three tags get a row under the name at 375 px', (
+      tester,
+    ) async {
+      await realFont(tester);
+      fake.hill = {
+        ...fake.hill,
+        'name': 'A very long repeater name on a hill',
+        'isPoller': true,
+        'observerId': observerId,
+      };
+      await pump(tester, pins: [nodePin()], size: const Size(375, 844));
+      await edit(tester);
+      final name = find.text('A very long repeater name on a hill');
+      final row = find.byKey(tagRow);
+      for (final chip in [typeChip, pollerChip, observerChip]) {
+        expect(
+          find.descendant(of: row, matching: find.byKey(chip)),
+          findsOneWidget,
+        );
+      }
+      // All three on one line, under the name and the buttons, inside the card.
+      final tops = {
+        for (final chip in [typeChip, pollerChip, observerChip])
+          tester.getTopLeft(find.byKey(chip)).dy,
+      };
+      expect(tops, hasLength(1));
+      expect(tops.single, greaterThan(tester.getBottomLeft(name).dy));
+      expect(
+        tops.single,
+        greaterThan(tester.getBottomLeft(find.byTooltip('Remove')).dy),
+      );
+      expect(
+        tester.getTopLeft(find.byKey(typeChip)).dx,
+        tester.getTopLeft(find.byTooltip('Recent')).dx,
+      );
+      expect(
+        tester.getTopRight(find.byKey(observerChip)).dx,
+        lessThan(tester.getTopRight(find.byTooltip('Drag to reorder')).dx),
+      );
+      expect(
+        tester.getCenter(name).dy,
+        tester.getCenter(find.byTooltip('Recent')).dy,
+      );
+      await close(tester);
+    });
+
+    testWidgets('an observing node gets the Observer tag', (tester) async {
+      await pump(
+        tester,
+        pins: [
+          nodePin({'observerId': observerId}),
+        ],
+      );
+      expect(find.byKey(tagRow), findsOneWidget);
+      expect(find.byKey(observerChip), findsOneWidget);
+      expect(find.byKey(pollerChip), findsNothing);
+      await close(tester);
+    });
+
+    testWidgets('an observer card keeps its one badge beside the name', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        pins: [
+          {'kind': 'observer', 'observerId': observerId, 'name': 'Roof'},
+        ],
+      );
+      expect(find.byKey(tagRow), findsNothing);
+      expect(
+        tester.getCenter(find.text('MESHCORETOMQTT')).dy,
+        tester.getCenter(find.text('Roof')).dy,
+      );
+      await close(tester);
+    });
+  });
+
+  group('a poller card at 375 px', () {
+    tearDown(() => language = 'en');
+    const views = ['analytics', 'observer', 'telemetry', 'poller'];
+    Future<void> open(WidgetTester tester) async {
+      await realFont(tester);
+      fake.hill = {...fake.hill, 'isPoller': true, 'observerId': observerId};
+      await pump(
+        tester,
+        pins: [
+          nodePin({'observerId': observerId}),
+        ],
+        size: const Size(375, 844),
+      );
+    }
+
+    testWidgets('is the same height on every tile view', (tester) async {
+      await open(tester);
+      final heights = <String, double>{};
+      for (final view in views) {
+        await tester.tap(tab(view));
+        await tester.pumpAndSettle();
+        heights[view] = tester.getSize(find.byType(AtlasPanel)).height;
+      }
+      expect(heights['poller'], heights['observer']);
+      expect(heights['poller'], heights['analytics']);
+      // The list view is held to the tiles' height.
+      await tester.tap(tab('heard'));
+      await tester.pumpAndSettle();
+      expect(tester.getSize(find.byType(AtlasPanel)).height, heights['poller']);
+      await close(tester);
+    });
+
+    for (final code in supportedLanguages) {
+      testWidgets('fits its five tabs and the Poller tab in $code', (
+        tester,
+      ) async {
+        language = code;
+        await open(tester);
+        final bar = find.byType(AtlasTabs<AtlasView>);
+        for (final view in [...views, 'heard']) {
+          await tester.tap(tab(view));
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+          // The open tab's name is whole.
+          final name = find.descendant(
+            of: tab(view),
+            matching: find.byType(Text),
+          );
+          final box = tester.renderObject<RenderParagraph>(name);
+          expect(
+            box.size.width,
+            greaterThanOrEqualTo(
+              box.getMaxIntrinsicWidth(double.infinity).floorToDouble(),
+            ),
+          );
+          expect(
+            tester.getRect(tab('poller')).right,
+            lessThanOrEqualTo(tester.getRect(bar).right),
+          );
+        }
+        await tester.tap(tab('poller'));
+        await tester.pumpAndSettle();
+        final card = tester.getRect(find.byType(AtlasPanel));
+        for (final id in ['slots', 'answering', 'readings', 'claim']) {
+          final tile = tester.getRect(find.byKey(ValueKey('poller-$id')));
+          expect(tile.left, greaterThanOrEqualTo(card.left));
+          expect(tile.right, lessThanOrEqualTo(card.right));
+        }
+        expect(tester.takeException(), isNull);
+        await close(tester);
+      });
+
+      testWidgets('shows the whole Last claim age in $code', (tester) async {
+        language = code;
+        for (final minutes in [12, 59, 23 * 60, 400 * 24 * 60]) {
+          fake.pollerDoc = {
+            ...fake.pollerDoc!,
+            'claim': {
+              ...fake.pollerDoc!['claim'] as Map,
+              'receivedAt':
+                  DateTime.now().millisecondsSinceEpoch - minutes * 60000,
+            },
+          };
+          await open(tester);
+          await tester.tap(tab('poller'));
+          await tester.pumpAndSettle();
+          final value = tester.renderObject<RenderParagraph>(
+            find
+                .descendant(
+                  of: find.byKey(const ValueKey('poller-claim')),
+                  matching: find.byType(Text),
+                )
+                .at(1),
+          );
+          final text = value.text.toPlainText();
+          expect(text, contains(RegExp(r'\d')), reason: text);
+          expect(
+            value.size.width,
+            greaterThanOrEqualTo(value.getMaxIntrinsicWidth(double.infinity)),
+            reason: '$code "$text"',
+          );
+          await close(tester);
+        }
+      });
+    }
   });
 }

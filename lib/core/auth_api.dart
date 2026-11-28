@@ -394,10 +394,22 @@ class AuthApi {
     }
   }
 
+  /// What the account Atlas can store on this server; null when `/info` has
+  /// not answered, so nothing is adopted or written on a guess.
+  Future<ServerFeatures?> atlasFeatures() => _serverFeatures();
+
+  /// Drops the kept `/info` answer, so the next question asks the server.
+  @visibleForTesting
+  void forgetFeatures() => _featuresAt = null;
+
   /// Whether the server stores Telemetry tiles and views in the account Atlas.
   /// Any failure reads as no.
   Future<bool> atlasTelemetry() async =>
       (await _serverFeatures())?.atlasTelemetry ?? false;
+
+  /// Whether the account Atlas stores a pinned Poller view. Any failure reads as no.
+  Future<bool> atlasPoller() async =>
+      (await _serverFeatures())?.atlasPoller ?? false;
 
   /// Whether the account Atlas stores the 7 day range. Any failure reads as no.
   Future<bool> atlas7d() async => (await _serverFeatures())?.atlas7d ?? false;

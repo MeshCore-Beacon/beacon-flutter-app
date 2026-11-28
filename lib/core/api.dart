@@ -556,6 +556,11 @@ class ApiClient {
   Future<Json> nodePolling(String id) async =>
       object(await getCached('/nodes/${Uri.encodeComponent(id)}/polling'));
 
+  /// A poller's slots and the repeaters it polls; [fresh] skips the cache.
+  Future<Json> nodePoller(String id, {bool fresh = false}) async => object(
+    await (fresh ? get : getCached)('/nodes/${Uri.encodeComponent(id)}/poller'),
+  );
+
   /// A short-lived ticket that lets this app open /ws on servers requiring an Origin.
   Future<String> wsTicket() async =>
       textOf(object(await get('/ws-ticket'))['ticket']);

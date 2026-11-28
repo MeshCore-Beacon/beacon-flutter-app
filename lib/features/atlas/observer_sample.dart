@@ -187,6 +187,10 @@ ObserverSample summarizeObserver(
   // backwards was a reboot, so that step counts as 0.
   var txSecs = 0.0, rxSecs = 0.0, spanSecs = 0.0;
   final radioAir = blank();
+  // Several readings can land in one hour: the hour's share is all its steps
+  // over all their time.
+  final airSecs = List<double>.filled(hours, 0);
+  final gapSecs = List<double>.filled(hours, 0);
   final counted = [
     for (final p in readings)
       if (finite(p['airtimeTxSecs']) != null &&
@@ -207,7 +211,10 @@ ObserverSample summarizeObserver(
     txSecs += tx;
     rxSecs += rx;
     spanSecs += gap;
-    radioAir[slots.bin(time(cur))] = (tx + rx) / gap * 100;
+    final slot = slots.bin(time(cur));
+    airSecs[slot] += tx + rx;
+    gapSecs[slot] += gap;
+    radioAir[slot] = airSecs[slot] / gapSecs[slot] * 100;
   }
   // The 1h points carry receive errors since boot, as the Observers tab charts
   // them: count the steps.

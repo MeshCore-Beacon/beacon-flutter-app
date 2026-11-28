@@ -169,6 +169,23 @@ void main() {
     expect(sample.airtimeHourly[20], isNull);
   });
 
+  test('an hour with several readings gets the airtime of all its steps', () {
+    const m = 60000;
+    final sample = sum(
+      null,
+      tele([
+        {'t': now - 60 * m, 'airtimeTxSecs': 10, 'airtimeRxSecs': 20},
+        {'t': now - 45 * m, 'airtimeTxSecs': 40, 'airtimeRxSecs': 80},
+        {'t': now - 30 * m, 'airtimeTxSecs': 70, 'airtimeRxSecs': 140},
+        {'t': now - 15 * m, 'airtimeTxSecs': 100, 'airtimeRxSecs': 200},
+        {'t': now, 'airtimeTxSecs': 106, 'airtimeRxSecs': 212},
+      ]),
+    );
+    // 288 s on air over the hour, where the last quarter alone was 2%.
+    expect(sample.airtimeHourly[23], closeTo(8, 1e-9));
+    expect(sample.airtime, closeTo(8, 1e-9));
+  });
+
   test('estimates receive airtime from heard packets without counters', () {
     final sample = sum(
       activity([

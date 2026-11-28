@@ -8,6 +8,8 @@ import '../../core/strings.dart';
 import '../../core/theme.dart';
 import '../../core/units.dart';
 import '../analytics/charts.dart';
+import '../directory/node_chips.dart';
+import '../directory/node_poller.dart';
 import '../directory/node_telemetry.dart';
 import 'atlas.dart';
 import 'atlas_graph.dart';
@@ -16,6 +18,9 @@ import 'observer_sample.dart';
 import 'telemetry_sample.dart';
 
 const atlasRefresh = Duration(minutes: 1);
+
+/// The space between the drag handle and the remove button.
+const removeGap = 16.0;
 
 /// A pin whose radio is gone is checked rarely, so it can come back after a
 /// reset without costing a poll a minute.
@@ -125,6 +130,7 @@ class AtlasCard extends StatefulWidget {
     required this.onTelemetryTilesChange,
     required this.onOpen,
     this.handle,
+    this.editing = false,
     this.onAlerts,
     this.alertsOn = 0,
     this.alertsFiring = 0,
@@ -146,6 +152,9 @@ class AtlasCard extends StatefulWidget {
 
   /// Wraps the grip so the page can start a reorder from it.
   final Widget Function(Widget grip)? handle;
+
+  /// Shows pin, drag and remove in place of open and alerts.
+  final bool editing;
 
   /// Opens this radio's alerts, given the name the card shows. Null on a
   /// server without alerts, which hides the bell.
@@ -286,6 +295,16 @@ class _AtlasCardState extends State<AtlasCard> {
         pollUnlessMissing,
       );
     }
+    // What a poller holds. Asked on every view: the answer decides the tab.
+    _use<Json>(
+      'poller',
+      node?['isPoller'] == true && id != null ? nodeId : null,
+      active,
+      () async => (await api.features()).polling
+          ? api.nodePoller(nodeId!)
+          : <String, dynamic>{},
+      pollUnlessMissing,
+    );
     // Only a repeater or room server on a polling server is asked; others read
     // none. The tab shows when Beacon has readings for it or is polling it.
     final polled = isPolledNodeType(textOf(node?['nodeTypeName']));
@@ -396,7 +415,25 @@ class _AtlasCardState extends State<AtlasCard> {
         pin.isNode &&
         (telemetryTab == true ||
             (telemetryTab == null && widget.view == AtlasView.telemetry));
-    final view = widget.view == AtlasView.telemetry && !showTelemetry
+    // A poller's tab needs its claim: none on a server without the route or
+    // with polling off. A pinned Poller view waits for the answer the same way.
+    final pollerQuery = _queries['poller'];
+    final pollerData = pollerQuery?.data as Json?;
+    final bool? pollerTab = !pin.isNode || id == null
+        ? false
+        : node == null
+        ? null
+        : node['isPoller'] != true || isNotFound(pollerQuery?.error)
+        ? false
+        : pollerData == null
+        ? null
+        : pollerData['claim'] is Map;
+    final showPoller =
+        pollerTab == true ||
+        (pollerTab == null && widget.view == AtlasView.poller);
+    final view =
+        (widget.view == AtlasView.telemetry && !showTelemetry) ||
+            (widget.view == AtlasView.poller && !showPoller)
         ? AtlasView.analytics
         : widget.view;
     final views = !pin.isNode
@@ -406,6 +443,7 @@ class _AtlasCardState extends State<AtlasCard> {
             AtlasView.heard,
             if (id != null) AtlasView.observer,
             if (showTelemetry) AtlasView.telemetry,
+            if (showPoller) AtlasView.poller,
           ];
     final home = pin.homeView;
     final status = observer == null
@@ -423,6 +461,20 @@ class _AtlasCardState extends State<AtlasCard> {
         name ??
         formatHex(pin.isNode ? textOf(node?['id'], pin.id!) : pin.observerId!);
     final canOpen = !pin.isNode || node != null;
+    // The detail opens on the view that matches the card's tab.
+    void openSheet() {
+      if (!pin.isNode) return widget.onOpen('observer', pin.observerId!);
+      final id = textOf(node!['id']);
+      widget.onOpen(
+        view == AtlasView.poller
+            ? 'poller'
+            : view == AtlasView.observer
+            ? 'nodeObserver'
+            : 'node',
+        id,
+      );
+    }
+
     final slots = HourSlots(widget.range, widget.now);
     // A tile with nothing to draw offers no graph.
     VoidCallback? openGraph(String metric, Color color, AtlasGraph graph) =>
@@ -439,7 +491,7 @@ class _AtlasCardState extends State<AtlasCard> {
           );
     String graphLabel(String metric) =>
         trKey('atlasGraph.open').replaceAll('{{metric}}', metric);
-    // One line always: a dot carries the status and the name gives way first.
+    // A dot carries the status and the name gives way first.
     final (dotColor, dotLabel) = pin.isNode
         ? switch (node?['stale']) {
             false => (c.success, at('recent')),
@@ -452,6 +504,21 @@ class _AtlasCardState extends State<AtlasCard> {
     final type = pin.isNode
         ? textOf(node?['nodeTypeName'])
         : textOf(observer?['observerType']);
+    // One tag shares the name's line; more get a row of their own under it.
+    // The narrowest phones have no room beside the name, so one tag drops too.
+    final narrow = MediaQuery.sizeOf(context).width < 360;
+    final tags = <Widget>[
+      if (!pin.isNode && type.isNotEmpty) AtlasBadge(type),
+      if (pin.isNode) ...[
+        if (type.isNotEmpty)
+          nodeTypeChip(context, type, type.toUpperCase(), c.muted),
+        if (node?['isPoller'] == true) pollerChip(),
+        if (node?['isObserver'] == true ||
+            node?['isPoller'] == true ||
+            id != null)
+          observerChip(),
+      ],
+    ];
     final title = ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 26),
       child: Row(
@@ -460,12 +527,18 @@ class _AtlasCardState extends State<AtlasCard> {
             Tooltip(
               message: dotLabel,
               triggerMode: TooltipTriggerMode.tap,
-              child: Container(
-                width: 6,
-                height: 6,
-                decoration: BoxDecoration(
-                  color: dotColor,
-                  shape: BoxShape.circle,
+              excludeFromSemantics: true,
+              // Named, so a screen reader says what the colour says.
+              child: Semantics(
+                image: true,
+                label: dotLabel,
+                child: Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: dotColor,
+                    shape: BoxShape.circle,
+                  ),
                 ),
               ),
             ),
@@ -473,11 +546,7 @@ class _AtlasCardState extends State<AtlasCard> {
           ],
           Flexible(
             child: InkWell(
-              onTap: !canOpen
-                  ? null
-                  : () => pin.isNode
-                        ? widget.onOpen('node', textOf(node!['id']))
-                        : widget.onOpen('observer', pin.observerId!),
+              onTap: canOpen ? openSheet : null,
               child: Text(
                 shown,
                 maxLines: 1,
@@ -494,7 +563,10 @@ class _AtlasCardState extends State<AtlasCard> {
               ),
             ),
           ),
-          if (type.isNotEmpty) ...[const SizedBox(width: 8), AtlasBadge(type)],
+          if (tags.length == 1 && !narrow) ...[
+            const SizedBox(width: 8),
+            tags.single,
+          ],
         ],
       ),
     );
@@ -508,39 +580,56 @@ class _AtlasCardState extends State<AtlasCard> {
         : widget.alertsOn > 0
         ? trKey('atlasAlerts.bellOn', count: widget.alertsOn)
         : trKey('atlasAlerts.bell');
+    // Editing swaps the everyday buttons for the ones that change the card.
     final buttons = <Widget>[
-      if (widget.onAlerts case final onAlerts?)
+      if (widget.editing) ...[
+        if (views.length > 1)
+          AtlasIconButton(
+            icon: (color) => PinIcon(color, filled: view == home),
+            label: at('pinView'),
+            tooltip: at(view == home ? 'viewPinned' : 'pinViewHelp'),
+            pressed: view == home,
+            onPressed: view == home ? () {} : () => widget.onPinView(view),
+          ),
+        widget.handle?.call(grip) ?? grip,
         AtlasIconButton(
-          key: ValueKey('atlas-bell-${pin.key}'),
-          icon: (color) => BellIcon(color, filled: widget.alertsOn > 0),
-          label: bellLabel,
-          color: widget.alertsFiring > 0 ? c.danger : null,
-          tinted: widget.alertsOn > 0,
-          onPressed: () => onAlerts(shown),
+          icon: CrossIcon.new,
+          label: at('remove'),
+          muted: true,
+          onPressed: widget.onRemove,
         ),
-      if (views.length > 1)
+      ] else ...[
         AtlasIconButton(
-          icon: (color) => PinIcon(color, filled: view == home),
-          label: at('pinView'),
-          tooltip: at(view == home ? 'viewPinned' : 'pinViewHelp'),
-          pressed: view == home,
-          onPressed: view == home ? () {} : () => widget.onPinView(view),
+          icon: OpenIcon.new,
+          // Named after its card, so a screen reader can tell them apart.
+          label: trKey(
+            pin.isNode ? 'atlasNotes.openNode' : 'atlasNotes.openObserver',
+          ).replaceAll('{{name}}', shown),
+          tooltip: trKey(pin.isNode ? 'atlasOpen.node' : 'atlasOpen.observer'),
+          onPressed: canOpen ? openSheet : null,
         ),
-      AtlasIconButton(
-        icon: CrossIcon.new,
-        label: at('remove'),
-        muted: true,
-        onPressed: widget.onRemove,
-      ),
-      widget.handle?.call(grip) ?? grip,
+        if (widget.onAlerts case final onAlerts?)
+          AtlasIconButton(
+            key: ValueKey('atlas-bell-${pin.key}'),
+            icon: (color) => BellIcon(color, filled: widget.alertsOn > 0),
+            label: bellLabel,
+            color: widget.alertsFiring > 0 ? c.danger : null,
+            tinted: widget.alertsOn > 0,
+            onPressed: () => onAlerts(shown),
+          ),
+      ],
     ];
     // The boxes stay 28 by 26 with 4 between. Each takes touches 48 high and
     // out to the middle of the gap; the ends reach into the space beside them.
+    // Remove stands further off, so a drag that misses the grip does not hit it.
     final actions = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         for (final (i, button) in buttons.indexed) ...[
-          if (i > 0) const SizedBox(width: 4),
+          if (i > 0)
+            SizedBox(
+              width: widget.editing && i == buttons.length - 1 ? removeGap : 4,
+            ),
           AtlasHitSlop(
             slop: EdgeInsets.fromLTRB(
               i == 0 ? 4 : 2,
@@ -569,8 +658,8 @@ class _AtlasCardState extends State<AtlasCard> {
       if (views.length > 1)
         Padding(
           padding: const EdgeInsets.only(bottom: 12),
-          child: AtlasSegmented<AtlasView>(
-            stretch: true,
+          child: AtlasTabs<AtlasView>(
+            icon: atlasViewIcon,
             label: at('view'),
             value: view,
             onChanged: _changeView,
@@ -581,6 +670,7 @@ class _AtlasCardState extends State<AtlasCard> {
                   AtlasView.heard => at('viewHeard'),
                   AtlasView.observer => at('viewObserver'),
                   AtlasView.telemetry => trKey('atlasTelemetry.tab'),
+                  AtlasView.poller => trKey('nodePoller.tab'),
                 },
             },
           ),
@@ -1200,9 +1290,226 @@ class _AtlasCardState extends State<AtlasCard> {
       );
     }
 
+    // A card held on the tab by its pin says so when the first read fails.
+    final pollerFailed =
+        pollerData == null &&
+        pollerQuery?.error != null &&
+        !isNotFound(pollerQuery?.error);
+    if (view == AtlasView.poller && node != null && pollerFailed) {
+      body.add(retry('poller'));
+    }
+    if (view == AtlasView.poller && node != null && !pollerFailed) {
+      final claim = pollerData?['claim'] is Map
+          ? object(pollerData!['claim'])
+          : null;
+      final slots = object(claim?['slots']);
+      int n(String key) => number(slots[key])?.round() ?? 0;
+      final targets = rows(pollerData?['targets']);
+      // A 404 takes the tab away; any other failed refresh keeps the last answer.
+      final refreshFailed = pollerQuery?.error != null;
+      // An answer that could not be refreshed is not shown as a live claim.
+      final live = claim?['live'] == true && !refreshFailed;
+      final claimedAt = number(claim?['receivedAt'])?.round();
+      final seats = pollerSeats(slots);
+      // Many seats lose the gap between them before they lose their width.
+      final seatGap = seats.length <= 12
+          ? 3.0
+          : seats.length <= 40
+          ? 1.0
+          : 0.0;
+      String fill(String key, Map<String, Object?> values) {
+        var text = trKey('atlasPoller.$key');
+        for (final MapEntry(:key, :value) in values.entries) {
+          text = text.replaceAll('{{$key}}', '$value');
+        }
+        return text;
+      }
+
+      Widget visual(Widget child) => SizedBox(
+        height: sparkHeight,
+        width: double.infinity,
+        child: Align(alignment: Alignment.centerLeft, child: child),
+      );
+      AtlasStatTile tile(
+        String id,
+        String label,
+        String? value, {
+        String? sublabel,
+        Widget? visual,
+        Color? color,
+        String? full,
+      }) => AtlasStatTile(
+        key: ValueKey('poller-$id'),
+        label: AtlasStatTile.text(label),
+        value: value ?? _dash,
+        valueTooltip: full,
+        valueColor: color,
+        accent: pollerColor,
+        sublabel: value == null ? null : sublabel,
+        visual: value == null ? null : visual,
+      );
+      body.add(
+        Column(
+          key: _body,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _TileGrid([
+              tile(
+                'slots',
+                trKey('nodePoller.slots'),
+                claim == null ? null : '${n('used')}/${n('max')}',
+                sublabel: fill('slotsSplit', {
+                  'own': n('own'),
+                  'requested': n('requested'),
+                }),
+                visual: Semantics(
+                  key: const ValueKey('atlas-poller-meter'),
+                  container: true,
+                  image: true,
+                  label: trKey('nodePoller.meter')
+                      .replaceAll('{{used}}', '${n('used')}')
+                      .replaceAll('{{max}}', '${n('max')}'),
+                  child: ExcludeSemantics(
+                    child: visual(
+                      Row(
+                        children: [
+                          for (final (i, kind) in seats.indexed) ...[
+                            if (i > 0) SizedBox(width: seatGap),
+                            Expanded(child: PollerSeat(kind, height: 10)),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              tile(
+                'answering',
+                trKey('nodePoller.state.ok'),
+                claim == null
+                    ? null
+                    : '${targets.where((t) => t['state'] == 'ok').length}',
+                sublabel: fill('ofTargets', {'count': targets.length}),
+                visual: ExcludeSemantics(
+                  child: visual(
+                    Wrap(
+                      spacing: 4,
+                      runSpacing: 4,
+                      clipBehavior: Clip.hardEdge,
+                      children: [
+                        for (final (i, t) in targets.indexed)
+                          Container(
+                            key: ValueKey('atlas-poller-dot-$i'),
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                              color: switch (t['state']) {
+                                'ok' => c.success,
+                                'pending' => c.dim,
+                                'no_reply' => c.warning,
+                                _ => c.danger,
+                              },
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              tile(
+                'readings',
+                trKey('atlasPoller.readings'),
+                claim == null
+                    ? null
+                    : formatCount(
+                        number(pollerData?['readings24h'])?.roundToDouble() ??
+                            0,
+                      ),
+                sublabel: at('ranges.24h'),
+              ),
+              tile(
+                'claim',
+                trKey('atlasPoller.lastClaim'),
+                // Its own short wording: "il y a 12 min" does not fit the tile.
+                claimedAt == null
+                    ? null
+                    : trKey('atlasPoller.claimAge').replaceAll(
+                        '{{duration}}',
+                        elapsed(
+                          claimedAt,
+                          DateTime.now().millisecondsSinceEpoch,
+                        ),
+                      ),
+                full: claimedAt == null ? null : formatAbsolute(claimedAt),
+                color: claim?['live'] == true ? null : c.warning,
+                visual: visual(
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      trKey(
+                        claim?['live'] != true
+                            ? 'atlasPoller.stale'
+                            : claim?['acceptsRequests'] == true
+                            ? 'atlasPoller.accepting'
+                            : 'atlasPoller.notAccepting',
+                      ),
+                      maxLines: 1,
+                      style: atlasMono(10, c.muted),
+                    ),
+                  ),
+                ),
+              ),
+            ]),
+            const SizedBox(height: 12),
+            _Footer(
+              dot: claim == null
+                  ? null
+                  : live
+                  ? pollerColor
+                  : c.dim.withValues(alpha: .3),
+              left: claim == null
+                  ? null
+                  : claim['live'] == true
+                  ? trKey(
+                      'atlasPoller.polling',
+                      // Standbys hold a slot but do not poll.
+                      count: targets.where((t) => t['role'] == 'poller').length,
+                    )
+                  : trKey('atlasPoller.notPolling'),
+              right: '',
+              loading: pollerQuery?.loading ?? false,
+              failed: false,
+              refreshFailed: refreshFailed,
+              tip: [
+                if (claimedAt != null)
+                  '${trKey('nodePoller.lastClaim')} ${formatAbsolute(claimedAt)}',
+                if (claim != null)
+                  trKey('nodePoller.meter')
+                      .replaceAll('{{used}}', '${n('used')}')
+                      .replaceAll('{{max}}', '${n('max')}'),
+                trKey('atlasPoller.help'),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+
     return AtlasPanel(
       title: title,
       right: actions,
+      dashed: widget.editing,
+      tags: tags.isEmpty || (tags.length == 1 && !narrow)
+          ? null
+          : Wrap(
+              key: const ValueKey('atlas-tags'),
+              spacing: 6,
+              runSpacing: 6,
+              children: tags,
+            ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
@@ -1248,17 +1555,25 @@ class _Footer extends StatelessWidget {
     required this.right,
     required this.loading,
     required this.failed,
-    required this.tip,
+    this.refreshFailed = false,
+    this.tip = const [],
   });
   final String? left;
   final Color? dot;
   final String right;
   final bool loading, failed;
+
+  /// A later read failed and the data shown is the earlier answer.
+  final bool refreshFailed;
   final List<String> tip;
+
   @override
   Widget build(BuildContext context) {
     final c = BeaconColors.of(context);
     final style = atlasMono(11, c.muted);
+    final height = MediaQuery.textScalerOf(context)
+        .scale(16.5)
+        .clamp(22.0, 64.0);
     Text text(String value, {Color? color}) => Text(
       value,
       maxLines: 1,
@@ -1266,15 +1581,15 @@ class _Footer extends StatelessWidget {
       overflow: TextOverflow.ellipsis,
       style: color == null ? style : style.copyWith(color: color),
     );
-    final state = failed
+    final state = refreshFailed
+        ? trKey('atlasNotes.refreshFailed')
+        : failed
         ? tr('Failed to load')
         : loading
         ? tr('Loading…')
         : null;
     return CustomMultiChildLayout(
-      delegate: _FooterLayout(
-        MediaQuery.textScalerOf(context).scale(16.5).clamp(22, 64),
-      ),
+      delegate: _FooterLayout(height),
       children: [
         if (left != null)
           LayoutId(
@@ -1301,10 +1616,17 @@ class _Footer extends StatelessWidget {
         if (state != null)
           LayoutId(
             id: 'state',
-            child: text(state, color: failed ? c.danger : null),
+            child: text(
+              state,
+              color: refreshFailed
+                  ? c.warning
+                  : failed
+                  ? c.danger
+                  : null,
+            ),
           ),
         LayoutId(id: 'right', child: text(right)),
-        LayoutId(id: 'tip', child: AtlasInfoTip(tip)),
+        if (tip.isNotEmpty) LayoutId(id: 'tip', child: AtlasInfoTip(tip)),
       ],
     );
   }
@@ -1325,8 +1647,11 @@ class _FooterLayout extends MultiChildLayoutDelegate {
     double mid(Size child) => (size.height - child.height) / 2;
     BoxConstraints upTo(double width) =>
         BoxConstraints(maxWidth: width < 0 ? 0 : width, maxHeight: size.height);
-    final tip = layoutChild('tip', upTo(size.width));
-    positionChild('tip', Offset(size.width - tip.width, mid(tip)));
+    var tip = Size.zero;
+    if (hasChild('tip')) {
+      tip = layoutChild('tip', upTo(size.width));
+      positionChild('tip', Offset(size.width - tip.width, mid(tip)));
+    }
     var room = size.width - tip.width, x = 0.0;
     Size? state;
     if (hasChild('state')) {
