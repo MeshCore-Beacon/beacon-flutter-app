@@ -1,0 +1,6 @@
+New in 2.3.0
+- Repeater telemetry (beta): battery, temperature, airtime and counters on repeater pages, Atlas cards and the map.
+- Poller view: see which repeaters a poller polls and how many slots it has free.
+- Accounts: sign in and your Atlas follows you between the app and the web.
+- Alerts by push or email: battery, offline, reboots and more.
+- Atlas: new tabs, tags, a 7 day range and an edit mode.
