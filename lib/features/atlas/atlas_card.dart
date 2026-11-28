@@ -19,6 +19,9 @@ import 'telemetry_sample.dart';
 
 const atlasRefresh = Duration(minutes: 1);
 
+/// The space between the drag handle and the remove button.
+const removeGap = 16.0;
+
 /// A pin whose radio is gone is checked rarely, so it can come back after a
 /// reset without costing a poll a minute.
 const atlasMissingRefresh = Duration(minutes: 10);
@@ -524,12 +527,18 @@ class _AtlasCardState extends State<AtlasCard> {
             Tooltip(
               message: dotLabel,
               triggerMode: TooltipTriggerMode.tap,
-              child: Container(
-                width: 6,
-                height: 6,
-                decoration: BoxDecoration(
-                  color: dotColor,
-                  shape: BoxShape.circle,
+              excludeFromSemantics: true,
+              // Named, so a screen reader says what the colour says.
+              child: Semantics(
+                image: true,
+                label: dotLabel,
+                child: Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: dotColor,
+                    shape: BoxShape.circle,
+                  ),
                 ),
               ),
             ),
@@ -592,7 +601,11 @@ class _AtlasCardState extends State<AtlasCard> {
       ] else ...[
         AtlasIconButton(
           icon: OpenIcon.new,
-          label: trKey(pin.isNode ? 'atlasOpen.node' : 'atlasOpen.observer'),
+          // Named after its card, so a screen reader can tell them apart.
+          label: trKey(
+            pin.isNode ? 'atlasNotes.openNode' : 'atlasNotes.openObserver',
+          ).replaceAll('{{name}}', shown),
+          tooltip: trKey(pin.isNode ? 'atlasOpen.node' : 'atlasOpen.observer'),
           onPressed: canOpen ? openSheet : null,
         ),
         if (widget.onAlerts case final onAlerts?)
@@ -608,11 +621,15 @@ class _AtlasCardState extends State<AtlasCard> {
     ];
     // The boxes stay 28 by 26 with 4 between. Each takes touches 48 high and
     // out to the middle of the gap; the ends reach into the space beside them.
+    // Remove stands further off, so a drag that misses the grip does not hit it.
     final actions = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         for (final (i, button) in buttons.indexed) ...[
-          if (i > 0) const SizedBox(width: 4),
+          if (i > 0)
+            SizedBox(
+              width: widget.editing && i == buttons.length - 1 ? removeGap : 4,
+            ),
           AtlasHitSlop(
             slop: EdgeInsets.fromLTRB(
               i == 0 ? 4 : 2,
@@ -1280,7 +1297,11 @@ class _AtlasCardState extends State<AtlasCard> {
       final slots = object(claim?['slots']);
       int n(String key) => number(slots[key])?.round() ?? 0;
       final targets = rows(pollerData?['targets']);
-      final live = claim?['live'] == true;
+      // A 404 takes the tab away; any other failed refresh keeps the last answer.
+      final refreshFailed = pollerQuery?.error != null;
+      // An answer that could not be refreshed is not shown as a live claim.
+      final live = claim?['live'] == true && !refreshFailed;
+      final claimedAt = number(claim?['receivedAt'])?.round();
       final seats = pollerSeats(slots);
       // Many seats lose the gap between them before they lose their width.
       final seatGap = seats.length <= 12
@@ -1308,10 +1329,12 @@ class _AtlasCardState extends State<AtlasCard> {
         String? sublabel,
         Widget? visual,
         Color? color,
+        String? full,
       }) => AtlasStatTile(
         key: ValueKey('poller-$id'),
         label: AtlasStatTile.text(label),
         value: value ?? _dash,
+        valueTooltip: full,
         valueColor: color,
         accent: pollerColor,
         sublabel: value == null ? null : sublabel,
@@ -1400,16 +1423,26 @@ class _AtlasCardState extends State<AtlasCard> {
               ),
               tile(
                 'claim',
-                trKey('nodePoller.lastClaim'),
-                claim == null ? null : age(claim['receivedAt']),
-                color: live ? null : c.warning,
+                trKey('atlasPoller.lastClaim'),
+                // Its own short wording: "il y a 12 min" does not fit the tile.
+                claimedAt == null
+                    ? null
+                    : trKey('atlasPoller.claimAge').replaceAll(
+                        '{{duration}}',
+                        elapsed(
+                          claimedAt,
+                          DateTime.now().millisecondsSinceEpoch,
+                        ),
+                      ),
+                full: claimedAt == null ? null : formatAbsolute(claimedAt),
+                color: claim?['live'] == true ? null : c.warning,
                 visual: visual(
                   FittedBox(
                     fit: BoxFit.scaleDown,
                     alignment: Alignment.centerLeft,
                     child: Text(
                       trKey(
-                        !live
+                        claim?['live'] != true
                             ? 'atlasPoller.stale'
                             : claim?['acceptsRequests'] == true
                             ? 'atlasPoller.accepting'
@@ -1431,7 +1464,7 @@ class _AtlasCardState extends State<AtlasCard> {
                   : c.dim.withValues(alpha: .3),
               left: claim == null
                   ? null
-                  : live
+                  : claim['live'] == true
                   ? trKey(
                       'atlasPoller.polling',
                       // Standbys hold a slot but do not poll.
@@ -1440,7 +1473,16 @@ class _AtlasCardState extends State<AtlasCard> {
                   : trKey('atlasPoller.notPolling'),
               right: '',
               loading: pollerQuery?.loading ?? false,
-              failed: pollerQuery?.error != null && pollerData == null,
+              failed: refreshFailed,
+              tip: [
+                if (claimedAt != null)
+                  '${trKey('nodePoller.lastClaim')} ${formatAbsolute(claimedAt)}',
+                if (claim != null)
+                  trKey('nodePoller.meter')
+                      .replaceAll('{{used}}', '${n('used')}')
+                      .replaceAll('{{max}}', '${n('max')}'),
+                trKey('atlasPoller.help'),
+              ],
             ),
           ],
         ),

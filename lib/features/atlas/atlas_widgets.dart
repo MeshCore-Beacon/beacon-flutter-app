@@ -102,8 +102,8 @@ String formatAbsolute(int epochMs) {
   return '${d.year}-${pad(d.month)}-${pad(d.day)} ${pad(d.hour)}:${pad(d.minute)}:${pad(d.second)}';
 }
 
-/// "3m ago", counted from the page's tick so every card agrees.
-String ago(int epochMs, int now) {
+/// "3m", counted from [now].
+String elapsed(int epochMs, int now) {
   final seconds = math.max(0, (now - epochMs) ~/ 1000);
   final (unit, count) = seconds < 60
       ? ('s', seconds)
@@ -112,9 +112,12 @@ String ago(int epochMs, int now) {
       : seconds < 86400
       ? ('h', seconds ~/ 3600)
       : ('d', seconds ~/ 86400);
-  return tr('{{duration}} ago')
-      .replaceAll('{{duration}}', trKey('timestamp.unit.$unit', count: count));
+  return trKey('timestamp.unit.$unit', count: count);
 }
+
+/// "3m ago", counted from the page's tick so every card agrees.
+String ago(int epochMs, int now) =>
+    tr('{{duration}} ago').replaceAll('{{duration}}', elapsed(epochMs, now));
 
 /// The fetched status goes stale, so recency of the last status decides when known.
 String observerStatus(Json observer, int now) {
@@ -392,6 +395,8 @@ class AtlasIconButton extends StatelessWidget {
     final ink = color ?? (muted ? c.muted : c.primary);
     return Tooltip(
       message: tooltip ?? label,
+      // A tooltip the label already says is not read out again.
+      excludeFromSemantics: label.contains(tooltip ?? label),
       child: Semantics(
         button: true,
         label: label,
@@ -714,7 +719,7 @@ Widget atlasViewIcon(AtlasView view, Color color) => switch (view) {
 };
 
 /// A card's tabs: every tab an icon, and only the open one spells its name,
-/// so four fit a phone in any language. As tall as [AtlasSegmented].
+/// so five fit a phone in any language. As tall as [AtlasSegmented].
 class AtlasTabs<T extends Object> extends StatelessWidget {
   const AtlasTabs({
     super.key,
@@ -733,8 +738,26 @@ class AtlasTabs<T extends Object> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = BeaconColors.of(context);
-    // A fifth tab leaves the open one room for a long name on a phone.
-    final iconWidth = options.length > 4 ? 38.0 : 44.0;
+    final nameStyle = TextStyle(
+      fontFamily: _mono,
+      fontSize: 11,
+      height: 14 / 11,
+      fontWeight: FontWeight.w600,
+      letterSpacing: .275,
+      color: c.bright,
+    );
+    // The open tab's name is measured, so the icon tabs give way to a long one.
+    final measure = TextPainter(
+      text: TextSpan(
+        text: options[value] ?? '',
+        style: DefaultTextStyle.of(context).style.merge(nameStyle),
+      ),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout();
+    final nameSize = measure.size;
+    measure.dispose();
     Widget tab(T option, String name) {
       final active = option == value;
       final ink = active ? c.bright : c.muted;
@@ -747,8 +770,11 @@ class AtlasTabs<T extends Object> extends StatelessWidget {
           onTap: () => onChanged(option),
           borderRadius: BorderRadius.circular(4),
           child: Container(
-            width: active ? null : iconWidth,
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+            // An icon tab is as wide as the layout makes it.
+            padding: EdgeInsets.symmetric(
+              horizontal: active ? _tabPad : 0,
+              vertical: 3,
+            ),
             decoration: BoxDecoration(
               color: active ? c.primary.withValues(alpha: .15) : null,
               border: Border.all(
@@ -763,21 +789,14 @@ class AtlasTabs<T extends Object> extends StatelessWidget {
               children: [
                 icon(option, ink),
                 if (active) ...[
-                  const SizedBox(width: 6),
+                  const SizedBox(width: _tabGap),
                   Flexible(
                     child: Text(
                       name,
                       maxLines: 1,
                       softWrap: false,
-                      overflow: TextOverflow.fade,
-                      style: TextStyle(
-                        fontFamily: _mono,
-                        fontSize: 11,
-                        height: 14 / 11,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: .275,
-                        color: ink,
-                      ),
+                      overflow: TextOverflow.ellipsis,
+                      style: nameStyle,
                     ),
                   ),
                 ],
@@ -787,7 +806,7 @@ class AtlasTabs<T extends Object> extends StatelessWidget {
         ),
       );
       return active
-          ? Expanded(child: button)
+          ? button
           : Tooltip(message: name, excludeFromSemantics: true, child: button);
     }
 
@@ -803,23 +822,82 @@ class AtlasTabs<T extends Object> extends StatelessWidget {
         ),
         child: Material(
           type: MaterialType.transparency,
-          // The icon tabs take the height the open tab's name sets.
-          child: IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (final (i, MapEntry(:key, value: name))
-                    in options.entries.indexed) ...[
-                  if (i > 0) const SizedBox(width: 2),
-                  tab(key, name),
-                ],
-              ],
+          child: CustomMultiChildLayout(
+            delegate: _TabsLayout(
+              count: options.length,
+              open: options.keys.toList().indexOf(value),
+              // Border, padding, icon and gap around the name.
+              openWidth:
+                  nameSize.width.ceilToDouble() +
+                  2 +
+                  2 * _tabPad +
+                  _tabIcon +
+                  _tabGap,
+              height: math.max(nameSize.height, _tabIcon) + 8,
             ),
+            children: [
+              for (final (i, MapEntry(:key, value: name))
+                  in options.entries.indexed)
+                LayoutId(id: i, child: tab(key, name)),
+            ],
           ),
         ),
       ),
     );
   }
+}
+
+const _tabPad = 10.0, _tabGap = 6.0, _tabIcon = 13.0;
+
+/// The open tab takes what the icon tabs leave. They narrow from their full
+/// width only as far as its name needs, so it is cut last.
+// A custom layout, not a LayoutBuilder: cards sit in rows sized to the tallest one.
+class _TabsLayout extends MultiChildLayoutDelegate {
+  _TabsLayout({
+    required this.count,
+    required this.open,
+    required this.openWidth,
+    required this.height,
+  });
+  final int count, open;
+  final double openWidth, height;
+  static const _gap = 2.0, _narrowest = 28.0;
+
+  @override
+  Size getSize(BoxConstraints constraints) =>
+      Size(constraints.constrainWidth(), height);
+
+  @override
+  void performLayout(Size size) {
+    final icons = open < 0 ? count : count - 1;
+    final room = size.width - _gap * (count - 1);
+    // A fifth tab leaves the open one room for a long name on a phone.
+    final widest = open < 0
+        ? room / count
+        : count > 4
+        ? 38.0
+        : 44.0;
+    final icon = icons == 0
+        ? 0.0
+        : math.min(
+            math.max(0.0, room / icons),
+            ((room - openWidth) / icons).clamp(_narrowest, widest),
+          );
+    var x = 0.0;
+    for (var i = 0; i < count; i++) {
+      final width = i == open ? math.max(0.0, room - icon * icons) : icon;
+      layoutChild(i, BoxConstraints.tight(Size(width, size.height)));
+      positionChild(i, Offset(x, 0));
+      x += width + _gap;
+    }
+  }
+
+  @override
+  bool shouldRelayout(_TabsLayout old) =>
+      old.count != count ||
+      old.open != open ||
+      old.openWidth != openWidth ||
+      old.height != height;
 }
 
 /// Small (i) marker holding the notes that would crowd a card.

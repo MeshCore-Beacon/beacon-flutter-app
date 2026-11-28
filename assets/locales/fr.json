@@ -1755,7 +1755,10 @@
       "readings": "Mesures",
       "accepting": "accepte les demandes",
       "notAccepting": "n'accepte pas les demandes",
-      "stale": "aucune interrogation en cours"
+      "stale": "aucune interrogation en cours",
+      "lastClaim": "Déclarée il y a",
+      "claimAge": "{{duration}}",
+      "help": "Ce que cette radio interroge pour la télémétrie : les places de demande qu'elle offre et qui les occupe, combien de ses répéteurs répondent, les mesures rapportées en 24 heures et sa dernière déclaration. Ouvrez le nœud pour voir chaque répéteur."
     },
     "atlasOpen": {
       "node": "Ouvrir le nœud",
@@ -1766,6 +1769,11 @@
       "done": "Terminer la modification",
       "help": "Épingler un onglet, réordonner ou retirer des cartes",
       "doneHelp": "Terminer la modification des cartes"
+    },
+    "atlasNotes": {
+      "refreshFailed": "Actualisation impossible. Données précédentes affichées.",
+      "openNode": "Ouvrir le nœud {{name}}",
+      "openObserver": "Ouvrir l'observateur {{name}}"
     }
   }
 }

@@ -106,6 +106,9 @@ class Server {
       {'nodeId': 'b', 'name': 'Two', 'role': 'poller', 'state': 'ok'},
     ],
   };
+
+  /// Answers /poller with a 500, like a server having a bad minute.
+  bool pollerFails = false;
   List<Map<String, dynamic>> readings = [
     {'t': tick - 7200000, 'batteryMv': 4100, 'temperatureC': 15.2},
     {'t': tick - 3600000, 'batteryMv': 4226},
@@ -228,6 +231,9 @@ class Server {
       requests.add(request.url);
       if (request.url.path.endsWith('/observers/$observerId')) {
         await holdObserver?.future;
+      }
+      if (pollerFails && request.url.path.endsWith('/poller')) {
+        return http.Response('{"error":{"message":"boom"}}', 500);
       }
       final body = reply(request.url);
       return body == null
@@ -1180,6 +1186,7 @@ void main() {
 
   for (final (width, rows) in [(320.0, 2), (375.0, 1)]) {
     testWidgets('the toolbar takes $rows row(s) at $width', (tester) async {
+      await realFont(tester);
       await pump(tester, pins: [nodePin()], size: Size(width, 800));
       final field = tester.getRect(find.byType(TextField).first);
       final pencil = tester.getRect(find.byKey(const ValueKey('atlas-edit')));
@@ -1196,6 +1203,163 @@ void main() {
       await close(tester);
     });
   }
+
+  group('the toolbar fits', () {
+    for (final field in ['Public Key', 'Observer']) {
+      for (final width in [320.0, 360.0, 375.0]) {
+        for (final scale in [1.0, 1.3, 2.0]) {
+          testWidgets('$field search, three ranges and a card at $width, '
+              'text x$scale', (tester) async {
+            await realFont(tester);
+            tester.platformDispatcher.textScaleFactorTestValue = scale;
+            addTearDown(
+              tester.platformDispatcher.clearTextScaleFactorTestValue,
+            );
+            fake.atlas7d = true;
+            await pump(tester, pins: [nodePin()], size: Size(width, 800));
+            await tester.tap(find.byKey(const ValueKey('atlas-search-field')));
+            await tester.pumpAndSettle();
+            await tester.tap(find.text(field).last);
+            await tester.pumpAndSettle();
+            expect(tester.takeException(), isNull);
+
+            final screen = Rect.fromLTRB(16, 0, width - 16, 800);
+            final input = tester.getRect(
+              find.byKey(const ValueKey('atlas-search')),
+            );
+            final picker = tester.getRect(
+              find.byKey(const ValueKey('atlas-search-field')),
+            );
+            final pencil = tester.getRect(
+              find.byKey(const ValueKey('atlas-edit')),
+            );
+            final ranges = tester.getRect(
+              find.byType(AtlasSegmented<AtlasRange>),
+            );
+            final count = tester.getRect(find.text('1/12'));
+            expect(find.text('7d'), findsOneWidget);
+            // Room to type in, whatever else shares the row.
+            expect(input.width, greaterThanOrEqualTo(90), reason: '$input');
+            for (final box in [input, picker, pencil, ranges, count]) {
+              expect(box.left, greaterThanOrEqualTo(screen.left - .01));
+              expect(box.right, lessThanOrEqualTo(screen.right + .01));
+            }
+            // Nothing sits on anything else.
+            expect(picker.right, lessThanOrEqualTo(input.left + 1.01));
+            expect(count.right, lessThanOrEqualTo(ranges.left));
+            expect(ranges.right, lessThanOrEqualTo(pencil.left));
+            if (count.top < input.bottom) {
+              expect(input.right, lessThanOrEqualTo(count.left));
+            }
+            // The field's name is whole.
+            final name = tester.renderObject<RenderParagraph>(
+              find.descendant(
+                of: find.byKey(const ValueKey('atlas-search-field')),
+                matching: find.text(field),
+              ),
+            );
+            expect(
+              name.size.width,
+              greaterThanOrEqualTo(name.getMaxIntrinsicWidth(double.infinity)),
+            );
+            await close(tester);
+          });
+        }
+      }
+    }
+
+    testWidgets('one row is kept where the search still has room', (
+      tester,
+    ) async {
+      await realFont(tester);
+      // No card, so no pencil: the Name search fits beside two ranges at 360.
+      await pump(tester, size: const Size(360, 800));
+      final input = tester.getRect(find.byKey(const ValueKey('atlas-search')));
+      final range = tester.getRect(find.text('24h').first);
+      expect(range.center.dy, moreOrLessEquals(input.center.dy, epsilon: 2));
+      expect(input.width, greaterThanOrEqualTo(90));
+      await close(tester);
+    });
+  });
+
+  testWidgets('removing the last card leaves edit mode', (tester) async {
+    await pump(tester, pins: [nodePin()]);
+    await edit(tester);
+    await tester.tap(find.byTooltip('Remove'));
+    await tester.pumpAndSettle();
+    expect(find.text('No nodes saved'), findsOneWidget);
+    expect(find.byKey(const ValueKey('atlas-edit')), findsNothing);
+
+    // The next card comes up with its everyday buttons.
+    await search(tester, 'ridge');
+    await tester.tap(find.text('Add'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Open node'), findsOneWidget);
+    expect(find.byTooltip('Remove'), findsNothing);
+    expect(find.byTooltip('Drag to reorder'), findsNothing);
+    final pencil = tester.widget<AtlasIconButton>(
+      find.byKey(const ValueKey('atlas-edit')),
+    );
+    expect(pencil.pressed, isFalse);
+    await close(tester);
+  });
+
+  testWidgets('edit mode stays on while a card is left', (tester) async {
+    await pump(
+      tester,
+      pins: [
+        nodePin(),
+        {'kind': 'node', 'id': otherId, 'publicKey': otherKey, 'name': 'Ridge'},
+      ],
+    );
+    await edit(tester);
+    await tester.tap(find.byTooltip('Remove').first);
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Remove'), findsOneWidget);
+    await close(tester);
+  });
+
+  testWidgets('remove stands apart from the drag handle', (tester) async {
+    await pump(tester, pins: [nodePin()], size: const Size(320, 800));
+    await edit(tester);
+    final grip = tester.getRect(find.byTooltip('Drag to reorder'));
+    final remove = tester.getRect(find.byTooltip('Remove'));
+    expect(remove.left - grip.right, greaterThanOrEqualTo(16));
+    expect(tester.takeException(), isNull);
+    await close(tester);
+  });
+
+  testWidgets('a screen reader hears each card\'s freshness and whose open '
+      'button it is', (tester) async {
+    final handle = tester.ensureSemantics();
+    await pump(
+      tester,
+      pins: [
+        nodePin(),
+        {'kind': 'node', 'id': otherId, 'publicKey': otherKey, 'name': 'Ridge'},
+        {'kind': 'observer', 'observerId': observerId, 'name': 'Roof'},
+      ],
+    );
+    Finder dot(String label) => find.byWidgetPredicate(
+      (w) =>
+          w is Semantics &&
+          w.properties.image == true &&
+          w.properties.label == label,
+    );
+    for (final label in ['Recent', 'Stale', 'Online']) {
+      expect(dot(label), findsOneWidget);
+      expect(tester.getSemantics(dot(label)).label, label);
+    }
+    expect(find.bySemanticsLabel('Open node Hill'), findsOneWidget);
+    expect(find.bySemanticsLabel('Open node Ridge'), findsOneWidget);
+    expect(find.bySemanticsLabel('Open observer Roof'), findsOneWidget);
+    // Sighted users still get the short tooltip, said once.
+    expect(find.byTooltip('Open node'), findsNWidgets(2));
+    final open = tester.getSemantics(find.bySemanticsLabel('Open node Hill'));
+    expect(open.tooltip, isEmpty);
+    handle.dispose();
+    await close(tester);
+  });
 
   testWidgets('the card header stays on one line, the name giving way', (
     tester,
@@ -1274,6 +1438,48 @@ void main() {
       handle.dispose();
       await close(tester);
     });
+
+    for (final code in supportedLanguages) {
+      testWidgets('the open tab spells its whole name at 320 px in $code', (
+        tester,
+      ) async {
+        addTearDown(() => language = 'en');
+        await realFont(tester);
+        language = code;
+        fake.hill = {...fake.hill, 'isPoller': true, 'observerId': observerId};
+        await pump(
+          tester,
+          pins: [
+            nodePin({'observerId': observerId}),
+          ],
+          size: const Size(320, 844),
+        );
+        final bar = tester.getRect(find.byType(AtlasTabs<AtlasView>));
+        const views = ['analytics', 'heard', 'observer', 'telemetry', 'poller'];
+        for (final open in views) {
+          await tester.tap(tab(open));
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+          final name = tester.renderObject<RenderParagraph>(
+            find.descendant(of: tab(open), matching: find.byType(Text)),
+          );
+          expect(
+            name.size.width,
+            greaterThanOrEqualTo(name.getMaxIntrinsicWidth(double.infinity)),
+            reason: '$code ${name.text.toPlainText()}',
+          );
+          expect(name.didExceedMaxLines, isFalse);
+          for (final view in views) {
+            final box = tester.getRect(tab(view));
+            expect(box.left, greaterThanOrEqualTo(bar.left));
+            expect(box.right, lessThanOrEqualTo(bar.right));
+            // An icon tab keeps a box worth tapping.
+            if (view != open) expect(box.width, greaterThanOrEqualTo(28));
+          }
+        }
+        await close(tester);
+      });
+    }
 
     testWidgets('a two tab card and the range switch keep their shapes', (
       tester,
@@ -1408,6 +1614,84 @@ void main() {
       handle.dispose();
       await close(tester);
     });
+
+    testWidgets('the claim tile shows a short age and the full time on tap', (
+      tester,
+    ) async {
+      final at = DateTime.now().millisecondsSinceEpoch - 12 * 60000;
+      fake.pollerDoc = {
+        ...fake.pollerDoc!,
+        'claim': {...fake.pollerDoc!['claim'] as Map, 'receivedAt': at},
+      };
+      await open(tester);
+      expect(inTile('claim', '12m ago'), findsOneWidget);
+      final tip = find.ancestor(
+        of: inTile('claim', '12m ago'),
+        matching: find.byType(Tooltip),
+      );
+      expect(tester.widget<Tooltip>(tip.first).message, formatAbsolute(at));
+      await close(tester);
+    });
+
+    testWidgets('the info tip gives the claim time, the slots and the help', (
+      tester,
+    ) async {
+      await open(tester);
+      final tip = tester.widget<AtlasInfoTip>(
+        find.descendant(
+          of: find.byType(AtlasPanel),
+          matching: find.byType(AtlasInfoTip),
+        ),
+      );
+      expect(tip.lines, [
+        'Last claim ${formatAbsolute(tick - 720000)}',
+        '2 of 8 slots used',
+        trKey('atlasPoller.help'),
+      ]);
+      expect(tip.lines.last, startsWith('What this radio polls for telemetry'));
+      await close(tester);
+    });
+
+    testWidgets(
+      'a failed refresh keeps the tiles and says so until it recovers',
+      (tester) async {
+        await open(tester);
+        Color? dot() =>
+            (tester
+                        .widget<Container>(
+                          find.descendant(
+                            of: find.byType(AtlasPanel),
+                            matching: find.byKey(
+                              const ValueKey('atlas-footer-dot'),
+                            ),
+                          ),
+                        )
+                        .decoration!
+                    as BoxDecoration)
+                .color;
+        expect(find.text('Failed to load'), findsNothing);
+        expect(dot(), pollerColor);
+
+        fake.pollerFails = true;
+        fake.clock = now.add(const Duration(seconds: 61));
+        await tester.pump(const Duration(seconds: 61));
+        await tester.pumpAndSettle();
+        expect(tab('poller'), findsOneWidget);
+        expect(inTile('slots', '2/8'), findsOneWidget);
+        expect(find.text('Failed to load'), findsOneWidget);
+        // No longer lit as a live claim.
+        expect(dot(), isNot(pollerColor));
+
+        fake.pollerFails = false;
+        fake.clock = now.add(const Duration(seconds: 122));
+        await tester.pump(const Duration(seconds: 61));
+        await tester.pumpAndSettle();
+        expect(find.text('Failed to load'), findsNothing);
+        expect(inTile('slots', '2/8'), findsOneWidget);
+        expect(dot(), pollerColor);
+        await close(tester);
+      },
+    );
 
     testWidgets('says when requests are not accepted', (tester) async {
       fake.pollerDoc = {
@@ -1820,8 +2104,8 @@ void main() {
       testWidgets('fits its five tabs and the Poller tab in $code', (
         tester,
       ) async {
-        await open(tester);
         language = code;
+        await open(tester);
         final bar = find.byType(AtlasTabs<AtlasView>);
         for (final view in [...views, 'heard']) {
           await tester.tap(tab(view));
@@ -1854,6 +2138,39 @@ void main() {
         }
         expect(tester.takeException(), isNull);
         await close(tester);
+      });
+
+      testWidgets('shows the whole Last claim age in $code', (tester) async {
+        language = code;
+        for (final minutes in [12, 59, 23 * 60, 400 * 24 * 60]) {
+          fake.pollerDoc = {
+            ...fake.pollerDoc!,
+            'claim': {
+              ...fake.pollerDoc!['claim'] as Map,
+              'receivedAt':
+                  DateTime.now().millisecondsSinceEpoch - minutes * 60000,
+            },
+          };
+          await open(tester);
+          await tester.tap(tab('poller'));
+          await tester.pumpAndSettle();
+          final value = tester.renderObject<RenderParagraph>(
+            find
+                .descendant(
+                  of: find.byKey(const ValueKey('poller-claim')),
+                  matching: find.byType(Text),
+                )
+                .at(1),
+          );
+          final text = value.text.toPlainText();
+          expect(text, contains(RegExp(r'\d')), reason: text);
+          expect(
+            value.size.width,
+            greaterThanOrEqualTo(value.getMaxIntrinsicWidth(double.infinity)),
+            reason: '$code "$text"',
+          );
+          await close(tester);
+        }
       });
     }
   });

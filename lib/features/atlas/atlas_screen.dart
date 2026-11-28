@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../../core/account.dart';
 import '../../core/api.dart';
@@ -130,7 +132,8 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
     if (!mounted) return;
     // An import replaced the cards, so views of cards that are gone go too.
     open.removeWhere((key, _) => !saved.pins.any((pin) => pin.key == key));
-    setState(() {});
+    // With no card left there is nothing to edit, and no pencil to leave by.
+    setState(() => editing = editing && saved.pins.isNotEmpty);
     _loadAlerts();
   }
 
@@ -462,8 +465,6 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
               ? 'searchTooShort'
               : null)
         : atlasSearch(field, typed).hint;
-    // The narrowest phones give the search a row to itself.
-    final tight = MediaQuery.sizeOf(context).width < 360;
     final count = Tooltip(
       message: at(store.signedIn ? 'syncedToAccount' : 'localOnly'),
       triggerMode: TooltipTriggerMode.tap,
@@ -516,50 +517,27 @@ class _AtlasScreenState extends State<AtlasScreen> with WidgetsBindingObserver {
             color: c.base,
             border: Border(bottom: BorderSide(color: c.borderSubtle)),
           ),
-          child: tight
-              ? Column(
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _SearchBar(
-                            controller: search,
-                            field: field,
-                            onField: changeField,
-                            onChanged: typing,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        count,
-                        const SizedBox(width: 8),
-                        rangeSwitch,
-                        const Spacer(),
-                        ?pencil,
-                      ],
-                    ),
-                  ],
-                )
-              : Row(
-                  children: [
-                    Expanded(
-                      child: _SearchBar(
-                        controller: search,
-                        field: field,
-                        onField: changeField,
-                        onChanged: typing,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    count,
-                    const SizedBox(width: 8),
-                    rangeSwitch,
-                    if (pencil != null) ...[const SizedBox(width: 6), pencil],
-                  ],
+          // The search gets a row to itself when the others leave it too little.
+          child: _Toolbar(
+            minSearch: _SearchBar.minWidth(context, field),
+            children: [
+              _SearchBar(
+                controller: search,
+                field: field,
+                onField: changeField,
+                onChanged: typing,
+              ),
+              // Shrunk as a last resort, on a narrow phone with very large text.
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [count, const SizedBox(width: 8), rangeSwitch],
                 ),
+              ),
+              ?pencil,
+            ],
+          ),
         ),
         Expanded(
           child: SingleChildScrollView(
@@ -819,15 +797,47 @@ class _SearchBar extends StatelessWidget {
   final TextEditingController controller;
   final String field;
   final ValueChanged<String> onField, onChanged;
+  static Map<String, String> _fields() => {
+    'name': tr('Name'),
+    'pubkey': tr('Public Key'),
+    'observer': at('fieldObserver'),
+  };
+
+  /// The least width that still leaves room to type a few characters beside
+  /// the field picker, at the system text size.
+  static double minWidth(BuildContext context, String field) {
+    double wide(String text) {
+      final painter = TextPainter(
+        text: TextSpan(text: text, style: atlasMono(11, Colors.black)),
+        textDirection: TextDirection.ltr,
+        textScaler: MediaQuery.textScalerOf(context),
+      )..layout();
+      final width = painter.width;
+      painter.dispose();
+      return width;
+    }
+
+    // Picker: padding, border, gap and caret. Input: border, icon and clear.
+    return wide(_fields()[field]!) +
+        16 +
+        1 +
+        5 +
+        6 +
+        2 +
+        27 +
+        26 +
+        wide('0' * 6);
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = BeaconColors.of(context);
-    final fields = {
-      'name': tr('Name'),
-      'pubkey': tr('Public Key'),
-      'observer': at('fieldObserver'),
-    };
-    const height = 30.0;
+    final fields = _fields();
+    // Large system text needs a taller box.
+    final height = math.max(
+      30.0,
+      MediaQuery.textScalerOf(context).scale(11) + 16,
+    );
     return SizedBox(
       height: height,
       child: Row(
@@ -953,4 +963,78 @@ class _SearchBar extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The toolbar: search, then the count and range, then the edit pencil. All on
+/// one row when the search keeps [minSearch]; otherwise the search takes the
+/// first row and the rest the second, the pencil at its end.
+class _Toolbar extends MultiChildRenderObjectWidget {
+  const _Toolbar({required this.minSearch, required super.children});
+  final double minSearch;
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderToolbar(minSearch);
+  @override
+  void updateRenderObject(BuildContext context, _RenderToolbar renderObject) =>
+      renderObject.minSearch = minSearch;
+}
+
+class _ToolbarSlot extends ContainerBoxParentData<RenderBox> {}
+
+class _RenderToolbar extends RenderBox
+    with
+        ContainerRenderObjectMixin<RenderBox, _ToolbarSlot>,
+        RenderBoxContainerDefaultsMixin<RenderBox, _ToolbarSlot> {
+  _RenderToolbar(this._minSearch);
+  static const _gap = 6.0, _rowGap = 8.0;
+
+  double _minSearch;
+  set minSearch(double value) {
+    if (value == _minSearch) return;
+    _minSearch = value;
+    markNeedsLayout();
+  }
+
+  @override
+  void setupParentData(RenderBox child) {
+    if (child.parentData is! _ToolbarSlot) child.parentData = _ToolbarSlot();
+  }
+
+  @override
+  void performLayout() {
+    final width = constraints.maxWidth;
+    final search = firstChild!, controls = childAfter(search)!;
+    final pencil = childAfter(controls);
+    void place(RenderBox child, double x, double y) =>
+        (child.parentData! as _ToolbarSlot).offset = Offset(x, y);
+    pencil?.layout(const BoxConstraints(), parentUsesSize: true);
+    final edit = pencil == null ? 0.0 : pencil.size.width + _gap;
+    controls.layout(
+      BoxConstraints(maxWidth: math.max(0, width - edit)),
+      parentUsesSize: true,
+    );
+    final rest = controls.size.width + edit;
+    final left = width - rest - _gap;
+    final oneRow = left >= _minSearch;
+    search.layout(
+      BoxConstraints.tightFor(width: oneRow ? left : width),
+      parentUsesSize: true,
+    );
+    final tall = math.max(controls.size.height, pencil?.size.height ?? 0.0);
+    final first = oneRow ? math.max(search.size.height, tall) : tall;
+    final top = oneRow ? 0.0 : search.size.height + _rowGap;
+    double mid(RenderBox child) => top + (first - child.size.height) / 2;
+    place(search, 0, oneRow ? mid(search) : 0);
+    place(controls, oneRow ? left + _gap : 0, mid(controls));
+    if (pencil != null) place(pencil, width - pencil.size.width, mid(pencil));
+    size = constraints.constrain(Size(width, top + first));
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) =>
+      defaultPaint(context, offset);
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) =>
+      defaultHitTestChildren(result, position: position);
 }

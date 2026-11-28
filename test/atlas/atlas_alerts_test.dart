@@ -372,7 +372,7 @@ void main() {
       ))
         b.label,
     ];
-    expect(labels, ['Open node', 'Alerts: 2 on']);
+    expect(labels, ['Open node Busy', 'Alerts: 2 on']);
     await close(tester);
   });
 
@@ -888,7 +888,12 @@ void main() {
 
       // Remove side of the gap between the grip and remove: only remove fires.
       await edit(tester);
-      expect(tester.getRect(remove).left - tester.getRect(grip).right, 4);
+      // Remove stands off from the grip, and the space between does nothing.
+      final gap = tester.getRect(remove).left - tester.getRect(grip).right;
+      expect(gap, greaterThanOrEqualTo(16));
+      await tester.tapAt(tester.getRect(grip).centerRight + Offset(gap / 2, 0));
+      await tester.pumpAndSettle();
+      expect(r.store.saved.pins, hasLength(3));
       await tester.tapAt(
         tester.getRect(remove).centerLeft - const Offset(1, 0),
       );

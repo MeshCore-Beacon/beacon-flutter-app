@@ -1704,7 +1704,10 @@
       "readings": "Readings",
       "accepting": "accepting requests",
       "notAccepting": "not accepting requests",
-      "stale": "not currently polling"
+      "stale": "not currently polling",
+      "lastClaim": "Last claim",
+      "claimAge": "{{duration}} ago",
+      "help": "What this radio polls for telemetry: the request slots it offers and who holds them, how many of its repeaters answer, the readings it brought in over 24 hours and its latest claim. Open the node to see each repeater."
     },
     "atlasOpen": {
       "node": "Open node",
@@ -1715,6 +1718,11 @@
       "done": "Done editing",
       "help": "Pin a tab, reorder or remove cards",
       "doneHelp": "Finish editing"
+    },
+    "atlasNotes": {
+      "refreshFailed": "Could not refresh. Showing earlier data.",
+      "openNode": "Open node {{name}}",
+      "openObserver": "Open observer {{name}}"
     }
   }
 }
