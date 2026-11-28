@@ -135,6 +135,9 @@ void main() {
   });
 
   final pollerTab = find.text(trKey('nodePoller.tab'));
+  const refreshNote = ValueKey('poller-refresh-failed');
+  int pollerAsks() =>
+      seen.where((u) => u.path == '/api/v1/nodes/node-1/poller').length;
   final nodeDetails = find.text(trKey('nodePanel.details').toUpperCase());
 
   testWidgets('a node that is an observer switches to its observer view', (
@@ -248,13 +251,13 @@ void main() {
     String? opened;
     isPoller = true;
     await pump(tester, onOpen: (kind, id) => opened = '$kind:$id');
+    // The route is asked at once: its answer is what offers the view.
+    expect(asked('/nodes/node-1/poller'), isTrue);
     expect(pollerTab, findsOneWidget);
-    // The poller loads only once its view is shown.
-    expect(asked('/nodes/node-1/poller'), isFalse);
+    expect(nodeDetails, findsOneWidget);
 
     await tester.tap(pollerTab);
     await tester.pumpAndSettle();
-    expect(asked('/nodes/node-1/poller'), isTrue);
     expect(find.text('1 / 8', findRichText: true), findsOneWidget);
     expect(find.text('Polled One'), findsOneWidget);
     expect(nodeDetails, findsNothing);
@@ -325,27 +328,131 @@ void main() {
     isPoller = true;
     pollerStatus = 404;
     await pump(tester);
-    await tester.tap(pollerTab);
-    await tester.pumpAndSettle();
+    // Never offered, so there is no tab to tap and lose.
     expect(asked('/nodes/node-1/poller'), isTrue);
     expect(pollerTab, findsNothing);
     expect(find.text(trKey('observerMerge.observer')), findsOneWidget);
     expect(nodeDetails, findsOneWidget);
+
+    // Nor is it asked again.
+    final before = pollerAsks();
+    await tester.pump(pollerRefresh);
+    await tester.pumpAndSettle();
+    expect(pollerAsks(), before);
+
+    await pump(tester, id: 'node-2', initialView: 'poller');
+    expect(pollerTab, findsNothing);
+    expect(nodeDetails, findsOneWidget);
   });
 
-  testWidgets('a failed poller load can be retried', (tester) async {
+  testWidgets('the Poller view waits for a read that failed', (tester) async {
     isPoller = true;
     pollerStatus = 500;
     await pump(tester);
-    await tester.tap(pollerTab);
+    expect(pollerTab, findsNothing);
+    expect(nodeDetails, findsOneWidget);
+
+    // The next minute's read answers, and the view is offered.
+    pollerStatus = 200;
+    await tester.pump(pollerRefresh);
     await tester.pumpAndSettle();
     expect(pollerTab, findsOneWidget);
+  });
+
+  testWidgets('a node opened on its Poller view shows a failed load there', (
+    tester,
+  ) async {
+    isPoller = true;
+    pollerStatus = 500;
+    await pump(tester, initialView: 'poller');
+    expect(pollerTab, findsOneWidget);
+    expect(nodeDetails, findsNothing);
     expect(find.text('Retry'), findsOneWidget);
+    expect(find.byKey(refreshNote), findsNothing);
 
     pollerStatus = 200;
     await tester.tap(find.text('Retry'));
     await tester.pumpAndSettle();
     expect(find.text('Polled One'), findsOneWidget);
+    expect(find.text('Retry'), findsNothing);
+  });
+
+  testWidgets('a failed refresh keeps the loaded view and offers a retry', (
+    tester,
+  ) async {
+    isPoller = true;
+    await pump(tester);
+    await tester.tap(pollerTab);
+    await tester.pumpAndSettle();
+    expect(find.text('Polled One'), findsOneWidget);
+    expect(find.byKey(refreshNote), findsNothing);
+
+    pollerStatus = 500;
+    unawaited(
+      tester.state<RefreshIndicatorState>(find.byType(RefreshIndicator)).show(),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Polled One'), findsOneWidget);
+    expect(find.text('1 / 8', findRichText: true), findsOneWidget);
+    expect(find.byKey(refreshNote), findsOneWidget);
+    expect(find.text(trKey('atlasNotes.refreshFailed')), findsOneWidget);
+
+    pollerStatus = 200;
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(refreshNote),
+        matching: find.text('Retry'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Polled One'), findsOneWidget);
+    expect(find.byKey(refreshNote), findsNothing);
+  });
+
+  testWidgets('the poller refreshes every minute while the screen shows', (
+    tester,
+  ) async {
+    isPoller = true;
+    await pump(tester);
+    expect(pollerAsks(), 1);
+    await tester.pump(pollerRefresh);
+    await tester.pumpAndSettle();
+    expect(pollerAsks(), 2);
+
+    Future<void> lifecycle(List<AppLifecycleState> states) async {
+      for (final state in states) {
+        tester.binding.handleAppLifecycleStateChanged(state);
+        await tester.pump();
+      }
+    }
+
+    // Nothing is read in the background; one read is owed on return.
+    await lifecycle(const [
+      AppLifecycleState.inactive,
+      AppLifecycleState.hidden,
+      AppLifecycleState.paused,
+    ]);
+    await tester.pump(pollerRefresh * 5);
+    expect(pollerAsks(), 2);
+    await lifecycle(const [
+      AppLifecycleState.hidden,
+      AppLifecycleState.inactive,
+      AppLifecycleState.resumed,
+    ]);
+    await tester.pumpAndSettle();
+    expect(pollerAsks(), 3);
+
+    // Nor under another screen.
+    final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+    unawaited(
+      navigator.push(MaterialPageRoute<void>(builder: (_) => const Scaffold())),
+    );
+    await tester.pumpAndSettle();
+    await tester.pump(pollerRefresh * 3);
+    expect(pollerAsks(), 3);
+    navigator.pop();
+    await tester.pumpAndSettle();
+    expect(pollerAsks(), 4);
   });
 
   testWidgets('another node opens on its node view', (tester) async {
@@ -360,7 +467,6 @@ void main() {
     expect(nodeDetails, findsOneWidget);
     expect(pollerTab, findsOneWidget);
     expect(find.text('Polled One'), findsNothing);
-    expect(asked('/nodes/node-2/poller'), isFalse);
   });
 
   testWidgets('pull to refresh reloads the poller view', (tester) async {
@@ -368,8 +474,7 @@ void main() {
     await pump(tester);
     await tester.tap(pollerTab);
     await tester.pumpAndSettle();
-    int asks() =>
-        seen.where((u) => u.path == '/api/v1/nodes/node-1/poller').length;
+    int asks() => pollerAsks();
     expect(asks(), 1);
     unawaited(
       tester.state<RefreshIndicatorState>(find.byType(RefreshIndicator)).show(),
